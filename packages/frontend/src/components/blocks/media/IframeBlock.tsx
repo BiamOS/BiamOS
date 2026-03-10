@@ -153,6 +153,7 @@ export const IframeBlock = React.memo(function IframeBlock({
     const [currentUrl, setCurrentUrl] = useState(initialUrl);
     const [urlInput, setUrlInput] = useState(initialUrl);
     const [urlFocused, setUrlFocused] = useState(false);
+    const [zoomPercent, setZoomPercent] = useState(100);
     const webviewRef = useRef<any>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -191,20 +192,61 @@ export const IframeBlock = React.memo(function IframeBlock({
         }
     }, [initialUrl, isElectron]);
 
+    // ─── Webview-only zoom (Ctrl+Scroll / Ctrl+- / Ctrl+=) ─────
+    const applyZoom = useCallback((newPercent: number) => {
+        const clamped = Math.max(25, Math.min(200, newPercent));
+        setZoomPercent(clamped);
+        const wv = webviewRef.current;
+        if (wv?.setZoomFactor) {
+            wv.setZoomFactor(clamped / 100);
+        }
+    }, []);
+
     // Track Ctrl key globally so overlay appears over iframe/webview
     React.useEffect(() => {
-        const down = (e: KeyboardEvent) => { if (e.key === "Control") setCtrlHeld(true); };
+        const down = (e: KeyboardEvent) => {
+            if (e.key === "Control") setCtrlHeld(true);
+            // Ctrl+= / Ctrl+- for webview zoom
+            if (e.ctrlKey && (e.key === "=" || e.key === "+")) {
+                e.preventDefault();
+                setZoomPercent(prev => { const next = Math.min(200, prev + 10); applyZoom(next); return next; });
+            }
+            if (e.ctrlKey && e.key === "-") {
+                e.preventDefault();
+                setZoomPercent(prev => { const next = Math.max(25, prev - 10); applyZoom(next); return next; });
+            }
+            if (e.ctrlKey && e.key === "0") {
+                e.preventDefault();
+                applyZoom(100);
+            }
+        };
         const up = (e: KeyboardEvent) => { if (e.key === "Control") setCtrlHeld(false); };
         const blur = () => setCtrlHeld(false);
+
+        // Ctrl+Scroll for webview zoom
+        const onWheel = (e: WheelEvent) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            setZoomPercent(prev => {
+                const delta = e.deltaY > 0 ? -10 : 10;
+                const next = Math.max(25, Math.min(200, prev + delta));
+                const wv = webviewRef.current;
+                if (wv?.setZoomFactor) wv.setZoomFactor(next / 100);
+                return next;
+            });
+        };
+
         window.addEventListener("keydown", down);
         window.addEventListener("keyup", up);
         window.addEventListener("blur", blur);
+        window.addEventListener("wheel", onWheel, { passive: false });
         return () => {
             window.removeEventListener("keydown", down);
             window.removeEventListener("keyup", up);
             window.removeEventListener("blur", blur);
+            window.removeEventListener("wheel", onWheel);
         };
-    }, []);
+    }, [applyZoom]);
 
     // ─── Context Watcher Hook ───────────────────────────────
     const ctx = useContextWatcher(webviewRef, initialUrl, isElectron, {
@@ -228,12 +270,17 @@ export const IframeBlock = React.memo(function IframeBlock({
         setCurrentUrl(newUrl);
         setUrlInput(newUrl);
         setFaviconError(false);
+
+        // Clear old sidebar context — new page = fresh analysis
+        ctx.setContextHints([]);
+        ctx.restoreCachedContext(newUrl);
+
         if (isElectron && webviewRef.current?.loadURL) {
             webviewRef.current.loadURL(newUrl).catch(() => { /* ERR_ABORTED from redirects */ });
         } else if (iframeRef.current) {
             iframeRef.current.src = newUrl;
         }
-    }, [urlInput, isElectron]);
+    }, [urlInput, isElectron, ctx]);
 
     const handleBack = useCallback(() => { webviewRef.current?.goBack?.(); }, []);
     const handleForward = useCallback(() => { webviewRef.current?.goForward?.(); }, []);
@@ -260,7 +307,7 @@ export const IframeBlock = React.memo(function IframeBlock({
     }
 
     const navBtnSx = {
-        width: 24, height: 24,
+        width: 28, height: 28,
         color: COLORS.textMuted,
         transition: "color 0.15s ease",
         "&:hover": { color: COLORS.textPrimary, bgcolor: "rgba(255,255,255,0.06)" },
@@ -270,15 +317,15 @@ export const IframeBlock = React.memo(function IframeBlock({
         <Box sx={{ overflow: "hidden", display: "flex", flexDirection: "column", height: height || "100%", flex: 1, minHeight: 200 }}>
             {/* Browser-style toolbar */}
             <Box sx={{
-                display: "flex", alignItems: "center", gap: 0.5, px: 1, py: 0.4,
+                display: "flex", alignItems: "center", gap: 0.5, px: 1, py: 0.5,
                 bgcolor: "rgba(255, 255, 255, 0.03)",
                 borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                 flexShrink: 0,
             }}>
                 {/* Navigation buttons */}
-                <Tooltip title="Back" arrow><IconButton size="small" onClick={handleBack} sx={navBtnSx}><ArrowBackIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
-                <Tooltip title="Forward" arrow><IconButton size="small" onClick={handleForward} sx={navBtnSx}><ArrowForwardIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
-                <Tooltip title="Refresh" arrow><IconButton size="small" onClick={handleRefresh} sx={navBtnSx}><RefreshIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
+                <Tooltip title="Back" arrow><IconButton size="small" onClick={handleBack} sx={navBtnSx}><ArrowBackIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+                <Tooltip title="Forward" arrow><IconButton size="small" onClick={handleForward} sx={navBtnSx}><ArrowForwardIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+                <Tooltip title="Refresh" arrow><IconButton size="small" onClick={handleRefresh} sx={navBtnSx}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
 
                 {/* URL bar */}
                 <Box
@@ -296,13 +343,13 @@ export const IframeBlock = React.memo(function IframeBlock({
                 >
                     {faviconError ? (
                         icon ? (
-                            <Box component="span" sx={{ fontSize: 12, lineHeight: 1 }}>{icon}</Box>
+                            <Box component="span" sx={{ fontSize: 14, lineHeight: 1 }}>{icon}</Box>
                         ) : (
-                            <LanguageIcon sx={{ fontSize: 13, color: COLORS.textMuted, flexShrink: 0 }} />
+                            <LanguageIcon sx={{ fontSize: 16, color: COLORS.textMuted, flexShrink: 0 }} />
                         )
                     ) : (
                         <Box component="img" src={faviconUrl} alt=""
-                            sx={{ width: 13, height: 13, borderRadius: "2px", flexShrink: 0 }}
+                            sx={{ width: 16, height: 16, borderRadius: "2px", flexShrink: 0 }}
                             onError={() => setFaviconError(true)}
                         />
                     )}
@@ -314,7 +361,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         placeholder="Enter URL or search..."
                         sx={{
                             flex: 1,
-                            fontSize: "0.7rem",
+                            fontSize: "0.8rem",
                             color: urlFocused ? COLORS.textPrimary : COLORS.textSecondary,
                             fontWeight: 500,
                             "& .MuiInputBase-input": { p: 0, py: 0.15 },
@@ -326,7 +373,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                 {/* Right-side actions */}
                 <Tooltip title="Open externally" arrow>
                     <IconButton size="small" component="a" href={currentUrl} target="_blank" rel="noopener noreferrer" sx={navBtnSx}>
-                        <OpenInNewIcon sx={{ fontSize: 14 }} />
+                        <OpenInNewIcon sx={{ fontSize: 17 }} />
                     </IconButton>
                 </Tooltip>
                 <Tooltip title="New Tab" arrow>
@@ -335,9 +382,32 @@ export const IframeBlock = React.memo(function IframeBlock({
                         color: accentAlpha(0.6),
                         "&:hover": { color: COLORS.accent, bgcolor: accentAlpha(0.1) },
                     }}>
-                        <AddIcon sx={{ fontSize: 16 }} />
+                        <AddIcon sx={{ fontSize: 19 }} />
                     </IconButton>
                 </Tooltip>
+
+                {/* Zoom indicator — only show when not 100% */}
+                {zoomPercent !== 100 && (
+                    <Tooltip title="Click to reset zoom" arrow>
+                        <Box
+                            component="button"
+                            onClick={() => applyZoom(100)}
+                            sx={{
+                                px: 0.8, py: 0.2,
+                                fontSize: "0.7rem", fontWeight: 600,
+                                color: "rgba(255, 255, 255, 0.6)",
+                                bgcolor: "rgba(255, 255, 255, 0.06)",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: 1,
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                                "&:hover": { bgcolor: "rgba(255, 255, 255, 0.1)", color: "rgba(255, 255, 255, 0.9)" },
+                            }}
+                        >
+                            {zoomPercent}%
+                        </Box>
+                    </Tooltip>
+                )}
 
                 {/* Element Picker (disabled — planned for future) */}
                 {false && isElectron && (
@@ -469,7 +539,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         variant="caption"
                         sx={{
                             color: "rgba(130, 200, 255, 0.8)",
-                            fontSize: "0.65rem",
+                            fontSize: "0.75rem",
                             fontWeight: 600,
                             ml: 0.5,
                             whiteSpace: "nowrap",

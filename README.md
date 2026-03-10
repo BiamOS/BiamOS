@@ -10,16 +10,27 @@
 </h1>
 
 <p align="center">
-  <strong>The AI-Native Desktop Operating Layer for Windows</strong>
+  <strong>The AI-Native Workspace OS</strong><br/>
+  <sub>Windows • macOS • Linux</sub>
 </p>
 
+<br/>
+
+<!-- 🎥 Replace this with a GIF or MP4 demo of BiamOS in action -->
 <p align="center">
-  <em>One input. Infinite possibilities. Your desktop has never been this alive.</em>
+  <img src="docs/assets/demo.gif" alt="BiamOS Demo" width="800"/>
 </p>
+
+<br/>
+
+BiamOS is **not just another wrapper**. It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS **reads the DOM** of the sites you browse. It acts as your personal agent — extracting data, bypassing complex API auth, and generating modular UI blocks instantly.
+
+> _No cloud dependency. No tracking. Everything runs locally on your machine._
 
 ---
 
 <p align="center">
+  <a href="#-the-game-changer">🔥 Game Changer</a> •
   <a href="#-features">Features</a> •
   <a href="#-how-it-works">How It Works</a> •
   <a href="#-architecture">Architecture</a> •
@@ -29,11 +40,24 @@
 
 ---
 
-## 🎯 What is BiamOS?
+## 👻 The Game Changer
 
-BiamOS transforms your Windows desktop into an **AI-powered command center**. Instead of switching between apps, tabs, and search bars — you just **talk, type, or think** and BiamOS handles the rest.
+### Zero-OAuth "Ghost" Integrations
 
-> _"Imagine if Siri, a web browser, and a research assistant had a baby — and it lived on your desktop."_
+<table>
+  <tr>
+    <td width="60%">
+      <p>Forget generating API keys or giving OAuth permissions to third-party apps.</p>
+      <p>BiamOS uses a <strong>built-in Chromium Webview</strong>. Log into Gmail, Notion, or WhatsApp <em>normally</em>, and ask BiamOS to <code>"summarize my unread emails"</code>.</p>
+      <p>The local AI <strong>securely reads the DOM</strong> directly from the webview and renders the results. No APIs. No tracking. <strong>Pure local magic.</strong></p>
+      <blockquote>💡 We call this <strong>Ghost-Auth</strong> — because the user is already authenticated through normal browser login. BiamOS just reads what's on screen.</blockquote>
+    </td>
+    <td width="40%">
+      <!-- 🎥 Replace with Ghost-Auth demo GIF -->
+      <p align="center"><em>🎥 Ghost-Auth demo coming soon</em></p>
+    </td>
+  </tr>
+</table>
 
 <br/>
 
@@ -43,21 +67,21 @@ BiamOS transforms your Windows desktop into an **AI-powered command center**. In
   <tr>
     <td width="50%">
       <h3>🗣️ Natural Language Interface</h3>
-      <p>Type anything — from "weather in Vienna" to "compare Tesla vs BMW stock" — and BiamOS understands, routes, and renders beautiful results instantly.</p>
+      <p>Type anything — from <code>"weather in Vienna"</code> to <code>"compare Tesla vs BMW stock"</code> — and BiamOS understands, routes, and renders beautiful results instantly.</p>
     </td>
     <td width="50%">
-      <h3>🌐 Built-In Web Browser</h3>
-      <p>Full Chromium-based browser embedded inside BiamOS. Browse any website, log into your accounts, manage tabs — all without leaving your workspace.</p>
+      <h3>🧠 Context-Augmented Browsing</h3>
+      <p>The UI <strong>thinks with you</strong>. Browsing apartments in Tokyo on Airbnb? BiamOS detects the context and automatically generates interactive cards on your canvas for Tokyo's weather, currency exchange rates, and local time — <em>before you even type a single query</em>.</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>🧠 AI Copilot Sidebar</h3>
-      <p>An intelligent research buddy that appears next to every webpage. Ask questions, get summaries with source links, and deep-dive into any topic — with context from the page you're viewing.</p>
+      <h3>🔎 AI Copilot Sidebar</h3>
+      <p>An intelligent research buddy next to every webpage. Ask questions about the page you're viewing, get summaries with source links, and deep-dive into any topic — with <strong>full page context + web search + screenshot analysis</strong>.</p>
     </td>
     <td width="50%">
       <h3>🔌 Plugin-Based Integrations</h3>
-      <p>Connect to any API — weather, crypto, news, stocks, translations, and more. Create your own integrations with a simple JSON schema. No coding required.</p>
+      <p>Connect to any API — weather, crypto, news, stocks, translations, and more. Create your own integrations with a simple JSON schema. <strong>No coding required.</strong></p>
     </td>
   </tr>
   <tr>
@@ -67,17 +91,17 @@ BiamOS transforms your Windows desktop into an **AI-powered command center**. In
     </td>
     <td width="50%">
       <h3>🎙️ Voice Control</h3>
-      <p>Speak your commands. BiamOS transcribes, understands, and even speaks back with natural-sounding TTS. Hands-free computing, finally.</p>
+      <p>Speak your commands. BiamOS transcribes via Whisper, understands intent, and speaks back with natural-sounding TTS. <strong>Hands-free computing, finally.</strong></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
       <h3>🤖 Multi-Agent AI Pipeline</h3>
-      <p>Behind every query, a 6-stage AI pipeline classifies, routes, fetches, and renders your results — all in under 2 seconds. Concierge → Classifier → Router → Executor → Renderer.</p>
+      <p>Behind every query, a 6-stage AI pipeline classifies, routes, fetches, and renders your results — all in under 2 seconds. <br/><code>Concierge → Classifier → Router → Executor → Renderer</code></p>
     </td>
     <td width="50%">
       <h3>🎨 Stunning Dark UI</h3>
-      <p>Premium glassmorphism design with smooth animations, gradient cards, and a canvas-based workspace. Drag, resize, and organize your world like a pro.</p>
+      <p>Premium glassmorphism design with smooth animations, gradient cards, and a drag-and-drop canvas workspace. <strong>Organize your world like a pro.</strong></p>
     </td>
   </tr>
 </table>

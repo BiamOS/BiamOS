@@ -217,197 +217,200 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                     {/* Context Hints section (top area) */}
                     {(isAnalyzing || hasHints || isPrivacyBlocked) && (
                         <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
-                    {/* Skeleton loaders while LLM is analyzing */}
-                    {isAnalyzing && hints.filter(h => h.reason !== "Manual query").length === 0 && (
-                        <>
-                            <HintSkeleton />
-                            <HintSkeleton />
-                        </>
-                    )}
-
-                    {/* Privacy blocked state */}
-                    {!isAnalyzing && hints.length === 0 && isPrivacyBlocked && (
-                        <Box sx={{
-                            display: "flex", flexDirection: "column", alignItems: "center",
-                            justifyContent: "center", gap: 1, py: 2, px: 1,
-                        }}>
-                            <VisibilityOffIcon sx={{ fontSize: "1.8rem", color: "rgba(255, 100, 100, 0.5)" }} />
-                            <Typography sx={{
-                                color: "rgba(255, 100, 100, 0.6)",
-                                fontSize: "0.65rem",
-                                fontWeight: 700,
-                                textAlign: "center",
-                                lineHeight: 1.4,
-                            }}>
-                                Private page
-                            </Typography>
-                            <Typography sx={{
-                                color: "rgba(255, 255, 255, 0.25)",
-                                fontSize: "0.55rem",
-                                textAlign: "center",
-                                lineHeight: 1.3,
-                            }}>
-                                Context analysis is disabled on sensitive domains to protect your privacy.
-                            </Typography>
-                        </Box>
-                    )}
-
-                    {/* Auto-detected hint cards (NOT manual queries) */}
-                    {hints.filter(h => h.reason !== "Manual query").map((hint, i) => {
-                        const originalIndex = hints.indexOf(hint);
-                        return (
-                        <Box
-                            key={`${hint.query}-${i}`}
-                            sx={{
-                                p: 1.2,
-                                borderRadius: 2,
-                                bgcolor: hint.expanded ? "rgba(0, 212, 255, 0.1)" : "rgba(0, 212, 255, 0.06)",
-                                border: `1px solid ${hint.expanded ? "rgba(0, 212, 255, 0.3)" : "rgba(0, 212, 255, 0.12)"}`,
-                                transition: "all 0.2s ease",
-                                "&:hover": {
-                                    bgcolor: "rgba(0, 212, 255, 0.12)",
-                                    borderColor: "rgba(0, 212, 255, 0.3)",
-                                },
-                            }}
-                        >
-                            <Typography sx={{ color: "#e0f0ff", fontSize: "0.75rem", fontWeight: 600, mb: 0.5, lineHeight: 1.3 }}>
-                                <Box
-                                    component="span"
-                                    onClick={() => handleHintClick(originalIndex)}
-                                    sx={{ cursor: "pointer", mr: 0.5, userSelect: "none" }}
-                                >
-                                    {hint.expanded ? "▼" : "▶"}
-                                </Box>
-                                {hint.query}
-                            </Typography>
-                            {/* Reason */}
-                            {hint.reason && (
-                                <Typography
-                                    sx={{
-                                        color: "rgba(0, 212, 255, 0.6)",
-                                        fontSize: "0.65rem",
-                                        fontStyle: "italic",
-                                        lineHeight: 1.3,
-                                        mb: hint.expanded ? 1 : 0,
-                                    }}
-                                >
-                                    💡 {hint.reason}
-                                </Typography>
+                            {/* Skeleton loaders while LLM is analyzing */}
+                            {isAnalyzing && hints.filter(h => h.reason !== "Manual query").length === 0 && (
+                                <>
+                                    <HintSkeleton />
+                                    <HintSkeleton />
+                                </>
                             )}
-                            {/* Expanded: loading or data */}
-                            {hint.expanded && (
-                                <Box sx={{ mt: 0.5 }}>
-                                    {hint.loading ? (
-                                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                                            <Box sx={{
-                                                height: 8, width: "60%", borderRadius: 1,
-                                                bgcolor: "rgba(0, 212, 255, 0.08)",
-                                                animation: "contextShimmer 1.5s ease-in-out infinite",
-                                                "@keyframes contextShimmer": {
-                                                    "0%": { opacity: 0.3 }, "50%": { opacity: 0.7 }, "100%": { opacity: 0.3 },
-                                                },
-                                            }} />
-                                            <Box sx={{
-                                                height: 8, width: "40%", borderRadius: 1,
-                                                bgcolor: "rgba(0, 212, 255, 0.05)",
-                                                animation: "contextShimmer 1.5s ease-in-out infinite 0.3s",
-                                            }} />
-                                        </Box>
-                                    ) : hint.data ? (
-                                        <Box>
-                                            {hint.data._blocks ? (
-                                                hint.data._blocks.slice(0, 5).map((block: any, bi: number) => (
-                                                    <Box key={bi} sx={{ mb: 0.5 }}>
-                                                        <HintBlockRenderer block={block} />
-                                                    </Box>
-                                                ))
-                                            ) : hint.data.error ? (
-                                                <Typography sx={{ color: "rgba(255,100,100,0.7)", fontSize: "0.65rem" }}>
-                                                    ⚠️ {hint.data.error}
-                                                </Typography>
-                                            ) : hint.data.summary ? (
-                                                <Box>
-                                                    <Box
-                                                        onClick={(e: React.MouseEvent) => {
-                                                            const target = e.target as HTMLElement;
-                                                            const anchor = target.closest('a[data-lura-link]') as HTMLAnchorElement;
-                                                            if (anchor?.href) {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
-                                                                    detail: { url: anchor.href, title: anchor.textContent || anchor.href },
-                                                                }));
-                                                            }
-                                                        }}
-                                                        sx={{
-                                                            color: "rgba(255,255,255,0.8)",
-                                                            fontSize: "0.7rem",
-                                                            lineHeight: 1.6,
-                                                            "& strong, & b": { color: "#00d4ff", fontWeight: 600 },
-                                                            "& ul, & ol": { pl: 2, my: 0.5 },
-                                                            "& li": { mb: 0.3 },
-                                                            "& a": { color: "#4fc3f7", textDecoration: "underline", cursor: "pointer" },
-                                                            "& p": { my: 0.3 },
-                                                        }}
-                                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(hint.data.summary) }}
-                                                    />
-                                                    {hint.data._source && (
-                                                        <Typography sx={{
-                                                            color: hint.data._source === "page_context"
-                                                                ? "rgba(0, 200, 100, 0.5)"
-                                                                : hint.data._source === "web_search"
-                                                                    ? "rgba(255, 180, 0, 0.6)"
-                                                                    : "rgba(0, 212, 255, 0.4)",
-                                                            fontSize: "0.55rem",
-                                                            fontWeight: 600,
-                                                            mt: 0.5,
-                                                        }}>
-                                                            {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
-                                                        </Typography>
-                                                    )}
-                                                </Box>
-                                            ) : (
-                                                <Box>
-                                                    {Object.entries(hint.data).slice(0, 4).map(([k, v]) => (
-                                                        <Typography key={k} sx={{ color: "rgba(255,255,255,0.6)", fontSize: "0.6rem" }}>
-                                                            <Box component="span" sx={{ color: "#00d4ff" }}>{k}:</Box> {String(v).substring(0, 60)}
-                                                        </Typography>
-                                                    ))}
-                                                </Box>
-                                            )}
-                                            {/* Open as Card */}
+
+                            {/* Privacy blocked state */}
+                            {!isAnalyzing && hints.length === 0 && isPrivacyBlocked && (
+                                <Box sx={{
+                                    display: "flex", flexDirection: "column", alignItems: "center",
+                                    justifyContent: "center", gap: 1, py: 2, px: 1,
+                                }}>
+                                    <VisibilityOffIcon sx={{ fontSize: "1.8rem", color: "rgba(255, 190, 60, 0.5)" }} />
+                                    <Typography sx={{
+                                        color: "rgba(255, 190, 60, 0.7)",
+                                        fontSize: "0.65rem",
+                                        fontWeight: 700,
+                                        textAlign: "center",
+                                        lineHeight: 1.4,
+                                    }}>
+                                        Auto-analysis paused
+                                    </Typography>
+                                    <Typography sx={{
+                                        color: "rgba(255, 255, 255, 0.3)",
+                                        fontSize: "0.55rem",
+                                        textAlign: "center",
+                                        lineHeight: 1.3,
+                                    }}>
+                                        This domain is on the privacy list — BiamOS won't analyze it automatically.
+                                        You can still ask questions below. Page content is only sent to the AI when you ask.
+                                    </Typography>
+                                </Box>
+                            )}
+
+                            {/* Auto-detected hint cards (NOT manual queries) */}
+                            {hints.filter(h => h.reason !== "Manual query").map((hint, i) => {
+                                const originalIndex = hints.indexOf(hint);
+                                return (
+                                    <Box
+                                        key={`${hint.query}-${i}`}
+                                        sx={{
+                                            p: 1.2,
+                                            borderRadius: 2,
+                                            bgcolor: hint.expanded ? "rgba(0, 212, 255, 0.1)" : "rgba(0, 212, 255, 0.06)",
+                                            border: `1px solid ${hint.expanded ? "rgba(0, 212, 255, 0.3)" : "rgba(0, 212, 255, 0.12)"}`,
+                                            transition: "all 0.2s ease",
+                                            "&:hover": {
+                                                bgcolor: "rgba(0, 212, 255, 0.12)",
+                                                borderColor: "rgba(0, 212, 255, 0.3)",
+                                            },
+                                        }}
+                                    >
+                                        <Typography sx={{ color: "#e0f0ff", fontSize: "0.75rem", fontWeight: 600, mb: 0.5, lineHeight: 1.3 }}>
                                             <Box
-                                                component="button"
-                                                onClick={(e: React.MouseEvent) => {
-                                                    e.stopPropagation();
-                                                    window.dispatchEvent(
-                                                        new CustomEvent("biamos:auto-intent", { detail: { query: hint.query } })
-                                                    );
-                                                }}
+                                                component="span"
+                                                onClick={() => handleHintClick(originalIndex)}
+                                                sx={{ cursor: "pointer", mr: 0.5, userSelect: "none" }}
+                                            >
+                                                {hint.expanded ? "▼" : "▶"}
+                                            </Box>
+                                            {hint.query}
+                                        </Typography>
+                                        {/* Reason */}
+                                        {hint.reason && (
+                                            <Typography
                                                 sx={{
-                                                    mt: 1, px: 1.5, py: 0.4,
-                                                    fontSize: "0.6rem", fontWeight: 600,
-                                                    color: "#00d4ff",
-                                                    bgcolor: "rgba(0, 212, 255, 0.1)",
-                                                    border: "1px solid rgba(0, 212, 255, 0.2)",
-                                                    borderRadius: 1.5,
-                                                    cursor: "pointer",
-                                                    transition: "all 0.15s ease",
-                                                    "&:hover": {
-                                                        bgcolor: "rgba(0, 212, 255, 0.2)",
-                                                        borderColor: "rgba(0, 212, 255, 0.4)",
-                                                    },
+                                                    color: "rgba(0, 212, 255, 0.6)",
+                                                    fontSize: "0.65rem",
+                                                    fontStyle: "italic",
+                                                    lineHeight: 1.3,
+                                                    mb: hint.expanded ? 1 : 0,
                                                 }}
                                             >
-                                                📋 Open as Card
+                                                💡 {hint.reason}
+                                            </Typography>
+                                        )}
+                                        {/* Expanded: loading or data */}
+                                        {hint.expanded && (
+                                            <Box sx={{ mt: 0.5 }}>
+                                                {hint.loading ? (
+                                                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                                                        <Box sx={{
+                                                            height: 8, width: "60%", borderRadius: 1,
+                                                            bgcolor: "rgba(0, 212, 255, 0.08)",
+                                                            animation: "contextShimmer 1.5s ease-in-out infinite",
+                                                            "@keyframes contextShimmer": {
+                                                                "0%": { opacity: 0.3 }, "50%": { opacity: 0.7 }, "100%": { opacity: 0.3 },
+                                                            },
+                                                        }} />
+                                                        <Box sx={{
+                                                            height: 8, width: "40%", borderRadius: 1,
+                                                            bgcolor: "rgba(0, 212, 255, 0.05)",
+                                                            animation: "contextShimmer 1.5s ease-in-out infinite 0.3s",
+                                                        }} />
+                                                    </Box>
+                                                ) : hint.data ? (
+                                                    <Box>
+                                                        {hint.data._blocks ? (
+                                                            hint.data._blocks.slice(0, 5).map((block: any, bi: number) => (
+                                                                <Box key={bi} sx={{ mb: 0.5 }}>
+                                                                    <HintBlockRenderer block={block} />
+                                                                </Box>
+                                                            ))
+                                                        ) : hint.data.error ? (
+                                                            <Typography sx={{ color: "rgba(255,100,100,0.7)", fontSize: "0.65rem" }}>
+                                                                ⚠️ {hint.data.error}
+                                                            </Typography>
+                                                        ) : hint.data.summary ? (
+                                                            <Box>
+                                                                <Box
+                                                                    onClick={(e: React.MouseEvent) => {
+                                                                        const target = e.target as HTMLElement;
+                                                                        const anchor = target.closest('a[data-lura-link]') as HTMLAnchorElement;
+                                                                        if (anchor?.href) {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
+                                                                                detail: { url: anchor.href, title: anchor.textContent || anchor.href },
+                                                                            }));
+                                                                        }
+                                                                    }}
+                                                                    sx={{
+                                                                        color: "rgba(255,255,255,0.8)",
+                                                                        fontSize: "0.7rem",
+                                                                        lineHeight: 1.6,
+                                                                        "& strong, & b": { color: "#00d4ff", fontWeight: 600 },
+                                                                        "& ul, & ol": { pl: 2, my: 0.5 },
+                                                                        "& li": { mb: 0.3 },
+                                                                        "& a": { color: "#4fc3f7", textDecoration: "underline", cursor: "pointer" },
+                                                                        "& p": { my: 0.3 },
+                                                                    }}
+                                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(hint.data.summary) }}
+                                                                />
+                                                                {hint.data._source && (
+                                                                    <Typography sx={{
+                                                                        color: hint.data._source === "page_context"
+                                                                            ? "rgba(0, 200, 100, 0.5)"
+                                                                            : hint.data._source === "web_search"
+                                                                                ? "rgba(255, 180, 0, 0.6)"
+                                                                                : "rgba(0, 212, 255, 0.4)",
+                                                                        fontSize: "0.55rem",
+                                                                        fontWeight: 600,
+                                                                        mt: 0.5,
+                                                                    }}>
+                                                                        {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
+                                                        ) : (
+                                                            <Box>
+                                                                {Object.entries(hint.data).slice(0, 4).map(([k, v]) => (
+                                                                    <Typography key={k} sx={{ color: "rgba(255,255,255,0.6)", fontSize: "0.6rem" }}>
+                                                                        <Box component="span" sx={{ color: "#00d4ff" }}>{k}:</Box> {String(v).substring(0, 60)}
+                                                                    </Typography>
+                                                                ))}
+                                                            </Box>
+                                                        )}
+                                                        {/* Open as Card — only for integration-backed hints */}
+                                                        {hint.reason !== "Manual query" && hint.reason !== "low_confidence" && (
+                                                            <Box
+                                                                component="button"
+                                                                onClick={(e: React.MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    window.dispatchEvent(
+                                                                        new CustomEvent("biamos:auto-intent", { detail: { query: hint.query } })
+                                                                    );
+                                                                }}
+                                                                sx={{
+                                                                    mt: 1, px: 1.5, py: 0.4,
+                                                                    fontSize: "0.6rem", fontWeight: 600,
+                                                                    color: "#00d4ff",
+                                                                    bgcolor: "rgba(0, 212, 255, 0.1)",
+                                                                    border: "1px solid rgba(0, 212, 255, 0.2)",
+                                                                    borderRadius: 1.5,
+                                                                    cursor: "pointer",
+                                                                    transition: "all 0.15s ease",
+                                                                    "&:hover": {
+                                                                        bgcolor: "rgba(0, 212, 255, 0.2)",
+                                                                        borderColor: "rgba(0, 212, 255, 0.4)",
+                                                                    },
+                                                                }}
+                                                            >
+                                                                📋 Open as Card
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+                                                ) : null}
                                             </Box>
-                                        </Box>
-                                    ) : null}
-                                </Box>
-                            )}
-                        </Box>
-                    );
-                    })}
+                                        )}
+                                    </Box>
+                                );
+                            })}
                         </Box>
                     )}
 
@@ -690,30 +693,30 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                     { cmd: "/extract", emoji: "📊", desc: "Extract structured data" },
                                 ].filter(c => c.cmd.startsWith(manualInput.trim().split(" ")[0].toLowerCase()))
                                     .map(c => (
-                                    <Box
-                                        key={c.cmd}
-                                        onClick={() => {
-                                            setManualInput(c.cmd + " ");
-                                        }}
-                                        sx={{
-                                            px: 1.5, py: 0.6,
-                                            display: "flex", alignItems: "center", gap: 1,
-                                            cursor: "pointer",
-                                            transition: "all 0.1s",
-                                            "&:hover": { bgcolor: "rgba(0, 212, 255, 0.1)" },
-                                        }}
-                                    >
-                                        <Typography sx={{ fontSize: "0.85rem" }}>{c.emoji}</Typography>
-                                        <Box>
-                                            <Typography sx={{ color: "#00d4ff", fontSize: "0.7rem", fontWeight: 600 }}>
-                                                {c.cmd}
-                                            </Typography>
-                                            <Typography sx={{ color: "rgba(255,255,255,0.4)", fontSize: "0.6rem" }}>
-                                                {c.desc}
-                                            </Typography>
+                                        <Box
+                                            key={c.cmd}
+                                            onClick={() => {
+                                                setManualInput(c.cmd + " ");
+                                            }}
+                                            sx={{
+                                                px: 1.5, py: 0.6,
+                                                display: "flex", alignItems: "center", gap: 1,
+                                                cursor: "pointer",
+                                                transition: "all 0.1s",
+                                                "&:hover": { bgcolor: "rgba(0, 212, 255, 0.1)" },
+                                            }}
+                                        >
+                                            <Typography sx={{ fontSize: "0.85rem" }}>{c.emoji}</Typography>
+                                            <Box>
+                                                <Typography sx={{ color: "#00d4ff", fontSize: "0.7rem", fontWeight: 600 }}>
+                                                    {c.cmd}
+                                                </Typography>
+                                                <Typography sx={{ color: "rgba(255,255,255,0.4)", fontSize: "0.6rem" }}>
+                                                    {c.desc}
+                                                </Typography>
+                                            </Box>
                                         </Box>
-                                    </Box>
-                                ))}
+                                    ))}
                             </Box>
                         )}
                         <InputBase

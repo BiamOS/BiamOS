@@ -8,7 +8,7 @@
 // Phase 2: Added scrapeUrl for Ghost-Auth cookie-based scraping.
 // ============================================================
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
     isElectron: true,
@@ -25,4 +25,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.invoke("page-snapshot", url),
 });
 
-console.log("⚡ BiamOS Electron preload loaded");
+// ─── Lock main window zoom ──────────────────────────────────
+// The <webview> tags manage their own zoom independently.
+// We only want to prevent the MAIN RENDERER from being zoomed
+// (which would scale the toolbar + sidebar + entire React UI).
+webFrame.setZoomLevel(0);
+webFrame.setZoomFactor(1);
+
+// Continuously enforce zoom lock — Chromium may reset it on navigation
+setInterval(() => {
+    if (webFrame.getZoomLevel() !== 0) {
+        webFrame.setZoomLevel(0);
+        webFrame.setZoomFactor(1);
+    }
+}, 500);
+
+// Prevent Ctrl+Scroll and Ctrl+=/- from zooming the main window
+const _win = globalThis as any;
+_win.addEventListener("wheel", (e: any) => {
+    if (e.ctrlKey) e.preventDefault();
+}, { passive: false });
+
+_win.addEventListener("keydown", (e: any) => {
+    if (e.ctrlKey && (e.key === "=" || e.key === "+" || e.key === "-" || e.key === "0")) {
+        e.preventDefault();
+    }
+});
+
+console.log("⚡ BiamOS Electron preload loaded (zoom locked)");

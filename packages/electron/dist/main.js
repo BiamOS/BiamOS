@@ -123,9 +123,20 @@ function createWindow() {
     mainWindow.once("ready-to-show", () => {
         mainWindow?.maximize();
         mainWindow?.show();
+        // Lock main window zoom to 100% — we don't want Ctrl+Scroll
+        // zooming the entire UI (sidebar, toolbar etc.)
+        // The webview inside handles its own zoom independently.
+        mainWindow?.webContents.setZoomFactor(1);
+        mainWindow?.webContents.setZoomLevel(0);
     });
     // In dev: load Vite dev server
     mainWindow.loadURL(DEV_FRONTEND_URL);
+    // Prevent main window zoom via Ctrl+=/- and Ctrl+0
+    mainWindow.webContents.on("before-input-event", (_event, input) => {
+        if (input.control && (input.key === "=" || input.key === "+" || input.key === "-")) {
+            _event.preventDefault();
+        }
+    });
     // DevTools: open manually with Ctrl+Shift+I (auto-open was intercepting resize drag events)
     // if (process.env.NODE_ENV !== "production") {
     //     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -141,29 +152,37 @@ function createWindow() {
     console.log("🖥️  BiamOS Desktop window created");
 }
 // ─── Webview permissions ────────────────────────────────────
-function setupWebviewPermissions() {
-    // Allow webviews to access storage (cookies, localStorage)
-    electron_1.session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+/** Apply header stripping + permission grants to a session */
+function configureSession(sess, label) {
+    // Strip X-Frame-Options and relax CSP so webviews can load any site
+    sess.webRequest.onHeadersReceived((details, callback) => {
         const headers = { ...details.responseHeaders };
-        // Remove X-Frame-Options so webviews can load any site
         delete headers["x-frame-options"];
         delete headers["X-Frame-Options"];
-        // Relax CSP frame-ancestors for embedded content
         if (headers["content-security-policy"]) {
             headers["content-security-policy"] = headers["content-security-policy"].map((csp) => csp.replace(/frame-ancestors[^;]*(;|$)/gi, ""));
         }
         callback({ responseHeaders: headers });
     });
     // Allow microphone access for Speech Recognition
-    electron_1.session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    sess.setPermissionRequestHandler((_webContents, permission, callback) => {
         const allowed = ["media", "audioCapture", "microphone"];
         callback(allowed.includes(permission));
     });
-    electron_1.session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    sess.setPermissionCheckHandler((_webContents, permission) => {
         const allowed = ["media", "audioCapture", "microphone"];
         return allowed.includes(permission);
     });
-    console.log("🔓 Webview permissions configured — X-Frame-Options stripped, microphone allowed");
+    console.log(`🔓 [${label}] Session configured — X-Frame-Options stripped, microphone allowed`);
+}
+function setupWebviewPermissions() {
+    // Configure the default session (used by the main window)
+    configureSession(electron_1.session.defaultSession, "default");
+    // Configure the persist:lura session (used by <webview> tags)
+    // This is the key session — it persists cookies/login across restarts
+    const webviewSession = electron_1.session.fromPartition("persist:lura");
+    configureSession(webviewSession, "persist:lura");
+    console.log("🔓 All sessions configured — webview logins will persist across restarts");
 }
 // ─── Ghost-Auth: Hidden Webview Scraping (Phase 2) ──────────
 function setupScrapeIPC() {
