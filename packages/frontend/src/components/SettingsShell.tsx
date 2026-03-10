@@ -7,7 +7,7 @@
 // Four navigation items: General, Integrations, Blocks, Agents.
 // ============================================================
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Typography, List, ListItemButton, ListItemIcon, ListItemText } from "@mui/material";
 import { Settings as GeneralIcon, Extension as StoreIcon, Widgets as BlocksIcon, SmartToy as AgentsIcon, Psychology as LLMIcon, HistoryEdu as ChangelogIcon } from "@mui/icons-material";
 import { COLORS, accentAlpha } from "./ui/SharedUI";
@@ -56,6 +56,15 @@ const navItemSx = (active: boolean) => ({
 
 export const SettingsShell = React.memo(function SettingsShell() {
     const [activePanel, setActivePanel] = useState<Panel>("general");
+    const [llmMissing, setLlmMissing] = useState(false);
+
+    // Check if LLM provider is configured
+    useEffect(() => {
+        fetch("/api/system/provider")
+            .then(r => r.json())
+            .then(d => setLlmMissing(!d.hasApiKey))
+            .catch(() => setLlmMissing(true));
+    }, [activePanel]); // re-check when switching panels (user may have just saved a key)
 
     return (
         <Box
@@ -107,7 +116,27 @@ export const SettingsShell = React.memo(function SettingsShell() {
                                 {item.icon}
                             </ListItemIcon>
                             <ListItemText
-                                primary={item.label}
+                                primary={
+                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                        {item.label}
+                                        {item.key === "llm" && llmMissing && (
+                                            <Box
+                                                sx={{
+                                                    width: 8,
+                                                    height: 8,
+                                                    borderRadius: "50%",
+                                                    bgcolor: "#ef4444",
+                                                    boxShadow: "0 0 6px rgba(239,68,68,0.6)",
+                                                    animation: "pulse 2s ease-in-out infinite",
+                                                    "@keyframes pulse": {
+                                                        "0%, 100%": { opacity: 1 },
+                                                        "50%": { opacity: 0.4 },
+                                                    },
+                                                }}
+                                            />
+                                        )}
+                                    </Box>
+                                }
                                 primaryTypographyProps={{
                                     fontSize: "0.85rem",
                                     fontWeight: activePanel === item.key ? 700 : 400,

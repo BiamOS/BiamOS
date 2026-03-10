@@ -108,7 +108,37 @@ export const IntegrationSidebar = React.memo(function IntegrationSidebar({
 
     const isAllMode = selected.length === 0;
 
-    if (groups.length === 0) return null;
+    if (groups.length === 0) {
+        return (
+            <Box
+                sx={{
+                    width: 80,
+                    minWidth: 80,
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 0.8,
+                    borderRight: `1px solid rgba(255, 255, 255, 0.04)`,
+                    background: "linear-gradient(180deg, rgba(10, 10, 22, 0.5) 0%, rgba(6, 6, 16, 0.7) 100%)",
+                    zIndex: 5,
+                    flexShrink: 0,
+                }}
+            >
+                <Box sx={{ color: "rgba(255,255,255,0.08)", fontSize: 28, display: "flex" }}>⚡</Box>
+                <Typography sx={{
+                    fontSize: "0.55rem",
+                    color: "rgba(255,255,255,0.12)",
+                    textAlign: "center",
+                    lineHeight: 1.3,
+                    px: 1,
+                }}>
+                    No integrations
+                </Typography>
+            </Box>
+        );
+    }
 
     return (
         <Box

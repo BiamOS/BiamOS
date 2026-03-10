@@ -16,6 +16,7 @@ import {
     KeyboardArrowUp as ShowBottomIcon,
     VolumeUp as VoiceOnIcon,
     VolumeOff as VoiceOffIcon,
+    WarningAmber as WarningIcon,
 } from "@mui/icons-material";
 import { DragCanvas } from "./components/DragCanvas";
 
@@ -454,6 +455,34 @@ export default function App() {
                             onSuggestionClick={handleSuggestionClick}
                             onToggle={toggleChat}
                         />
+                        {needsSetup && (
+                            <Box
+                                onClick={() => setShowManager(true)}
+                                sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 1,
+                                    mb: 1,
+                                    py: 0.8,
+                                    px: 2,
+                                    borderRadius: 2,
+                                    bgcolor: "rgba(239, 68, 68, 0.08)",
+                                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                                    cursor: "pointer",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": {
+                                        bgcolor: "rgba(239, 68, 68, 0.12)",
+                                        borderColor: "rgba(239, 68, 68, 0.35)",
+                                    },
+                                }}
+                            >
+                                <WarningIcon sx={{ fontSize: 16, color: "#ef4444" }} />
+                                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#ef4444" }}>
+                                    No AI provider configured — Set up LLM
+                                </Typography>
+                            </Box>
+                        )}
                         <IntentInput onSubmit={onIntent} isLoading={isLoading} activeGroups={activeGroups} pipelineStep={pipelineStep} />
                     </Box>
                 </Box>

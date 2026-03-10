@@ -47,9 +47,9 @@ type LLMChoice = "openrouter" | "ollama" | "lmstudio" | "custom";
 
 const LLM_OPTIONS: { id: LLMChoice; label: string; icon: React.ReactNode; desc: string; url: string; needsKey: boolean; badge: string }[] = [
     { id: "openrouter", label: "OpenRouter", icon: <CloudIcon />, desc: "200+ cloud models (GPT-4o, Claude, Gemini)", url: "https://openrouter.ai/api/v1", needsKey: true, badge: "CLOUD" },
-    { id: "ollama", label: "Ollama", icon: <LocalIcon />, desc: "Run Llama, Mistral, Gemma locally", url: "http://localhost:11434/v1", needsKey: false, badge: "ON-PREM" },
-    { id: "lmstudio", label: "LM Studio", icon: <LocalIcon />, desc: "Local models with a beautiful UI", url: "http://localhost:1234/v1", needsKey: false, badge: "ON-PREM" },
-    { id: "custom", label: "Custom", icon: <AgentIcon />, desc: "Any OpenAI-compatible endpoint", url: "http://localhost:8080/v1", needsKey: false, badge: "CUSTOM" },
+    { id: "ollama", label: "Ollama", icon: <LocalIcon />, desc: "Run Llama, Mistral, Gemma locally — ⚠️ not yet tested", url: "http://localhost:11434/v1", needsKey: false, badge: "ON-PREM" },
+    { id: "lmstudio", label: "LM Studio", icon: <LocalIcon />, desc: "Local models with a beautiful UI — ⚠️ not yet tested", url: "http://localhost:1234/v1", needsKey: false, badge: "ON-PREM" },
+    { id: "custom", label: "Custom", icon: <AgentIcon />, desc: "Any OpenAI-compatible endpoint — ⚠️ not yet tested", url: "http://localhost:8080/v1", needsKey: false, badge: "CUSTOM" },
 ];
 
 // ============================================================
@@ -238,19 +238,17 @@ function StepWelcome() {
                 BiamOS
             </Typography>
             <Typography variant="h5" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 1 }}>
-                Your APIs deserve a real UI. <Box component="span" sx={{ color: COLORS.textMuted }}>Not just JSON.</Box>
+                The AI-Native Workspace OS.
             </Typography>
-            <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 4, maxWidth: 500, mx: "auto", lineHeight: 1.7 }}>
-                Stop building boilerplate frontends for internal tools.
-                Type what you need, and BiamOS generates a fully interactive
-                workspace for any REST API — in seconds.
+            <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 4, maxWidth: 540, mx: "auto", lineHeight: 1.7 }}>
+                Transform your desktop into a proactive command center. BiamOS combines a built-in web browser with local AI to read your context, bypass complex API auth, and generate dynamic UI dashboards instantly.
             </Typography>
 
             <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
                 {[
-                    { icon: <AIIcon sx={{ fontSize: 36 }} />, color: "#a855f7", title: "Intent-Driven", sub: "No SQL. No drag-and-drop config. Just chat and execute." },
-                    { icon: <BlockIcon sx={{ fontSize: 36 }} />, color: "#06b6d4", title: "Dynamic Blocks", sub: "Read data or trigger complex actions with auto-generated UI." },
-                    { icon: <CloudIcon sx={{ fontSize: 36 }} />, color: "#22c55e", title: "Cloud or Local", sub: "Go fast with OpenRouter, or run 100% offline with Ollama." },
+                    { icon: <AIIcon sx={{ fontSize: 36 }} />, color: "#a855f7", title: "Context-Aware", sub: "The AI thinks with you. Surf the web normally and let BiamOS auto-generate data blocks based on what you're viewing." },
+                    { icon: <BlockIcon sx={{ fontSize: 36 }} />, color: "#06b6d4", title: "Dynamic Blocks", sub: "Stop reading text walls. The LLM renders completely customizable UI blocks. Pin them directly to your canvas." },
+                    { icon: <PrivacyIcon sx={{ fontSize: 36 }} />, color: "#22c55e", title: "Ghost-Auth", sub: "Log into Gmail or Notion via the webview. The local AI securely reads the DOM. No API keys or OAuth required." },
                 ].map((f, i) => (
                     <Box key={i} sx={featureCardSx}>
                         <Box sx={{ color: f.color, mb: 1 }}>{f.icon}</Box>
@@ -269,16 +267,16 @@ function StepWelcome() {
 
 function StepHowItWorks() {
     const items = [
-        { icon: <ApiIcon />, color: "#f59e0b", title: "Universal Integrations", desc: "Connect any API via Swagger, manual setup, or let AI build the bridge. Install ready-made templates from the Shop in one click." },
-        { icon: <CheckIcon />, color: "#22c55e", title: "Active Health Checks", desc: "Built-in monitoring ensures your endpoints are always alive and ready. Real-time status indicators across the entire platform." },
-        { icon: <AgentIcon />, color: "#a855f7", title: "Multi-Agent Engine", desc: "6 specialized agents route your intent, extract parameters, call the API, and compose a dynamic layout — fully autonomous." },
-        { icon: <DashboardIcon />, color: "#06b6d4", title: "Infinite Canvas", desc: "Your interactive command center. Arrange read-outs and action-forms freely. Drag, resize, tab, and organize everything your way." },
+        { icon: <AgentIcon />, color: "#f59e0b", title: "Dual-Agent System", desc: "Two specialized AIs: The System Assistant controls your OS canvas, while the Web Copilot reads and interacts with your browser DOM." },
+        { icon: <PrivacyIcon />, color: "#22c55e", title: "Smart Privacy Shield", desc: "Sensitive domains (banking, email) are auto-blocked from background analysis. You are always in control of what the AI sees." },
+        { icon: <AIIcon />, color: "#a855f7", title: "6-Stage AI Pipeline", desc: "Our local middleware routes your intent, extracts parameters, bypasses API limits, and composes a dynamic layout in milliseconds." },
+        { icon: <DashboardIcon />, color: "#06b6d4", title: "Persistent Workspaces", desc: "Your interactive command center. Pin generated UI blocks, drag, resize, and organize your daily tools into a living dashboard." },
     ];
 
     return (
         <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.textPrimary, mb: 0.5 }}>
-                ⚡ The Magic Behind BiamOS
+                ⚡ The Engine Behind BiamOS
             </Typography>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
                 Four pillars that power your intelligent workspace
@@ -315,10 +313,10 @@ function StepWhyBiamOS() {
 
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 3 }}>
                 {[
-                    { icon: <AIIcon sx={{ fontSize: 28 }} />, color: "#a855f7", title: "Natural Language", sub: "No code, no config files. Just type what you need in plain language." },
-                    { icon: <PrivacyIcon sx={{ fontSize: 28 }} />, color: "#22c55e", title: "100% On-Premise", sub: "Your data never leaves your machine. Run local LLMs with Ollama or LM Studio." },
-                    { icon: <SpeedIcon sx={{ fontSize: 28 }} />, color: "#f59e0b", title: "Seconds, Not Hours", sub: "Turn a raw endpoint into a fully functional UI instantly. Read data, trigger actions, and run workflows without writing code." },
-                    { icon: <ShopIcon sx={{ fontSize: 28 }} />, color: "#06b6d4", title: "Template Shop", sub: "Install pre-built integrations with one click. Weather, news, crypto, and more — ready to use." },
+                    { icon: <AIIcon sx={{ fontSize: 28 }} />, color: "#a855f7", title: "Zero-Prompting", sub: "You don't always have to ask. BiamOS proactively detects your context and fetches relevant data before you type a single word." },
+                    { icon: <PrivacyIcon sx={{ fontSize: 28 }} />, color: "#22c55e", title: "1-Click Data Audit", sub: "Your data never leaves your machine. Check the Data Audit panel anytime to see exactly what's stored in your local SQLite database." },
+                    { icon: <SpeedIcon sx={{ fontSize: 28 }} />, color: "#f59e0b", title: "Voice & TTS", sub: "Talk to your OS naturally. The System Assistant processes your spoken intent and replies with high-quality Text-to-Speech audio." },
+                    { icon: <ShopIcon sx={{ fontSize: 28 }} />, color: "#06b6d4", title: "Integration Shop", sub: "Install pre-built templates in one click, or let the AI build custom endpoints via Swagger and AI Discovery." },
                 ].map((s, i) => (
                     <Box key={i} sx={strengthSx}>
                         <Box sx={{ color: s.color, mb: 1 }}>{s.icon}</Box>
@@ -335,11 +333,10 @@ function StepWhyBiamOS() {
                 border: "1px solid rgba(88,28,255,0.12)",
             }}>
                 <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 600, mb: 0.5 }}>
-                    💡 Unlike Grafana, Retool, or Power BI...
+                    💡 Unlike ChatGPT or standard browsers...
                 </Typography>
                 <Typography variant="caption" sx={{ color: COLORS.textMuted, lineHeight: 1.6, display: "block" }}>
-                    BiamOS needs zero SQL, zero drag-and-drop config, and zero cloud accounts.
-                    Just describe what you want — the AI handles everything. And it runs entirely on your machine.
+                    BiamOS doesn't trap AI in a simple chat window. It acts as an intelligent layer over your entire workflow, creating visual, actionable UI blocks instead of plain text.
                 </Typography>
             </Box>
         </Box>
@@ -366,7 +363,7 @@ function StepLLMSetup({ llmChoice, setLlmChoice, newKey, setNewKey, customUrl, s
                 🔌 Choose Your AI Provider
             </Typography>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2.5 }}>
-                Cloud or on-premise — BiamOS works with any OpenAI-compatible API
+                Cloud or on-premise — Power your BiamOS agents with any OpenAI-compatible API.
             </Typography>
 
             {/* Provider Grid */}

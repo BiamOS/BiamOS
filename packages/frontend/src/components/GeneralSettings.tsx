@@ -293,6 +293,8 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                         "📊 Usage logs (query history)",
                         "📈 Agent statistics",
                         "🧩 All integrations",
+                        "📌 Pinned blocks & scraper endpoints",
+                        "📋 Changelog entries",
                         "🍪 Browser sessions (cookies, logins)",
                     ].map((item) => (
                         <Typography key={item} variant="body2" sx={{ color: COLORS.textPrimary, py: 0.3 }}>{item}</Typography>
@@ -309,11 +311,13 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                             try {
                                 const res = await fetch("/api/system/data", { method: "DELETE" });
                                 const json = await res.json();
-                                flash(json.message || "Data cleared", true);
-                                setAuditData(null);
-                                setAuditOpen(false);
-                                load();
-                                if (window.electronAPI?.clearSession) await window.electronAPI.clearSession();
+                                if (json.ok) {
+                                    if (window.electronAPI?.clearSession) await window.electronAPI.clearSession();
+                                    // Reload to clear all React state (pinned cards, etc.)
+                                    window.location.reload();
+                                } else {
+                                    flash(json.error || "Could not purge data", false);
+                                }
                             } catch { flash("Could not purge data", false); }
                         }}
                     >

@@ -26,67 +26,22 @@ import { selectorRoutes } from "./routes/selector-routes.js";
 import { autopilotRoutes } from "./routes/autopilot-routes.js";
 import { db } from "./db/db.js";
 import { agents } from "./db/schema.js";
-import { sql, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { log } from "./utils/logger.js";
+import { SEED_AGENTS } from "./agents/agent-defaults.js";
 
-// ─── Ensure Required Pipeline Agents ────────────────────────
-// Auto-inserts agents needed by the intent pipeline if missing.
-// This runs on every server startup to prevent pipeline failures.
+// ─── Ensure All Pipeline Agents ─────────────────────────────
+// Auto-inserts ALL agents from SEED_AGENTS if missing.
+// This runs on every server startup so fresh installs get the
+// full agent set without needing a manual `npm run db:seed`.
 
 async function ensureRequiredAgents() {
-    const REQUIRED = [
-        {
-            name: "classifier",
-            display_name: "🏷️ Intent Classifier",
-            description: "Classifies user intent into type + entity",
-            pipeline: "intent",
-            step_order: 2,
-            model: "google/gemini-2.5-flash-lite",
-            prompt: `You are an intent classifier for a multi-API dashboard. Classify the user's query into type + entity.
-OUTPUT FORMAT (JSON only):
-{"type": "DATA|SEARCH|ARTICLE|IMAGE|IMAGES|VIDEO|ACTION|NAVIGATE|TOOL", "entity": "extracted entity", "modifier": null}
-TYPE RULES:
-- DATA: retrieving specific data points (weather, prices, stats, metrics)
-- SEARCH: finding items in a list/catalog (search results, listings)
-- ARTICLE: detailed information about a topic (wiki, documentation)
-- IMAGE: single image request
-- IMAGES: multiple images/gallery
-- VIDEO: video content
-- ACTION: performing an action (send, create, update, delete)
-- NAVIGATE: open a website/URL
-- TOOL: open an interactive tool (calculator, converter)
-ENTITY EXTRACTION:
-- Extract the core subject, stripping action words (show, get, find)
-- Preserve proper nouns exactly as typed
-- Include location/context if relevant (e.g. "weather Vienna" → entity: "Vienna")
-Output ONLY valid JSON, nothing else.`,
-        },
-        {
-            name: "param-extractor",
-            display_name: "📋 Param Extractor",
-            description: "Extracts API parameters from user entity based on endpoint param_schema",
-            pipeline: "intent",
-            step_order: 4,
-            model: "google/gemini-2.5-flash-lite",
-            prompt: `You are a parameter extractor. Given an entity and an API endpoint's parameter schema, extract the correct parameter values.
-RULES:
-1. Output ONLY a JSON object with parameter names as keys and extracted values as strings.
-2. For location/city parameters: extract the city/location name from the entity.
-3. For search/query parameters: use the relevant part of the entity as the search term.
-4. Strip action words (show, get, find, search) — keep only the data subject.
-5. Preserve proper nouns exactly as typed.
-6. If a parameter has options, pick the closest match.
-7. For date parameters, use ISO format (YYYY-MM-DD).
-Output ONLY valid JSON, nothing else.`,
-        },
-    ];
-
     let inserted = 0;
-    for (const agent of REQUIRED) {
+    for (const agent of SEED_AGENTS) {
         try {
             const existing = await db.select({ name: agents.name }).from(agents).where(eq(agents.name, agent.name));
             if (existing.length === 0) {
-                await db.run(sql`INSERT INTO agents (name, display_name, description, pipeline, step_order, prompt, model, is_active, temperature, max_tokens, total_calls, total_tokens_used) VALUES (${agent.name}, ${agent.display_name}, ${agent.description}, ${agent.pipeline}, ${agent.step_order}, ${agent.prompt}, ${agent.model}, 1, 0, 256, 0, 0)`);
+                await db.insert(agents).values(agent);
                 log.info(`  ✅ Auto-inserted missing agent: ${agent.display_name}`);
                 inserted++;
             }

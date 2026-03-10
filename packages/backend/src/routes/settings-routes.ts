@@ -145,7 +145,9 @@ settingsRoutes.delete("/data", async (c) => {
         await db.run(sql`DELETE FROM usage_logs`);
         await db.run(sql`UPDATE agents SET total_calls = 0, total_tokens_used = 0`);
         await db.run(sql`DELETE FROM capsules`);
-        await db.run(sql`DELETE FROM health_checks`);
+        await db.run(sql`DELETE FROM pinned_intents`);
+        await db.run(sql`DELETE FROM scraper_endpoints`);
+        await db.run(sql`DELETE FROM changelog`);
 
         return c.json({
             ok: true,
@@ -153,7 +155,8 @@ settingsRoutes.delete("/data", async (c) => {
             cleared: [
                 "API key", "User settings (language, preferences)",
                 "Usage logs (query history)", "Agent usage stats",
-                "All integrations", "Health check history",
+                "All integrations", "Pinned blocks",
+                "Scraper endpoints", "Changelog entries",
             ],
             note: "Electron browser sessions (cookies, logins) must be cleared via the app button.",
         });
