@@ -1,0 +1,23 @@
+{
+    "extends": "../../tsconfig.base.json",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "paths": {
+            "@biamos/shared": [
+                "../shared/src/index.ts"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "references": [
+        {
+            "path": "../shared"
+        }
+    ]
+}

@@ -1,0 +1,17 @@
+{
+    "name": "@biamos/electron",
+    "version": "2.0.0",
+    "private": true,
+    "main": "dist/main.js",
+    "scripts": {
+        "start": "electron .",
+        "dev": "tsc && electron .",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "electron": "^33.3.1"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.3"
+    }
+}

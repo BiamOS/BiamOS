@@ -1,0 +1,36 @@
+{
+  "name": "biamos",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/backend",
+    "packages/frontend",
+    "packages/electron"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.1.2",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript-eslint": "^8.56.1"
+  },
+  "scripts": {
+    "dev": "concurrently -n BACKEND,FRONTEND -c blue,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "electron": "concurrently -n FRONTEND,ELECTRON -c magenta,cyan \"npm run dev:frontend\" \"npm run dev -w packages/electron\"",
+    "dev:backend": "npm run dev -w packages/backend",
+    "dev:frontend": "npm run dev -w packages/frontend",
+    "build:shared": "npm run build -w packages/shared",
+    "build:backend": "npm run build -w packages/backend",
+    "build:frontend": "npm run build -w packages/frontend",
+    "db:generate": "npm run db:generate -w packages/backend",
+    "db:migrate": "npm run db:migrate -w packages/backend",
+    "db:seed": "npm run db:seed -w packages/backend",
+    "lint": "eslint packages/*/src/**/*.{ts,tsx}",
+    "lint:fix": "eslint packages/*/src/**/*.{ts,tsx} --fix",
+    "format": "prettier --write packages/*/src/**/*.{ts,tsx}",
+    "format:check": "prettier --check packages/*/src/**/*.{ts,tsx}",
+    "test": "npm run test -w packages/backend"
+  }
+}
