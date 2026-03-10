@@ -43,6 +43,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
 const child_process_1 = require("child_process");
 let mainWindow = null;
 let backendProcess = null;
@@ -101,6 +102,9 @@ async function startBackend() {
 }
 // ─── Window creation ────────────────────────────────────────
 function createWindow() {
+    const iconPath = path.join(__dirname, "../assets/icon.png");
+    const hasIcon = fs.existsSync(iconPath);
+    console.log(`🪟 Creating window... icon=${hasIcon ? iconPath : "none"}`);
     mainWindow = new electron_1.BrowserWindow({
         width: 1400,
         height: 900,
@@ -108,39 +112,51 @@ function createWindow() {
         minHeight: 600,
         title: "BiamOS",
         backgroundColor: "#0a0a1c",
-        autoHideMenuBar: true, // Hide File/Edit/View/Window/Help menu
-        show: false, // Hidden until splash finishes
-        icon: path.join(__dirname, "../assets/icon.png"),
+        autoHideMenuBar: true,
+        show: false,
+        icon: hasIcon ? iconPath : undefined,
         webPreferences: {
             preload: path.join(__dirname, "preload.js"),
-            webviewTag: true, // Enable <webview> for web integrations
+            webviewTag: true,
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false, // Needed for preload script
+            sandbox: false,
         },
     });
+    console.log("🪟 BrowserWindow created, loading URL:", DEV_FRONTEND_URL);
     // Show maximized once the page has loaded (avoids white flash)
     mainWindow.once("ready-to-show", () => {
+        console.log("🪟 ready-to-show fired — showing window");
         mainWindow?.maximize();
         mainWindow?.show();
-        // Lock main window zoom to 100% — we don't want Ctrl+Scroll
-        // zooming the entire UI (sidebar, toolbar etc.)
-        // The webview inside handles its own zoom independently.
         mainWindow?.webContents.setZoomFactor(1);
         mainWindow?.webContents.setZoomLevel(0);
     });
-    // In dev: load Vite dev server
-    mainWindow.loadURL(DEV_FRONTEND_URL);
+    // Fallback: force-show after 10 seconds if ready-to-show never fires
+    setTimeout(() => {
+        if (mainWindow && !mainWindow.isVisible()) {
+            console.warn("⚠️ ready-to-show never fired! Force-showing window...");
+            mainWindow.maximize();
+            mainWindow.show();
+        }
+    }, 10_000);
+    // Load the Vite dev server
+    mainWindow.loadURL(DEV_FRONTEND_URL).catch((err) => {
+        console.error("❌ loadURL failed:", err);
+    });
+    // Log renderer crashes
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+        console.error("💀 Renderer process gone:", details.reason, details.exitCode);
+    });
+    mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+        console.error("❌ did-fail-load:", errorCode, errorDescription);
+    });
     // Prevent main window zoom via Ctrl+=/- and Ctrl+0
     mainWindow.webContents.on("before-input-event", (_event, input) => {
         if (input.control && (input.key === "=" || input.key === "+" || input.key === "-")) {
             _event.preventDefault();
         }
     });
-    // DevTools: open manually with Ctrl+Shift+I (auto-open was intercepting resize drag events)
-    // if (process.env.NODE_ENV !== "production") {
-    //     mainWindow.webContents.openDevTools({ mode: "detach" });
-    // }
     // Forward renderer console.log to terminal
     mainWindow.webContents.on("console-message", (_event, _level, message) => {
         if (message.includes("[TAB"))

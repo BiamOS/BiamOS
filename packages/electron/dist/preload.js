@@ -25,24 +25,19 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
 // The <webview> tags manage their own zoom independently.
 // We only want to prevent the MAIN RENDERER from being zoomed
 // (which would scale the toolbar + sidebar + entire React UI).
-electron_1.webFrame.setZoomLevel(0);
-electron_1.webFrame.setZoomFactor(1);
+try {
+    electron_1.webFrame.setZoomLevel(0);
+    electron_1.webFrame.setZoomFactor(1);
+}
+catch { /* safe to ignore on first load */ }
 // Continuously enforce zoom lock — Chromium may reset it on navigation
 setInterval(() => {
-    if (electron_1.webFrame.getZoomLevel() !== 0) {
-        electron_1.webFrame.setZoomLevel(0);
-        electron_1.webFrame.setZoomFactor(1);
+    try {
+        if (electron_1.webFrame.getZoomLevel() !== 0) {
+            electron_1.webFrame.setZoomLevel(0);
+            electron_1.webFrame.setZoomFactor(1);
+        }
     }
+    catch { /* ignore */ }
 }, 500);
-// Prevent Ctrl+Scroll and Ctrl+=/- from zooming the main window
-const _win = globalThis;
-_win.addEventListener("wheel", (e) => {
-    if (e.ctrlKey)
-        e.preventDefault();
-}, { passive: false });
-_win.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && (e.key === "=" || e.key === "+" || e.key === "-" || e.key === "0")) {
-        e.preventDefault();
-    }
-});
 console.log("⚡ BiamOS Electron preload loaded (zoom locked)");

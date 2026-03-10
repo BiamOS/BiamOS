@@ -1,171 +1,179 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v0.9.0-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
-  <img src="https://img.shields.io/badge/Electron-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
-  <img src="https://img.shields.io/badge/AI%20Powered-OpenRouter-FF6B35?style=for-the-badge&logo=openai&logoColor=white" alt="ai"/>
+  <img src="docs/assets/logo.png" alt="BiamOS Logo" width="180"/>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/BiamOS-v0.9.3-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
+  <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
 </p>
 
-<h1 align="center">
-  🧬 BiamOS
-</h1>
+<h1 align="center">🧬 BiamOS</h1>
+
+<h3 align="center">
+  <em>Base for Intent & AI Middleware</em><br/>
+  The AI-Native Workspace OS — Windows, macOS & Linux
+</h3>
 
 <p align="center">
-  <strong>The AI-Native Workspace OS</strong><br/>
-  <sub>Windows • macOS • Linux</sub>
-</p>
-
-<br/>
-
-<!-- 🎥 Replace this with a GIF or MP4 demo of BiamOS in action -->
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="BiamOS Demo" width="800"/>
-</p>
-
-<br/>
-
-BiamOS is **not just another wrapper**. It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS **reads the DOM** of the sites you browse. It acts as your personal agent — extracting data, bypassing complex API auth, and generating modular UI blocks instantly.
-
-> _No cloud dependency. No tracking. Everything runs locally on your machine._
-
----
-
-<p align="center">
-  <a href="#-the-game-changer">🔥 Game Changer</a> •
-  <a href="#-features">Features</a> •
-  <a href="#-how-it-works">How It Works</a> •
-  <a href="#-architecture">Architecture</a> •
-  <a href="#-getting-started">Getting Started</a> •
+  <a href="#-getting-started">Quick Start</a> •
+  <a href="#-ghost-auth--zero-oauth-integrations">Ghost-Auth</a> •
+  <a href="#-the-dual-agent-system">Dual-Agent</a> •
+  <a href="#-core-features">Features</a> •
+  <a href="#%EF%B8%8F-architecture">Architecture</a> •
   <a href="#-license">License</a>
 </p>
 
 ---
 
-## 👻 The Game Changer
+<!-- 🎥 REPLACE WITH YOUR DEMO GIF/VIDEO -->
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="BiamOS Demo" width="800"/>
+</p>
 
-### Zero-OAuth "Ghost" Integrations
+---
 
-<table>
-  <tr>
-    <td width="60%">
-      <p>Forget generating API keys or giving OAuth permissions to third-party apps.</p>
-      <p>BiamOS uses a <strong>built-in Chromium Webview</strong>. Log into Gmail, Notion, or WhatsApp <em>normally</em>, and ask BiamOS to <code>"summarize my unread emails"</code>.</p>
-      <p>The local AI <strong>securely reads the DOM</strong> directly from the webview and renders the results. No APIs. No tracking. <strong>Pure local magic.</strong></p>
-      <blockquote>💡 We call this <strong>Ghost-Auth</strong> — because the user is already authenticated through normal browser login. BiamOS just reads what's on screen.</blockquote>
-    </td>
-    <td width="40%">
-      <!-- 🎥 Replace with Ghost-Auth demo GIF -->
-      <p align="center"><em>🎥 Ghost-Auth demo coming soon</em></p>
-    </td>
-  </tr>
-</table>
+## What is BiamOS?
 
-<br/>
+**BiamOS is not just another wrapper.** It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS acts as your personal agent — extracting data, bypassing complex API auth via **Ghost-Auth**, and generating modular UI dashboards instantly.
 
-## ✨ Features
+> It's not a browser. It's not a chatbot. It's a **desktop-native AI operating layer** that sits between you and the web.
 
-<table>
-  <tr>
-    <td width="50%">
-      <h3>🗣️ Natural Language Interface</h3>
-      <p>Type anything — from <code>"weather in Vienna"</code> to <code>"compare Tesla vs BMW stock"</code> — and BiamOS understands, routes, and renders beautiful results instantly.</p>
-    </td>
-    <td width="50%">
-      <h3>🧠 Context-Augmented Browsing</h3>
-      <p>The UI <strong>thinks with you</strong>. Browsing apartments in Tokyo on Airbnb? BiamOS detects the context and automatically generates interactive cards on your canvas for Tokyo's weather, currency exchange rates, and local time — <em>before you even type a single query</em>.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🔎 AI Copilot Sidebar</h3>
-      <p>An intelligent research buddy next to every webpage. Ask questions about the page you're viewing, get summaries with source links, and deep-dive into any topic — with <strong>full page context + web search + screenshot analysis</strong>.</p>
-    </td>
-    <td width="50%">
-      <h3>🔌 Plugin-Based Integrations</h3>
-      <p>Connect to any API — weather, crypto, news, stocks, translations, and more. Create your own integrations with a simple JSON schema. <strong>No coding required.</strong></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>📌 Persistent Workspaces</h3>
-      <p>Pin your most-used widgets, API cards, and browser tabs. They survive restarts, remember their position, and stay exactly where you left them.</p>
-    </td>
-    <td width="50%">
-      <h3>🎙️ Voice Control</h3>
-      <p>Speak your commands. BiamOS transcribes via Whisper, understands intent, and speaks back with natural-sounding TTS. <strong>Hands-free computing, finally.</strong></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🤖 Multi-Agent AI Pipeline</h3>
-      <p>Behind every query, a 6-stage AI pipeline classifies, routes, fetches, and renders your results — all in under 2 seconds. <br/><code>Concierge → Classifier → Router → Executor → Renderer</code></p>
-    </td>
-    <td width="50%">
-      <h3>🎨 Stunning Dark UI</h3>
-      <p>Premium glassmorphism design with smooth animations, gradient cards, and a drag-and-drop canvas workspace. <strong>Organize your world like a pro.</strong></p>
-    </td>
-  </tr>
-</table>
+---
 
-<br/>
+## 👻 Ghost-Auth — Zero-OAuth Integrations
 
-## 🔄 How It Works
+> **The Game Changer.**
+
+Forget generating API keys. Forget OAuth permission screens. Forget giving third-party apps access to your accounts.
+
+BiamOS uses a **built-in Chromium Webview** with persistent sessions. Log into Gmail, Notion, or WhatsApp — just like you normally would. Then ask the Copilot:
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  YOU TYPE / SPEAK                │
-│              "Bitcoin price today"               │
-└──────────────────────┬──────────────────────────┘
-                       │
-            ┌──────────▼──────────┐
-            │   🎯 Concierge AI   │  Decides: API? Browse? Answer?
-            └──────────┬──────────┘
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-   ┌───────────┐ ┌───────────┐ ┌───────────┐
-   │ 🔌 API    │ │ 🌐 Web    │ │ 💬 Answer │
-   │ Execute   │ │ Browser   │ │ Direct    │
-   └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
-         │             │             │
-         └─────────────┼─────────────┘
-                       │
-            ┌──────────▼──────────┐
-            │  🎨 Canvas Render   │  Beautiful cards on your workspace
-            └─────────────────────┘
+"Summarize my unread emails."
 ```
 
-<br/>
+The local AI **securely reads the DOM** directly from the webview and renders the results. No APIs. No tracking. No tokens leaving your machine.
+
+### 🛡️ Smart Privacy Shield
+
+Sensitive domains (banking, healthcare, email) are **automatically blocked** from background analysis. BiamOS won't auto-scan these pages. But when **you** explicitly ask a question, the Copilot reads the page content on-demand.
+
+> **You** decide when the AI reads. Not the other way around.
+
+---
+
+## 🧠 The Dual-Agent System
+
+BiamOS runs **two independent AI assistants**, each with a distinct role:
+
+<table>
+<tr>
+<td width="50%">
+
+### 🎙️ System Assistant
+**Controls the main canvas.**
+
+- 🗣️ **Voice Control** — speak naturally, get audio responses (TTS)
+- 🔀 **Intent Router** — classifies queries: web search vs. API integrations vs. browser action
+- 📊 **UI Block Generator** — renders weather cards, tables, crypto charts, and custom blocks
+- 📌 **Pin & Dashboard** — pin any result to your canvas to build a persistent workspace
+
+</td>
+<td width="50%">
+
+### 🌐 Web Copilot
+**Lives inside the webview.**
+
+- 📖 **DOM-Aware** — reads the actual content of the page you're browsing
+- 📸 **Screenshot Analysis** — takes a visual snapshot for multimodal understanding
+- 🔍 **Web Search Buddy** — answers questions with clickable source links
+- 💬 **Context Chat** — multi-turn conversations scoped to the current site
+
+</td>
+</tr>
+</table>
+
+**Example flow:**
+1. You browse `gmail.com` in the built-in webview
+2. The Web Copilot extracts the page content (DOM + screenshot)
+3. You type: *"Which emails are urgent?"*
+4. The Copilot analyzes the inbox and responds — **no API, no OAuth, just local AI magic** 👻
+
+---
+
+## ✨ Core Features
+
+<table>
+<tr>
+<td width="50%">
+
+### 🔌 Plugin-Based Integrations & Shop
+Pre-built templates: Weather, Crypto, Wikipedia, Exchange Rates, Hacker News, and more. Create custom integrations via **AI Discovery** (paste any URL), **Swagger import**, or manual JSON schema. Toggle and filter integrations from the sidebar.
+
+### 🧩 Dynamic UI Blocks
+The LLM generates fully customizable UI blocks — weather cards, data tables, numbered lists, charts. **Pin** any block to your canvas to build a persistent, custom dashboard that updates in the background.
+
+### 📌 Pinned Data Cards
+Pin any query result to your workspace. Pinned cards **auto-refresh** on a schedule, keeping your dashboard always up-to-date without manual intervention.
+
+</td>
+<td width="50%">
+
+### 🗣️ Voice Control & TTS
+Speak to the System Assistant. It classifies your intent, fetches data, and **replies with audio** using text-to-speech. Full hands-free operation.
+
+### 🔒 Data Audit & Local Privacy
+Open the **Data Audit** panel in Settings. See exactly what is stored: API keys, agent prompts, browser cookies, integration configs. Wipe **everything** with a single "Delete All Data" button. All data lives in a local SQLite database. Nothing leaves your machine unless you ask.
+
+### 📑 Multi-Tab Browser
+A full tabbed browsing experience with back/forward/refresh, persistent login sessions, and **webview-only zoom** (sidebar stays fixed). Each tab remembers its URL, context, and copilot chat history independently.
+
+</td>
+</tr>
+</table>
+
+---
 
 ## 🏗️ Architecture
 
-BiamOS is built as a **monorepo** with three core packages:
-
-| Package | Tech | Purpose |
-|---------|------|---------|
-| **`frontend`** | React + TypeScript + MUI | Canvas workspace, chat, widgets |
-| **`backend`** | Hono + Drizzle + SQLite | AI pipeline, API proxy, agents |
-| **`electron`** | Electron 34 | Native desktop shell, webview |
-
-### The AI Intent Pipeline
-
 ```
-D1: Intent Pipeline    →  Concierge → Classifier → Router → Executor
-D2: WebView + Copilot  →  Built-in browser with AI sidebar
-D3: Design System      →  25+ block types (hero, table, chart, list...)
-D4: Integration Manager →  JSON-schema API plugins, hot-reload
-D5: Backend & Database  →  Structured logger, SQLite, settings
-D6: Electron Shell     →  Webview permissions, Ghost-Auth, TTS
+┌─────────────────────────────────────────────────────────────────┐
+│                    Electron 34 Desktop Shell                    │
+│    Webview (Ghost-Auth)  •  TTS  •  Session Persistence         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌───────────────────────┐    ┌──────────────────────────────┐  │
+│  │   React 19 Frontend   │    │      Hono REST Backend       │  │
+│  │                       │    │                              │  │
+│  │  Canvas Workspace     │◄──►│  Intent Pipeline (6 stages)  │  │
+│  │  Context Sidebar      │    │  Context Engine (DOM → LLM)  │  │
+│  │  Dynamic UI Blocks    │    │  Agent Router & Scorer       │  │
+│  │  Integration Sidebar  │    │  Integration Manager         │  │
+│  │  Settings & Audit     │    │  Context Chat (Web Search)   │  │
+│  │                       │    │                              │  │
+│  │  TypeScript + MUI     │    │  Drizzle ORM + SQLite        │  │
+│  └───────────────────────┘    └──────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-<br/>
+| Layer | Stack | Role |
+|-------|-------|------|
+| **Frontend** | React 19, TypeScript, MUI | Canvas workspace, dynamic UI blocks, browser tabs |
+| **Backend** | Hono, Drizzle ORM, SQLite | AI pipeline, intent classification, agent routing |
+| **Desktop** | Electron 34 | Native webview, Ghost-Auth, TTS, session persistence |
+| **AI** | OpenRouter (GPT-4o, Claude, etc.) | Multi-model intent routing and content generation |
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- **Node.js** 20+
-- **npm** 10+
-- An **OpenRouter API key** (free tier available at [openrouter.ai](https://openrouter.ai))
+- **Node.js** 18+ and **npm**
+- An **OpenRouter API key** → [Get one here](https://openrouter.ai/keys)
 
 ### Installation
 
@@ -174,53 +182,52 @@ D6: Electron Shell     →  Webview permissions, Ghost-Auth, TTS
 git clone https://github.com/BiamOS/BiamOS.git
 cd BiamOS
 
-# Install dependencies
+# Install all dependencies (frontend + backend + electron)
 npm install
 
-# Start the desktop app
+# Start the full application
 npm run electron
 ```
 
-On first launch, go to **Settings → Usage Dashboard** and enter your OpenRouter API key.
+On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
-<br/>
+> **That's it.** BiamOS auto-starts the backend, launches the frontend, and opens the desktop window. No Docker, no cloud, no config files.
 
-## 🛡️ Privacy & Security
+---
 
-- 🔒 **All data stays local** — SQLite database on your machine
-- 🚫 **No telemetry** — BiamOS never phones home
-- 🛡️ **Privacy blocklist** — Banking, email, and healthcare sites are never analyzed
-- 🔑 **API keys stored locally** — encrypted in your local database, never transmitted
+## 📋 Changelog
 
-<br/>
+BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-## 📋 Roadmap
+See the latest changes: **v0.9.3** — Webview-only zoom, larger toolbar, session persistence, privacy shield improvements, and the Dual-Agent system.
 
-- [x] Natural language intent pipeline
-- [x] Built-in web browser with tab management
-- [x] AI Copilot sidebar with web search
-- [x] Voice input & TTS output
-- [x] Plugin-based API integrations
-- [x] Persistent pinned workspaces
-- [ ] Autopilot — automated web actions
-- [ ] Multi-window support
-- [ ] Custom themes & layouts
-- [ ] Mobile companion app
+---
 
-<br/>
+## 🛣️ Roadmap
+
+- [ ] **Autopilot Mode** — Multi-step browser automation (click, fill, submit)
+- [ ] **Plugin Marketplace** — Community-created integrations
+- [ ] **Scheduled Agents** — Cron-based data collection and alerts
+- [ ] **macOS & Linux Builds** — Cross-platform Electron packaging
+- [ ] **Offline Mode** — Local LLM support (Ollama / llama.cpp)
+- [ ] **Team Workspaces** — Shared dashboards with role-based access
+
+---
 
 ## 📄 License
 
-BiamOS is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+BiamOS is licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**.
 
-See [LICENSE](LICENSE) for details.
-
-<br/>
+You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you modify and deploy BiamOS as a service, you must release your modifications under the same license.
 
 ---
 
 <p align="center">
-  <strong>Built with 🧬 by the BiamOS Organization</strong>
-  <br/>
-  <sub>© 2026 BiamOS Contributors</sub>
+  <strong>Built with 🧬 by the BiamOS Contributors</strong><br/>
+  <em>From Vienna, Austria 🇦🇹</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/BiamOS/BiamOS/issues">Report Bug</a> •
+  <a href="https://github.com/BiamOS/BiamOS/issues">Request Feature</a>
 </p>
