@@ -36,7 +36,12 @@ const TABLE_CAPSULES = sql`
     response_mapping TEXT,
     response_type TEXT,
     supported_intents TEXT,
-    is_generic INTEGER NOT NULL DEFAULT 0
+    is_generic INTEGER NOT NULL DEFAULT 0,
+    health_message TEXT,
+    health_checked_at TEXT,
+    is_template INTEGER NOT NULL DEFAULT 0,
+    template_category TEXT,
+    template_description TEXT
   );
 `;
 
@@ -94,6 +99,19 @@ const TABLE_PINNED_INTENTS = sql`
   );
 `;
 
+const TABLE_HEALTH_CHECKS = sql`
+  CREATE TABLE IF NOT EXISTS health_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    integration_id INTEGER NOT NULL,
+    group_name TEXT,
+    status TEXT NOT NULL,
+    response_time INTEGER,
+    status_code INTEGER,
+    message TEXT,
+    checked_at TEXT NOT NULL
+  );
+`;
+
 const TABLE_SCRAPER_ENDPOINTS = sql`
   CREATE TABLE IF NOT EXISTS scraper_endpoints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +143,12 @@ const CAPSULE_COLUMN_MIGRATIONS = [
     "integration_type TEXT NOT NULL DEFAULT 'api'",
     "health_status TEXT DEFAULT 'unchecked'",
     "health_reason TEXT",
+    "health_message TEXT",
+    "health_checked_at TEXT",
     "allowed_blocks TEXT",
+    "is_template INTEGER NOT NULL DEFAULT 0",
+    "template_category TEXT",
+    "template_description TEXT",
 ] as const;
 
 const PINNED_COLUMN_MIGRATIONS = [
@@ -148,6 +171,7 @@ export async function bootstrapDatabase(): Promise<void> {
     await db.run(TABLE_USAGE_LOGS);
     await db.run(TABLE_AGENTS);
     await db.run(TABLE_PINNED_INTENTS);
+    await db.run(TABLE_HEALTH_CHECKS);
     await db.run(TABLE_SCRAPER_ENDPOINTS);
 
     // Changelog table
@@ -162,61 +186,73 @@ export async function bootstrapDatabase(): Promise<void> {
     `);
 
     // Seed default changelog entries (only on first run)
-    const changelogCount = await db.get<{ cnt: number }>(sql`SELECT COUNT(*) as cnt FROM changelog`);
-    if (changelogCount && changelogCount.cnt === 0) {
-        const SEED_CHANGELOG = [
-            {
-                version: "0.9.0",
-                date: "2026-03-08",
-                entries: JSON.stringify([
-                    { type: "New Feature", text: "Added Changelog panel with timeline UI and version tracking" },
-                    { type: "New Feature", text: "Version badge (v0.9.0) displayed in BiamOS header bar" },
-                ]),
-            },
-            {
-                version: "0.9.0",
-                date: "2026-03-10",
-                entries: JSON.stringify([
-                    { type: "New Feature", text: "Copilot Buddy: Completely rewritten system prompt - now acts as a smart research buddy with source links, proper formatting, and quantity-aware answers" },
-                    { type: "New Feature", text: "Copilot Buddy: Answers now include clickable source links (like deep research) for every web search result" },
-                    { type: "New Feature", text: "Copilot Buddy: Quantity Rule - asking for 'top 10' now returns exactly 10 items as a numbered list" },
-                    { type: "New Feature", text: "Copilot Buddy: max_tokens increased from 800 to 1500+ for longer, more detailed answers" },
-                    { type: "New Feature", text: "BiamOS Assistant: Now describes all 3 capabilities (API integrations, web browser, AI copilot) when asked 'what can you do?'" },
-                    { type: "New Feature", text: "BiamOS Assistant: Added language rule - responds in the same language the user writes in" },
-                ]),
-            },
-            {
-                version: "0.9.2",
-                date: "2026-03-10",
-                entries: JSON.stringify([
-                    { type: "New Feature", text: "Copilot shows a friendly message when no specific context is detected on a page" },
-                    { type: "New Feature", text: "Privacy notice: Auto-analysis paused with clear explanation instead of blocked warning" },
-                    { type: "New Feature", text: "Open as Card button only shows for integration-backed hints" },
-                    { type: "New Feature", text: "Webview session persistence: logins now survive app restarts" },
-                    { type: "New Feature", text: "Context sidebar clears properly when navigating to a new URL in the same tab" },
-                ]),
-            },
-            {
-                version: "0.9.3",
-                date: "2026-03-10",
-                entries: JSON.stringify([
-                    { type: "New Feature", text: "Webview-only zoom: Ctrl+Scroll and Ctrl+/- now only zoom the website content, sidebar stays fixed" },
-                    { type: "New Feature", text: "Zoom percentage indicator in browser toolbar (click to reset)" },
-                    { type: "New Feature", text: "Browser toolbar: larger icons and text for better readability" },
-                    { type: "New Feature", text: "Onboarding: new AI-Native Workspace OS story across all 4 slides" },
-                    { type: "New Feature", text: "Onboarding: Ollama, LM Studio, and Custom providers marked as not yet tested" },
-                    { type: "New Feature", text: "LLM warning: red indicator dot on Settings sidebar when no AI provider is configured" },
-                    { type: "New Feature", text: "LLM warning: setup prompt above search bar when no API key is set" },
-                    { type: "Improvement", text: "Delete All Data now also clears pinned blocks, scraper endpoints, and changelog" },
-                    { type: "Improvement", text: "Page reloads after data purge to fully reset the UI" },
-                    { type: "Improvement", text: "Empty integration sidebar shows a subtle placeholder instead of being blank" },
-                    { type: "Fix", text: "All 8 agents are now auto-seeded on fresh install (previously only 2)" },
-                    { type: "Fix", text: "Changelog entries are pre-populated on first startup" },
-                ]),
-            },
-        ];
+    // Seed changelog entries — insert any that don't exist yet
+    // (idempotent: skips entries whose version+date already exist)
+    const SEED_CHANGELOG = [
+        {
+            version: "0.9.0",
+            date: "2026-03-08",
+            entries: JSON.stringify([
+                { type: "New Feature", text: "Added Changelog panel with timeline UI and version tracking" },
+                { type: "New Feature", text: "Version badge (v0.9.0) displayed in BiamOS header bar" },
+            ]),
+        },
+        {
+            version: "0.9.0",
+            date: "2026-03-10",
+            entries: JSON.stringify([
+                { type: "New Feature", text: "Copilot Buddy: Completely rewritten system prompt - now acts as a smart research buddy with source links, proper formatting, and quantity-aware answers" },
+                { type: "New Feature", text: "Copilot Buddy: Answers now include clickable source links (like deep research) for every web search result" },
+                { type: "New Feature", text: "Copilot Buddy: Quantity Rule - asking for 'top 10' now returns exactly 10 items as a numbered list" },
+                { type: "New Feature", text: "Copilot Buddy: max_tokens increased from 800 to 1500+ for longer, more detailed answers" },
+                { type: "New Feature", text: "BiamOS Assistant: Now describes all 3 capabilities (API integrations, web browser, AI copilot) when asked 'what can you do?'" },
+                { type: "New Feature", text: "BiamOS Assistant: Added language rule - responds in the same language the user writes in" },
+            ]),
+        },
+        {
+            version: "0.9.2",
+            date: "2026-03-10",
+            entries: JSON.stringify([
+                { type: "New Feature", text: "Copilot shows a friendly message when no specific context is detected on a page" },
+                { type: "New Feature", text: "Privacy notice: Auto-analysis paused with clear explanation instead of blocked warning" },
+                { type: "New Feature", text: "Open as Card button only shows for integration-backed hints" },
+                { type: "New Feature", text: "Webview session persistence: logins now survive app restarts" },
+                { type: "New Feature", text: "Context sidebar clears properly when navigating to a new URL in the same tab" },
+            ]),
+        },
+        {
+            version: "0.9.3",
+            date: "2026-03-10",
+            entries: JSON.stringify([
+                { type: "New Feature", text: "Webview-only zoom: Ctrl+Scroll and Ctrl+/- now only zoom the website content, sidebar stays fixed" },
+                { type: "New Feature", text: "Zoom percentage indicator in browser toolbar (click to reset)" },
+                { type: "New Feature", text: "Browser toolbar: larger icons and text for better readability" },
+                { type: "New Feature", text: "Onboarding: new AI-Native Workspace OS story across all 4 slides" },
+                { type: "New Feature", text: "Onboarding: Ollama, LM Studio, and Custom providers marked as not yet tested" },
+                { type: "New Feature", text: "LLM warning: red indicator dot on Settings sidebar when no AI provider is configured" },
+                { type: "New Feature", text: "LLM warning: setup prompt above search bar when no API key is set" },
+                { type: "Improvement", text: "Delete All Data now also clears pinned blocks, scraper endpoints, and changelog" },
+                { type: "Improvement", text: "Page reloads after data purge to fully reset the UI" },
+                { type: "Improvement", text: "Empty integration sidebar shows a subtle placeholder instead of being blank" },
+                { type: "Fix", text: "All 8 agents are now auto-seeded on fresh install (previously only 2)" },
+                { type: "Fix", text: "Changelog entries are pre-populated on first startup" },
+            ]),
+        },
+        {
+            version: "0.9.4",
+            date: "2026-03-11",
+            entries: JSON.stringify([
+                { type: "Fix", text: "Fresh install: health_checks table is now auto-created on first startup (previously caused 500 error on Integrations page)" },
+                { type: "Fix", text: "Fresh install: missing capsule columns (health_message, health_checked_at, is_template, template_category, template_description) added to bootstrap" },
+                { type: "Improvement", text: "Database bootstrap now creates all tables needed for a fully working fresh install" },
+                { type: "Improvement", text: "Changelog entries are now auto-synced on every startup (new versions appear without needing a fresh DB)" },
+            ]),
+        },
+    ];
 
-        for (const entry of SEED_CHANGELOG) {
+    for (const entry of SEED_CHANGELOG) {
+        const exists = await db.get<{ cnt: number }>(sql`SELECT COUNT(*) as cnt FROM changelog WHERE version = ${entry.version} AND date = ${entry.date}`);
+        if (!exists || exists.cnt === 0) {
             await db.run(sql`INSERT INTO changelog (version, date, entries, created_at) VALUES (${entry.version}, ${entry.date}, ${entry.entries}, ${new Date().toISOString()})`);
         }
     }

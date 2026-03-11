@@ -86,7 +86,32 @@ async function createTables() {
             sidebar_icon TEXT,
             sidebar_label TEXT,
             human_triggers TEXT,
-            api_triggers TEXT
+            api_triggers TEXT,
+            response_mapping TEXT,
+            response_type TEXT,
+            supported_intents TEXT,
+            is_generic INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'live',
+            integration_type TEXT NOT NULL DEFAULT 'api',
+            health_status TEXT DEFAULT 'unchecked',
+            health_message TEXT,
+            health_checked_at TEXT,
+            allowed_blocks TEXT,
+            is_template INTEGER NOT NULL DEFAULT 0,
+            template_category TEXT,
+            template_description TEXT
+        );
+    `);
+    await testDb.run(sql`
+        CREATE TABLE health_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_id INTEGER NOT NULL,
+            group_name TEXT,
+            status TEXT NOT NULL,
+            response_time INTEGER,
+            status_code INTEGER,
+            message TEXT,
+            checked_at TEXT NOT NULL
         );
     `);
 }
