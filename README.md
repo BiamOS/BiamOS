@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v0.9.3-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v0.9.4-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -22,6 +22,7 @@
   <a href="#-the-dual-agent-system">Dual-Agent</a> •
   <a href="#-core-features">Features</a> •
   <a href="#%EF%B8%8F-architecture">Architecture</a> •
+  <a href="DOCUMENTATION.md">📖 Docs</a> •
   <a href="#-license">License</a>
 </p>
 
@@ -199,7 +200,7 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v0.9.3** — Webview-only zoom, larger toolbar, session persistence, privacy shield improvements, and the Dual-Agent system.
+See the latest changes: **v0.9.4** — Fresh install fixes, developer documentation panel, and changelog auto-sync.
 
 ---
 
