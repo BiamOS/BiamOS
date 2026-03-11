@@ -177,8 +177,9 @@ export function useContextWatcher(
                 }
             }
 
-            // Clear old hints while loading new ones
-            setContextHints([]);
+            // Clear auto-detected hints while loading new ones,
+            // but KEEP manual chat queries (user conversation history)
+            setContextHints(prev => prev.filter(h => h.reason === "Manual query"));
             setIsAnalyzing(true);
 
             // Call context analysis API
@@ -204,21 +205,29 @@ export function useContextWatcher(
                 contextCacheRef.current.set(cacheKey, suggestions);
 
                 if (suggestions.length === 0) {
-                    // Show a friendly hint instead of silent nothing
-                    setContextHints([{
-                        query: "💬 No specific context detected",
-                        reason: "low_confidence",
-                        expanded: true,
-                        loading: false,
-                        data: {
-                            summary: "I couldn't find specific topics on this page to analyze automatically. Try asking me a question below — I can still read and answer about anything on the page!",
-                        },
-                    }]);
+                    // Only show "no context" hint if user has no active chat
+                    // If they already have a conversation, just keep it clean
+                    setContextHints(prev => {
+                        const manualQueries = prev.filter(h => h.reason === "Manual query");
+                        if (manualQueries.length > 0) return manualQueries;
+                        return [{
+                            query: "💬 No specific context detected",
+                            reason: "low_confidence",
+                            expanded: true,
+                            loading: false,
+                            data: {
+                                summary: "I couldn't find specific topics on this page to analyze automatically. Try asking me a question below — I can still read and answer about anything on the page!",
+                            },
+                        }];
+                    });
                     return;
                 }
 
-                // Store hints for sidebar display
-                setContextHints(suggestions);
+                // Merge new suggestions with existing manual chat queries
+                setContextHints(prev => {
+                    const manualQueries = prev.filter(h => h.reason === "Manual query");
+                    return [...suggestions, ...manualQueries];
+                });
                 if (!sidebarOpen) setSidebarOpen(true);
 
                 // Show brief notice in toolbar

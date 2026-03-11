@@ -27,6 +27,7 @@ import {
     FullscreenExit as FullscreenExitIcon,
     PushPin as PinIcon,
     PushPinOutlined as PinOutlinedIcon,
+    Refresh as RefreshIcon,
 } from "@mui/icons-material";
 import { LayoutRenderer, type LayoutSpec } from "./blocks";
 import { CardContextProvider } from "./blocks/CardContext";
@@ -117,6 +118,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
     const [isFullscreen, setIsFullscreen] = React.useState(false);
     const [isPinned, setIsPinned] = React.useState(isPinnedInitial ?? false);
     const [pinLoading, setPinLoading] = React.useState(false);
+    const [refreshing, setRefreshing] = React.useState(false);
     // ─── Per-block zoom ─────────────────────────────────────
     const [zoom, setZoom] = React.useState(1);
     const cardRef = React.useRef<HTMLDivElement>(null);
@@ -269,6 +271,39 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         }}
                     >
                         {isPinned ? <PinIcon sx={{ fontSize: 13 }} /> : <PinOutlinedIcon sx={{ fontSize: 13 }} />}
+                    </IconButton>
+                )}
+
+                {/* 🔄 Refresh Button */}
+                {query && (
+                    <IconButton
+                        className="no-drag"
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            if (refreshing) return;
+                            setRefreshing(true);
+                            window.dispatchEvent(new CustomEvent("biamos:refresh-card", {
+                                detail: { cardId, query },
+                            }));
+                            setTimeout(() => setRefreshing(false), 3000);
+                        }}
+                        size="small"
+                        sx={{
+                            p: 0.3,
+                            color: refreshing ? accentAlpha(0.6) : "rgba(255, 255, 255, 0.15)",
+                            transition: "all 0.2s ease",
+                            animation: refreshing ? "spin 1s linear infinite" : "none",
+                            "@keyframes spin": {
+                                "0%": { transform: "rotate(0deg)" },
+                                "100%": { transform: "rotate(360deg)" },
+                            },
+                            "&:hover": {
+                                color: accentAlpha(0.9),
+                                bgcolor: accentAlpha(0.08),
+                            },
+                        }}
+                    >
+                        <RefreshIcon sx={{ fontSize: 13 }} />
                     </IconButton>
                 )}
 

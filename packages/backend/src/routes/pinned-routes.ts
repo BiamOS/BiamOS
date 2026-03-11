@@ -206,21 +206,30 @@ pinnedRoutes.post("/refresh", async (c) => {
     });
 });
 
+// ─── POST /refresh-stale — Auto-refresh only stale pins ─────
+
+pinnedRoutes.post("/refresh-stale", async (c) => {
+    const refreshed = await refreshAllPins();
+    return c.json({ biam_protocol: "2.0", action: "pinned_stale_refreshed", refreshed });
+});
+
 // ─── Refresh Logic (exported for background timer) ──────────
 
 async function refreshPin(pin: typeof pinnedIntents.$inferSelect) {
     // Skip refresh for webview pins — they don't need API data
     if (pin.pin_type === "webview") return false;
     try {
+        log.debug(`[Pinned] Refreshing pin #${pin.id} ("${pin.query}")...`);
         const result = await processSingleIntent(pin.query);
         await db.update(pinnedIntents).set({
             last_data: JSON.stringify(result),
             last_layout: (result as any).layout ? JSON.stringify((result as any).layout) : pin.last_layout,
             last_refreshed: new Date().toISOString(),
         }).where(eq(pinnedIntents.id, pin.id));
+        log.debug(`[Pinned] ✅ Pin #${pin.id} refreshed successfully`);
         return true;
     } catch (err) {
-        log.warn(`[Pinned] Refresh failed for pin #${pin.id} ("${pin.query}"):`, err);
+        log.warn(`[Pinned] ❌ Refresh failed for pin #${pin.id} ("${pin.query}"):`, err);
         return false;
     }
 }
@@ -229,11 +238,16 @@ export async function refreshAllPins() {
     const pins = await db.select().from(pinnedIntents).all();
     let refreshed = 0;
 
+    log.debug(`[Pinned] Stale check: ${pins.length} pins total`);
     for (const pin of pins) {
         // Skip pins that were refreshed recently
         if (pin.last_refreshed) {
-            const staleMinutes = (Date.now() - new Date(pin.last_refreshed).getTime()) / 60000;
-            if (staleMinutes < pin.refresh_minutes) continue;
+            const staleMinutes = Math.round((Date.now() - new Date(pin.last_refreshed).getTime()) / 60000);
+            if (staleMinutes < pin.refresh_minutes) {
+                log.debug(`[Pinned] Pin #${pin.id} ("${pin.query}"): ${staleMinutes}m old, needs ${pin.refresh_minutes}m — SKIP`);
+                continue;
+            }
+            log.debug(`[Pinned] Pin #${pin.id} ("${pin.query}"): ${staleMinutes}m old, needs ${pin.refresh_minutes}m — STALE, refreshing`);
         }
 
         const success = await refreshPin(pin);

@@ -136,6 +136,46 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
         return () => window.removeEventListener("biamos:auto-intent", handleAutoIntent);
     }, [canvas]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // ─── Refresh Card Listener (re-run query, update card in-place) ──
+    useEffect(() => {
+        const handleRefresh = async (e: Event) => {
+            const { cardId, query } = (e as CustomEvent).detail ?? {};
+            if (!cardId || !query) return;
+
+            try {
+                const res = await fetch(`${INTENT_API_URL}/stream`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: query }),
+                });
+                if (!res.ok) return;
+
+                const data = await parseSSEStream(res, () => {});
+                if (!data || data.action === "error" || data.action === "clarify") return;
+
+                // Get the actual result payload
+                const result: BiamPayload | undefined =
+                    data.action === "multi_result" && Array.isArray(data.results)
+                        ? data.results.find((r: BiamPayload) => r.action !== "error")
+                        : data.action === "render_layout" ? data : undefined;
+
+                if (!result) return;
+
+                // Update the card in-place with fresh data
+                canvas.setItems((prev) => prev.map((item) => {
+                    if (item._id !== cardId) return item;
+                    return {
+                        ...item,
+                        payload: { ...result, _query: query },
+                    };
+                }));
+            } catch { /* silent */ }
+        };
+
+        window.addEventListener("biamos:refresh-card", handleRefresh);
+        return () => window.removeEventListener("biamos:refresh-card", handleRefresh);
+    }, [canvas]);
+
     // ─── Core Intent Handler ────────────────────────────────
     const handleIntent = useCallback(async (text: string) => {
         setIsLoading(true);

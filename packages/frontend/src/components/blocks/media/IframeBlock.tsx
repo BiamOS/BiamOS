@@ -7,14 +7,15 @@
 // watcher, and sidebar sub-components.
 // ============================================================
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { debug } from "../../../utils/debug";
-import { Box, IconButton, Tooltip, Typography, InputBase } from "@mui/material";
+import { Box, IconButton, Tooltip, Typography, InputBase, ClickAwayListener } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import AddIcon from "@mui/icons-material/Add";
+import HistoryIcon from "@mui/icons-material/History";
 import GpsFixed from "@mui/icons-material/GpsFixed";
 import LanguageIcon from "@mui/icons-material/Language";
 import { COLORS, accentAlpha } from "../../ui/SharedUI";
@@ -101,6 +102,14 @@ const WebviewWithLogging = React.forwardRef<any, { src: string }>(
             });
             wv.addEventListener('did-navigate', (e: any) => {
                 debug.log(`${tag} 🔗 Navigated to: ${e.url}`);
+                // Track in browsing history
+                if (e.url && e.url !== 'about:blank') {
+                    fetch('http://localhost:3001/api/history', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: e.url }),
+                    }).catch(() => {});
+                }
             });
             wv.addEventListener('dom-ready', () => {
                 debug.log(`${tag} 📄 DOM ready: ${wv.getURL?.() || 'unknown'}`);
@@ -124,8 +133,18 @@ const WebviewWithLogging = React.forwardRef<any, { src: string }>(
                     window.dispatchEvent(new CustomEvent('biamos:webview-title-updated', {
                         detail: { title: newTitle, url: currentUrl },
                     }));
+                    // Update history entry with title
+                    if (currentUrl) {
+                        fetch('http://localhost:3001/api/history', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: currentUrl, title: newTitle }),
+                        }).catch(() => {});
+                    }
                 }
             });
+            // NOTE: Popup interception is handled in main.ts via
+            // setWindowOpenHandler → IPC → preload → biamos:open-as-card
         }, []);
 
         return (
@@ -134,6 +153,8 @@ const WebviewWithLogging = React.forwardRef<any, { src: string }>(
                 src={src}
                 // @ts-ignore — partition keeps session/cookies across re-mounts
                 partition="persist:lura"
+                // @ts-ignore
+                allowpopups="true"
             />
         );
     }
@@ -153,6 +174,11 @@ export const IframeBlock = React.memo(function IframeBlock({
     const [currentUrl, setCurrentUrl] = useState(initialUrl);
     const [urlInput, setUrlInput] = useState(initialUrl);
     const [urlFocused, setUrlFocused] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyEntries, setHistoryEntries] = useState<Array<{ id: number; url: string; title: string; hostname: string; visit_count: number; last_visited: string }>>([]);
+    const [urlSuggestions, setUrlSuggestions] = useState<Array<{ id: number; url: string; title: string; hostname: string; visit_count: number }>>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const suggestionsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [zoomPercent, setZoomPercent] = useState(100);
     const webviewRef = useRef<any>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -203,9 +229,21 @@ export const IframeBlock = React.memo(function IframeBlock({
     }, []);
 
     // Track Ctrl key globally so overlay appears over iframe/webview
+    // Safety timeout prevents ctrlHeld from getting stuck when webview
+    // captures focus and swallows the keyup event.
+    const ctrlTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     React.useEffect(() => {
+        const resetCtrl = () => setCtrlHeld(false);
+        const startCtrlTimer = () => {
+            if (ctrlTimerRef.current) clearTimeout(ctrlTimerRef.current);
+            ctrlTimerRef.current = setTimeout(resetCtrl, 3000);
+        };
+
         const down = (e: KeyboardEvent) => {
-            if (e.key === "Control") setCtrlHeld(true);
+            if (e.key === "Control") {
+                setCtrlHeld(true);
+                startCtrlTimer(); // Auto-reset after 3s if keyup is missed
+            }
             // Ctrl+= / Ctrl+- for webview zoom
             if (e.ctrlKey && (e.key === "=" || e.key === "+")) {
                 e.preventDefault();
@@ -220,8 +258,16 @@ export const IframeBlock = React.memo(function IframeBlock({
                 applyZoom(100);
             }
         };
-        const up = (e: KeyboardEvent) => { if (e.key === "Control") setCtrlHeld(false); };
-        const blur = () => setCtrlHeld(false);
+        const up = (e: KeyboardEvent) => {
+            if (e.key === "Control") {
+                setCtrlHeld(false);
+                if (ctrlTimerRef.current) { clearTimeout(ctrlTimerRef.current); ctrlTimerRef.current = null; }
+            }
+        };
+        const blur = () => {
+            setCtrlHeld(false);
+            if (ctrlTimerRef.current) { clearTimeout(ctrlTimerRef.current); ctrlTimerRef.current = null; }
+        };
 
         // Ctrl+Scroll for webview zoom
         const onWheel = (e: WheelEvent) => {
@@ -245,6 +291,7 @@ export const IframeBlock = React.memo(function IframeBlock({
             window.removeEventListener("keyup", up);
             window.removeEventListener("blur", blur);
             window.removeEventListener("wheel", onWheel);
+            if (ctrlTimerRef.current) clearTimeout(ctrlTimerRef.current);
         };
     }, [applyZoom]);
 
@@ -271,9 +318,8 @@ export const IframeBlock = React.memo(function IframeBlock({
         setUrlInput(newUrl);
         setFaviconError(false);
 
-        // Clear old sidebar context — new page = fresh analysis
-        ctx.setContextHints([]);
-        ctx.restoreCachedContext(newUrl);
+        // Save current tab's context before switching, then restore new tab's
+        ctx.restoreCachedContext(newUrl, currentUrl, ctx.contextHints);
 
         if (isElectron && webviewRef.current?.loadURL) {
             webviewRef.current.loadURL(newUrl).catch(() => { /* ERR_ABORTED from redirects */ });
@@ -294,12 +340,39 @@ export const IframeBlock = React.memo(function IframeBlock({
         );
     }, [initialUrl]);
 
-    const handleUrlFocus = useCallback(() => {
+    const handleUrlFocus = useCallback(async () => {
         setUrlFocused(true);
         setUrlInput(currentUrl);
+        // Load recent history as suggestions on focus
+        try {
+            const res = await fetch('http://localhost:3001/api/history?limit=8');
+            const data = await res.json();
+            setUrlSuggestions(data.entries ?? []);
+            setShowSuggestions(true);
+        } catch { /* ignore */ }
     }, [currentUrl]);
 
-    const handleUrlBlur = useCallback(() => { setUrlFocused(false); }, []);
+    const handleUrlBlur = useCallback(() => {
+        setUrlFocused(false);
+        // Delay hiding so click on suggestion can register
+        setTimeout(() => setShowSuggestions(false), 200);
+    }, []);
+
+    const handleUrlInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setUrlInput(val);
+        // Debounced search
+        if (suggestionsTimerRef.current) clearTimeout(suggestionsTimerRef.current);
+        suggestionsTimerRef.current = setTimeout(async () => {
+            if (!val.trim()) { setShowSuggestions(false); return; }
+            try {
+                const res = await fetch(`http://localhost:3001/api/history?limit=6&q=${encodeURIComponent(val)}`);
+                const data = await res.json();
+                setUrlSuggestions(data.entries ?? []);
+                setShowSuggestions(true);
+            } catch { /* ignore */ }
+        }, 200);
+    }, []);
 
     // In browser: blocked sites get link card
     if (!isElectron && isBlockedSite(currentUrl)) {
@@ -333,6 +406,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                     onSubmit={handleNavigate}
                     sx={{
                         flex: 1, display: "flex", alignItems: "center", gap: 0.5,
+                        position: "relative",
                         bgcolor: urlFocused ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
                         borderRadius: 1.5,
                         border: `1px solid ${urlFocused ? accentAlpha(0.3) : "rgba(255,255,255,0.04)"}`,
@@ -355,7 +429,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                     )}
                     <InputBase
                         value={urlFocused ? urlInput : currentUrl}
-                        onChange={(e) => setUrlInput(e.target.value)}
+                        onChange={handleUrlInputChange}
                         onFocus={handleUrlFocus}
                         onBlur={handleUrlBlur}
                         placeholder="Enter URL or search..."
@@ -366,8 +440,58 @@ export const IframeBlock = React.memo(function IframeBlock({
                             fontWeight: 500,
                             "& .MuiInputBase-input": { p: 0, py: 0.15 },
                         }}
-                        inputProps={{ spellCheck: false }}
+                        inputProps={{ spellCheck: false, autoComplete: "off" }}
                     />
+                    {/* URL Autocomplete Suggestions */}
+                    {showSuggestions && urlSuggestions.length > 0 && (
+                        <Box sx={{
+                            position: "absolute", top: "100%", left: 0, right: 0, mt: 0.5,
+                            bgcolor: "rgba(14, 14, 28, 0.98)",
+                            border: "1px solid rgba(255, 255, 255, 0.08)",
+                            borderRadius: 1.5, py: 0.3, zIndex: 200,
+                            boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                        }}>
+                            {urlSuggestions.map((s) => (
+                                <Box
+                                    key={s.id}
+                                    onMouseDown={(e) => {
+                                        e.preventDefault(); // prevent blur
+                                        setShowSuggestions(false);
+                                        setCurrentUrl(s.url);
+                                        setUrlInput(s.url);
+                                        setUrlFocused(false);
+                                        if (isElectron && webviewRef.current?.loadURL) {
+                                            webviewRef.current.loadURL(s.url).catch(() => {});
+                                        }
+                                    }}
+                                    sx={{
+                                        display: "flex", alignItems: "center", gap: 0.8,
+                                        px: 1.2, py: 0.5, cursor: "pointer",
+                                        "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" },
+                                    }}
+                                >
+                                    <Box component="img"
+                                        src={`https://www.google.com/s2/favicons?sz=16&domain=${s.hostname}`}
+                                        alt="" sx={{ width: 14, height: 14, borderRadius: "2px", flexShrink: 0 }}
+                                        onError={(e: any) => { e.target.style.display = 'none'; }}
+                                    />
+                                    <Box sx={{ flex: 1, overflow: "hidden" }}>
+                                        <Typography sx={{ fontSize: "0.7rem", fontWeight: 500, color: COLORS.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            {s.title || s.hostname}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: "0.55rem", color: COLORS.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            {s.url}
+                                        </Typography>
+                                    </Box>
+                                    {s.visit_count > 1 && (
+                                        <Typography sx={{ fontSize: "0.5rem", color: "rgba(255,255,255,0.2)", flexShrink: 0 }}>
+                                            {s.visit_count}×
+                                        </Typography>
+                                    )}
+                                </Box>
+                            ))}
+                        </Box>
+                    )}
                 </Box>
 
                 {/* Right-side actions */}
@@ -385,6 +509,84 @@ export const IframeBlock = React.memo(function IframeBlock({
                         <AddIcon sx={{ fontSize: 19 }} />
                     </IconButton>
                 </Tooltip>
+
+                {/* History dropdown */}
+                <Box sx={{ position: "relative" }}>
+                    <Tooltip title="History" arrow>
+                        <IconButton size="small" onClick={async () => {
+                            if (historyOpen) { setHistoryOpen(false); return; }
+                            try {
+                                const res = await fetch('http://localhost:3001/api/history?limit=20');
+                                const data = await res.json();
+                                setHistoryEntries(data.entries ?? []);
+                            } catch { setHistoryEntries([]); }
+                            setHistoryOpen(true);
+                        }} sx={{
+                            ...navBtnSx,
+                            color: historyOpen ? accentAlpha(0.8) : navBtnSx.color,
+                        }}>
+                            <HistoryIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                    </Tooltip>
+                    {historyOpen && (
+                        <ClickAwayListener onClickAway={() => setHistoryOpen(false)}>
+                            <Box sx={{
+                                position: "absolute", top: "100%", right: 0, mt: 0.5,
+                                width: 360, maxHeight: 400, overflowY: "auto",
+                                bgcolor: "rgba(14, 14, 28, 0.98)",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: 2, py: 0.5, zIndex: 100,
+                                boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                                "&::-webkit-scrollbar": { width: 4 },
+                                "&::-webkit-scrollbar-thumb": { background: "rgba(255,255,255,0.1)", borderRadius: 2 },
+                            }}>
+                                <Typography sx={{ px: 1.5, py: 0.5, fontSize: "0.6rem", fontWeight: 700, color: accentAlpha(0.5), textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                    Recent History
+                                </Typography>
+                                {historyEntries.length === 0 ? (
+                                    <Typography sx={{ px: 1.5, py: 2, fontSize: "0.7rem", color: COLORS.textMuted, textAlign: "center" }}>
+                                        No history yet
+                                    </Typography>
+                                ) : historyEntries.map((entry) => (
+                                    <Box
+                                        key={entry.id}
+                                        onClick={() => {
+                                            setHistoryOpen(false);
+                                            setCurrentUrl(entry.url);
+                                            setUrlInput(entry.url);
+                                            if (isElectron && webviewRef.current?.loadURL) {
+                                                webviewRef.current.loadURL(entry.url).catch(() => {});
+                                            }
+                                        }}
+                                        sx={{
+                                            display: "flex", alignItems: "center", gap: 1,
+                                            px: 1.5, py: 0.6, cursor: "pointer",
+                                            transition: "bgcolor 0.1s",
+                                            "&:hover": { bgcolor: "rgba(255, 255, 255, 0.04)" },
+                                        }}
+                                    >
+                                        <Box component="img"
+                                            src={`https://www.google.com/s2/favicons?sz=16&domain=${entry.hostname}`}
+                                            alt="" sx={{ width: 14, height: 14, borderRadius: "2px", flexShrink: 0 }}
+                                            onError={(e: any) => { e.target.style.display = 'none'; }}
+                                        />
+                                        <Box sx={{ flex: 1, overflow: "hidden" }}>
+                                            <Typography sx={{ fontSize: "0.7rem", fontWeight: 500, color: COLORS.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                {entry.title || entry.hostname || entry.url}
+                                            </Typography>
+                                            <Typography sx={{ fontSize: "0.58rem", color: COLORS.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                {entry.url}
+                                            </Typography>
+                                        </Box>
+                                        <Typography sx={{ fontSize: "0.55rem", color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                                            {entry.visit_count > 1 ? `${entry.visit_count}×` : ""}
+                                        </Typography>
+                                    </Box>
+                                ))}
+                            </Box>
+                        </ClickAwayListener>
+                    )}
+                </Box>
 
                 {/* Zoom indicator — only show when not 100% */}
                 {zoomPercent !== 100 && (
@@ -562,7 +764,10 @@ export const IframeBlock = React.memo(function IframeBlock({
                 {/* Main webview/iframe area */}
                 <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {ctrlHeld && (
-                        <Box sx={{ position: "absolute", inset: 0, zIndex: 10, cursor: "zoom-in" }} />
+                        <Box
+                            onMouseDown={() => setCtrlHeld(false)}
+                            sx={{ position: "absolute", inset: 0, zIndex: 10, cursor: "zoom-in" }}
+                        />
                     )}
                     {isElectron ? (
                         <WebviewWithLogging ref={webviewRef} src={initialUrl} />

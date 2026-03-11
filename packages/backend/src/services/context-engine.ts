@@ -214,8 +214,8 @@ ${snippet.split('\n').filter(l => !l.startsWith('Title:') && !l.startsWith('Desc
             : 0;
 
         // Confidence gate: reject low-confidence guesses
-        // Lower threshold for manual (forced) triggers so users get results
-        const minConfidence = force ? 0.5 : 0.7;
+        // Lowered thresholds to be more generous with suggestions
+        const minConfidence = force ? 0.2 : 0.4;
         if (confidence < minConfidence) {
             log.debug(`  🧠 Context Engine: confidence ${confidence} < ${minConfidence} — skipping`);
             return { suggestions: [], confidence };

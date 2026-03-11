@@ -20,8 +20,8 @@ import {
     HintBlockRenderer,
     HintSkeleton,
     SourceBadge,
-    CopyButton,
     MarkdownContent,
+    CopyableMarkdown,
 } from "./ContextSidebarParts.js";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -253,170 +253,73 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 </Box>
                             )}
 
-                            {/* Auto-detected hint cards (NOT manual queries) */}
-                            {hints.filter(h => h.reason !== "Manual query").map((hint, i) => {
-                                const originalIndex = hints.indexOf(hint);
+                            {/* Auto-detected suggestions as compact chips */}
+                            {(() => {
+                                const autoHints = hints.filter(h => h.reason !== "Manual query" && h.reason !== "low_confidence");
+                                if (autoHints.length === 0) return null;
                                 return (
-                                    <Box
-                                        key={`${hint.query}-${i}`}
-                                        sx={{
-                                            p: 1.2,
-                                            borderRadius: 2,
-                                            bgcolor: hint.expanded ? "rgba(0, 212, 255, 0.1)" : "rgba(0, 212, 255, 0.06)",
-                                            border: `1px solid ${hint.expanded ? "rgba(0, 212, 255, 0.3)" : "rgba(0, 212, 255, 0.12)"}`,
-                                            transition: "all 0.2s ease",
-                                            "&:hover": {
-                                                bgcolor: "rgba(0, 212, 255, 0.12)",
-                                                borderColor: "rgba(0, 212, 255, 0.3)",
-                                            },
-                                        }}
-                                    >
-                                        <Typography sx={{ color: "#e0f0ff", fontSize: "0.75rem", fontWeight: 600, mb: 0.5, lineHeight: 1.3 }}>
-                                            <Box
-                                                component="span"
-                                                onClick={() => handleHintClick(originalIndex)}
-                                                sx={{ cursor: "pointer", mr: 0.5, userSelect: "none" }}
-                                            >
-                                                {hint.expanded ? "▼" : "▶"}
-                                            </Box>
-                                            {hint.query}
+                                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                        <Typography sx={{ color: "rgba(0, 212, 255, 0.35)", fontSize: "0.55rem", fontWeight: 600, width: "100%", mb: 0.2 }}>
+                                            ✨ Suggestions
                                         </Typography>
-                                        {/* Reason */}
-                                        {hint.reason && (
-                                            <Typography
+                                        {autoHints.map((hint, i) => (
+                                            <Box
+                                                key={`${hint.query}-${i}`}
+                                                component="button"
+                                                title={hint.reason || hint.query}
+                                                onClick={() => {
+                                                    const idx = hints.indexOf(hint);
+                                                    handleHintClick(idx);
+                                                }}
                                                 sx={{
-                                                    color: "rgba(0, 212, 255, 0.6)",
-                                                    fontSize: "0.65rem",
-                                                    fontStyle: "italic",
-                                                    lineHeight: 1.3,
-                                                    mb: hint.expanded ? 1 : 0,
+                                                    display: "inline-flex", alignItems: "center", gap: 0.4,
+                                                    px: 1, py: 0.4,
+                                                    fontSize: "0.62rem", fontWeight: 500,
+                                                    color: "rgba(0, 212, 255, 0.8)",
+                                                    bgcolor: "rgba(0, 212, 255, 0.06)",
+                                                    border: "1px solid rgba(0, 212, 255, 0.12)",
+                                                    borderRadius: 3,
+                                                    cursor: "pointer",
+                                                    transition: "all 0.15s ease",
+                                                    whiteSpace: "nowrap",
+                                                    "&:hover": {
+                                                        bgcolor: "rgba(0, 212, 255, 0.14)",
+                                                        borderColor: "rgba(0, 212, 255, 0.3)",
+                                                        color: "#00d4ff",
+                                                    },
                                                 }}
                                             >
-                                                💡 {hint.reason}
-                                            </Typography>
-                                        )}
-                                        {/* Expanded: loading or data */}
-                                        {hint.expanded && (
-                                            <Box sx={{ mt: 0.5 }}>
-                                                {hint.loading ? (
-                                                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                                                        <Box sx={{
-                                                            height: 8, width: "60%", borderRadius: 1,
-                                                            bgcolor: "rgba(0, 212, 255, 0.08)",
-                                                            animation: "contextShimmer 1.5s ease-in-out infinite",
-                                                            "@keyframes contextShimmer": {
-                                                                "0%": { opacity: 0.3 }, "50%": { opacity: 0.7 }, "100%": { opacity: 0.3 },
-                                                            },
-                                                        }} />
-                                                        <Box sx={{
-                                                            height: 8, width: "40%", borderRadius: 1,
-                                                            bgcolor: "rgba(0, 212, 255, 0.05)",
-                                                            animation: "contextShimmer 1.5s ease-in-out infinite 0.3s",
-                                                        }} />
-                                                    </Box>
-                                                ) : hint.data ? (
-                                                    <Box>
-                                                        {hint.data._blocks ? (
-                                                            hint.data._blocks.slice(0, 5).map((block: any, bi: number) => (
-                                                                <Box key={bi} sx={{ mb: 0.5 }}>
-                                                                    <HintBlockRenderer block={block} />
-                                                                </Box>
-                                                            ))
-                                                        ) : hint.data.error ? (
-                                                            <Typography sx={{ color: "rgba(255,100,100,0.7)", fontSize: "0.65rem" }}>
-                                                                ⚠️ {hint.data.error}
-                                                            </Typography>
-                                                        ) : hint.data.summary ? (
-                                                            <Box>
-                                                                <Box
-                                                                    onClick={(e: React.MouseEvent) => {
-                                                                        const target = e.target as HTMLElement;
-                                                                        const anchor = target.closest('a[data-lura-link]') as HTMLAnchorElement;
-                                                                        if (anchor?.href) {
-                                                                            e.preventDefault();
-                                                                            e.stopPropagation();
-                                                                            window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
-                                                                                detail: { url: anchor.href, title: anchor.textContent || anchor.href },
-                                                                            }));
-                                                                        }
-                                                                    }}
-                                                                    sx={{
-                                                                        color: "rgba(255,255,255,0.8)",
-                                                                        fontSize: "0.7rem",
-                                                                        lineHeight: 1.6,
-                                                                        "& strong, & b": { color: "#00d4ff", fontWeight: 600 },
-                                                                        "& ul, & ol": { pl: 2, my: 0.5 },
-                                                                        "& li": { mb: 0.3 },
-                                                                        "& a": { color: "#4fc3f7", textDecoration: "underline", cursor: "pointer" },
-                                                                        "& p": { my: 0.3 },
-                                                                    }}
-                                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(hint.data.summary) }}
-                                                                />
-                                                                {hint.data._source && (
-                                                                    <Typography sx={{
-                                                                        color: hint.data._source === "page_context"
-                                                                            ? "rgba(0, 200, 100, 0.5)"
-                                                                            : hint.data._source === "web_search"
-                                                                                ? "rgba(255, 180, 0, 0.6)"
-                                                                                : "rgba(0, 212, 255, 0.4)",
-                                                                        fontSize: "0.55rem",
-                                                                        fontWeight: 600,
-                                                                        mt: 0.5,
-                                                                    }}>
-                                                                        {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
-                                                                    </Typography>
-                                                                )}
-                                                            </Box>
-                                                        ) : (
-                                                            <Box>
-                                                                {Object.entries(hint.data).slice(0, 4).map(([k, v]) => (
-                                                                    <Typography key={k} sx={{ color: "rgba(255,255,255,0.6)", fontSize: "0.6rem" }}>
-                                                                        <Box component="span" sx={{ color: "#00d4ff" }}>{k}:</Box> {String(v).substring(0, 60)}
-                                                                    </Typography>
-                                                                ))}
-                                                            </Box>
-                                                        )}
-                                                        {/* Open as Card — only for integration-backed hints */}
-                                                        {hint.reason !== "Manual query" && hint.reason !== "low_confidence" && (
-                                                            <Box
-                                                                component="button"
-                                                                onClick={(e: React.MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    window.dispatchEvent(
-                                                                        new CustomEvent("biamos:auto-intent", { detail: { query: hint.query } })
-                                                                    );
-                                                                }}
-                                                                sx={{
-                                                                    mt: 1, px: 1.5, py: 0.4,
-                                                                    fontSize: "0.6rem", fontWeight: 600,
-                                                                    color: "#00d4ff",
-                                                                    bgcolor: "rgba(0, 212, 255, 0.1)",
-                                                                    border: "1px solid rgba(0, 212, 255, 0.2)",
-                                                                    borderRadius: 1.5,
-                                                                    cursor: "pointer",
-                                                                    transition: "all 0.15s ease",
-                                                                    "&:hover": {
-                                                                        bgcolor: "rgba(0, 212, 255, 0.2)",
-                                                                        borderColor: "rgba(0, 212, 255, 0.4)",
-                                                                    },
-                                                                }}
-                                                            >
-                                                                📋 Open as Card
-                                                            </Box>
-                                                        )}
-                                                    </Box>
-                                                ) : null}
+                                                ✨ {hint.query}
                                             </Box>
-                                        )}
+                                        ))}
                                     </Box>
                                 );
-                            })}
+                            })()}
                         </Box>
                     )}
 
-                    {/* Divider between hints and chat */}
-                    {hasHints && hints.some(h => h.reason === "Manual query") && (
-                        <Box sx={{ borderBottom: "1px solid rgba(0, 212, 255, 0.08)", mx: 1 }} />
+                    {/* Divider + Clear chat */}
+                    {hints.some(h => h.reason === "Manual query") && (
+                        <Box sx={{ display: "flex", alignItems: "center", mx: 1, gap: 0.5 }}>
+                            <Box sx={{ flex: 1, borderBottom: "1px solid rgba(0, 212, 255, 0.08)" }} />
+                            <Box
+                                component="button"
+                                onClick={() => setHints(prev => prev.filter(h => h.reason !== "Manual query"))}
+                                sx={{
+                                    fontSize: "0.5rem", fontWeight: 600,
+                                    color: "rgba(255, 255, 255, 0.25)",
+                                    bgcolor: "transparent",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    px: 0.5, py: 0.2,
+                                    transition: "color 0.15s",
+                                    "&:hover": { color: "rgba(255, 100, 100, 0.6)" },
+                                }}
+                                title="Clear chat history"
+                            >
+                                ✕ Clear
+                            </Box>
+                        </Box>
                     )}
 
                     {/* Chat messages area — WhatsApp-style: messages at bottom, scroll up */}
@@ -523,10 +426,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                                     position: "relative",
                                                     "&:hover .copy-btn": { opacity: 1 },
                                                 }}>
-                                                    {/* Copy button */}
-                                                    {hint.data?.summary && (
-                                                        <CopyButton text={hint.data?.summary?.replace(/<[^>]*>/g, "") || ""} />
-                                                    )}
+
                                                     {hint.loading && !hint.data?.summary ? (
                                                         <Box sx={{
                                                             display: "flex", gap: 0.5, alignItems: "center",
@@ -554,32 +454,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                                         </Box>
                                                     ) : hint.data?.summary ? (
                                                         <>
-                                                            <Box
-                                                                onClick={(e: React.MouseEvent) => {
-                                                                    const target = e.target as HTMLElement;
-                                                                    const anchor = target.closest('a[data-lura-link]') as HTMLAnchorElement;
-                                                                    if (anchor?.href) {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
-                                                                            detail: { url: anchor.href, title: anchor.textContent || anchor.href },
-                                                                        }));
-                                                                    }
-                                                                }}
-                                                                sx={{
-                                                                    color: "rgba(255,255,255,0.85)",
-                                                                    fontSize: "0.75rem",
-                                                                    lineHeight: 1.6,
-                                                                    userSelect: "text",
-                                                                    cursor: "text",
-                                                                    "& strong, & b": { color: "#00d4ff", fontWeight: 600 },
-                                                                    "& ul, & ol": { pl: 2, my: 0.5 },
-                                                                    "& li": { mb: 0.3 },
-                                                                    "& a": { color: "#4fc3f7", textDecoration: "underline", cursor: "pointer" },
-                                                                    "& p": { my: 0.3 },
-                                                                }}
-                                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(hint.data.summary) }}
-                                                            />
+                                                            <CopyableMarkdown markdown={hint.data.summary} />
                                                             {/* Blinking cursor while streaming */}
                                                             {hint.loading && (
                                                                 <Box component="span" sx={{

@@ -91,6 +91,10 @@ app.route("/api/autopilot", autopilotRoutes);
 import { changelogRoutes } from "./routes/changelog-routes.js";
 app.route("/api/changelog", changelogRoutes);
 
+// Browsing history
+import { historyRoutes } from "./routes/history-routes.js";
+app.route("/api/history", historyRoutes);
+
 // ─── Start Server ───────────────────────────────────────────
 
 const PORT = 3001;

@@ -338,10 +338,14 @@ export function useCanvasItems() {
 
         // Save on close
         window.addEventListener("beforeunload", savePinnedState);
-        // Also auto-save every 30 seconds
-        const timer = setInterval(savePinnedState, 30_000);
+        // Save when window loses focus / minimizes (more reliable than beforeunload in Electron)
+        const handleVisibility = () => { if (document.hidden) savePinnedState(); };
+        document.addEventListener("visibilitychange", handleVisibility);
+        // Auto-save every 10 seconds (reduced from 30s for better reliability)
+        const timer = setInterval(savePinnedState, 10_000);
         return () => {
             window.removeEventListener("beforeunload", savePinnedState);
+            document.removeEventListener("visibilitychange", handleVisibility);
             clearInterval(timer);
         };
     }, []);

@@ -12,6 +12,36 @@ import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
 
+// ─── Global popup handler for ALL web contents ─────────────
+// Same-origin popups → navigate within the same webview (Gmail emails, account switch)
+// Cross-origin popups → open as a new BiamOS tab (YouTube, Drive, etc.)
+app.on("web-contents-created", (_event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+        // Determine if same-origin by comparing hostnames
+        let popupHost = "";
+        let currentHost = "";
+        try {
+            popupHost = new URL(url).hostname.replace("www.", "");
+            currentHost = new URL(contents.getURL()).hostname.replace("www.", "");
+        } catch { /* invalid URL */ }
+
+        // Same-origin or Google-internal → navigate within the same webview
+        const isGoogleInternal = popupHost.endsWith("google.com") && currentHost.endsWith("google.com");
+        const isSameOrigin = popupHost === currentHost;
+
+        if (isSameOrigin || isGoogleInternal) {
+            console.log(`🔗 [Popup] Same-origin → navigating in-place: ${url}`);
+            contents.loadURL(url).catch(() => { /* redirect abort is normal */ });
+        } else {
+            console.log(`🪟 [Popup] Cross-origin → new BiamOS tab: ${url}`);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("open-url-in-tab", url);
+            }
+        }
+        return { action: "deny" };
+    });
+});
+
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 
@@ -151,6 +181,14 @@ function createWindow(): void {
     // Forward renderer console.log to terminal
     mainWindow.webContents.on("console-message", (_event, _level, message) => {
         if (message.includes("[TAB")) console.log(`[RENDERER] ${message}`);
+    });
+
+    // Force allowpopups for all webviews from main process
+    // This is the ONLY reliable way — React JSX and DOM setAttribute
+    // both fail because Electron reads this at webview creation time.
+    mainWindow.webContents.on("will-attach-webview", (_event, _webPreferences, params) => {
+        (params as any).allowpopups = true;
+        console.log("🔓 [Webview] Forced allowpopups via will-attach-webview");
     });
 
     mainWindow.on("closed", () => {

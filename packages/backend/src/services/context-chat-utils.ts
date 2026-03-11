@@ -133,6 +133,14 @@ FORMATTING (use Markdown):
 - ### Headings to organize longer answers into sections
 - \`code\` for technical terms when relevant
 
+COPYABLE CONTENT:
+When your response contains text the user would likely want to copy-paste (email drafts, message templates, summaries, code snippets, formatted replies, etc.), wrap that specific portion in a \`\`\`copy block:
+\`\`\`copy
+Hi Gabor,
+Thanks for the heads-up. I'm looking into it right now...
+\`\`\`
+Only the content meant for copying goes inside the block. Your explanation stays outside.
+
 SOURCES & LINKS — THIS IS CRITICAL:
 - **ALWAYS include source links** when you use web search results. Format: [source name](url)
 - For each fact or claim from search results, add the link inline or at the end of the item.

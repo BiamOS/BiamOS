@@ -193,59 +193,78 @@ export async function bootstrapDatabase(): Promise<void> {
             version: "0.9.0",
             date: "2026-03-08",
             entries: JSON.stringify([
-                { type: "New Feature", text: "Added Changelog panel with timeline UI and version tracking" },
-                { type: "New Feature", text: "Version badge (v0.9.0) displayed in BiamOS header bar" },
+                { type: "feature", text: "Added Changelog panel with timeline UI and version tracking" },
+                { type: "feature", text: "Version badge (v0.9.0) displayed in BiamOS header bar" },
             ]),
         },
         {
             version: "0.9.0",
             date: "2026-03-10",
             entries: JSON.stringify([
-                { type: "New Feature", text: "Copilot Buddy: Completely rewritten system prompt - now acts as a smart research buddy with source links, proper formatting, and quantity-aware answers" },
-                { type: "New Feature", text: "Copilot Buddy: Answers now include clickable source links (like deep research) for every web search result" },
-                { type: "New Feature", text: "Copilot Buddy: Quantity Rule - asking for 'top 10' now returns exactly 10 items as a numbered list" },
-                { type: "New Feature", text: "Copilot Buddy: max_tokens increased from 800 to 1500+ for longer, more detailed answers" },
-                { type: "New Feature", text: "BiamOS Assistant: Now describes all 3 capabilities (API integrations, web browser, AI copilot) when asked 'what can you do?'" },
-                { type: "New Feature", text: "BiamOS Assistant: Added language rule - responds in the same language the user writes in" },
+                { type: "feature", text: "Copilot Buddy: Completely rewritten system prompt - now acts as a smart research buddy with source links, proper formatting, and quantity-aware answers" },
+                { type: "feature", text: "Copilot Buddy: Answers now include clickable source links (like deep research) for every web search result" },
+                { type: "feature", text: "Copilot Buddy: Quantity Rule - asking for 'top 10' now returns exactly 10 items as a numbered list" },
+                { type: "feature", text: "Copilot Buddy: max_tokens increased from 800 to 1500+ for longer, more detailed answers" },
+                { type: "feature", text: "BiamOS Assistant: Now describes all 3 capabilities (API integrations, web browser, AI copilot) when asked 'what can you do?'" },
+                { type: "feature", text: "BiamOS Assistant: Added language rule - responds in the same language the user writes in" },
             ]),
         },
         {
             version: "0.9.2",
             date: "2026-03-10",
             entries: JSON.stringify([
-                { type: "New Feature", text: "Copilot shows a friendly message when no specific context is detected on a page" },
-                { type: "New Feature", text: "Privacy notice: Auto-analysis paused with clear explanation instead of blocked warning" },
-                { type: "New Feature", text: "Open as Card button only shows for integration-backed hints" },
-                { type: "New Feature", text: "Webview session persistence: logins now survive app restarts" },
-                { type: "New Feature", text: "Context sidebar clears properly when navigating to a new URL in the same tab" },
+                { type: "feature", text: "Copilot shows a friendly message when no specific context is detected on a page" },
+                { type: "feature", text: "Privacy notice: Auto-analysis paused with clear explanation instead of blocked warning" },
+                { type: "feature", text: "Open as Card button only shows for integration-backed hints" },
+                { type: "feature", text: "Webview session persistence: logins now survive app restarts" },
+                { type: "improvement", text: "Context sidebar clears properly when navigating to a new URL in the same tab" },
             ]),
         },
         {
             version: "0.9.3",
             date: "2026-03-10",
             entries: JSON.stringify([
-                { type: "New Feature", text: "Webview-only zoom: Ctrl+Scroll and Ctrl+/- now only zoom the website content, sidebar stays fixed" },
-                { type: "New Feature", text: "Zoom percentage indicator in browser toolbar (click to reset)" },
-                { type: "New Feature", text: "Browser toolbar: larger icons and text for better readability" },
-                { type: "New Feature", text: "Onboarding: new AI-Native Workspace OS story across all 4 slides" },
-                { type: "New Feature", text: "Onboarding: Ollama, LM Studio, and Custom providers marked as not yet tested" },
-                { type: "New Feature", text: "LLM warning: red indicator dot on Settings sidebar when no AI provider is configured" },
-                { type: "New Feature", text: "LLM warning: setup prompt above search bar when no API key is set" },
-                { type: "Improvement", text: "Delete All Data now also clears pinned blocks, scraper endpoints, and changelog" },
-                { type: "Improvement", text: "Page reloads after data purge to fully reset the UI" },
-                { type: "Improvement", text: "Empty integration sidebar shows a subtle placeholder instead of being blank" },
-                { type: "Fix", text: "All 8 agents are now auto-seeded on fresh install (previously only 2)" },
-                { type: "Fix", text: "Changelog entries are pre-populated on first startup" },
+                { type: "feature", text: "Webview-only zoom: Ctrl+Scroll and Ctrl+/- now only zoom the website content, sidebar stays fixed" },
+                { type: "feature", text: "Zoom percentage indicator in browser toolbar (click to reset)" },
+                { type: "feature", text: "Browser toolbar: larger icons and text for better readability" },
+                { type: "feature", text: "Onboarding: new AI-Native Workspace OS story across all 4 slides" },
+                { type: "feature", text: "Onboarding: Ollama, LM Studio, and Custom providers marked as not yet tested" },
+                { type: "feature", text: "LLM warning: red indicator dot on Settings sidebar when no AI provider is configured" },
+                { type: "feature", text: "LLM warning: setup prompt above search bar when no API key is set" },
+                { type: "improvement", text: "Delete All Data now also clears pinned blocks, scraper endpoints, and changelog" },
+                { type: "improvement", text: "Page reloads after data purge to fully reset the UI" },
+                { type: "improvement", text: "Empty integration sidebar shows a subtle placeholder instead of being blank" },
+                { type: "fix", text: "All 8 agents are now auto-seeded on fresh install (previously only 2)" },
+                { type: "fix", text: "Changelog entries are pre-populated on first startup" },
             ]),
         },
         {
             version: "0.9.4",
             date: "2026-03-11",
             entries: JSON.stringify([
-                { type: "Fix", text: "Fresh install: health_checks table is now auto-created on first startup (previously caused 500 error on Integrations page)" },
-                { type: "Fix", text: "Fresh install: missing capsule columns (health_message, health_checked_at, is_template, template_category, template_description) added to bootstrap" },
-                { type: "Improvement", text: "Database bootstrap now creates all tables needed for a fully working fresh install" },
-                { type: "Improvement", text: "Changelog entries are now auto-synced on every startup (new versions appear without needing a fresh DB)" },
+                { type: "fix", text: "Fresh install: health_checks table is now auto-created on first startup (previously caused 500 error on Integrations page)" },
+                { type: "fix", text: "Fresh install: missing capsule columns (health_message, health_checked_at, is_template, template_category, template_description) added to bootstrap" },
+                { type: "improvement", text: "Database bootstrap now creates all tables needed for a fully working fresh install" },
+                { type: "improvement", text: "Changelog entries are now auto-synced on every startup (new versions appear without needing a fresh DB)" },
+            ]),
+        },
+        {
+            version: "0.9.5",
+            date: "2026-03-11",
+            entries: JSON.stringify([
+                { type: "feature", text: "Browsing History: webview navigations are now tracked with URL, title, favicon, and visit count" },
+                { type: "feature", text: "URL Autocomplete: clicking the URL bar shows recent history as suggestions, typing filters live" },
+                { type: "feature", text: "History button (🕐) in webview toolbar shows full browsing history dropdown" },
+                { type: "feature", text: "Refresh button (🔄) on all canvas cards: manually re-fetch fresh API data with one click" },
+                { type: "feature", text: "Pinned cards auto-refresh: stale data is automatically updated based on refresh_minutes interval" },
+                { type: "feature", text: "Copilot suggestion chips: auto-detected context now shows as compact clickable chips instead of cards" },
+                { type: "feature", text: "Clear Chat button: clears manual chat messages while keeping auto-detected suggestions" },
+                { type: "improvement", text: "Pinned dashboard polls backend every 60s, only refreshes pins older than their refresh_minutes" },
+                { type: "improvement", text: "Startup auto-refresh: stale pinned cards refresh 3 seconds after app start" },
+                { type: "improvement", text: "Debug logs now OFF by default — enable via localStorage.setItem('biamos_debug', '1')" },
+                { type: "fix", text: "Copilot chat no longer clears unexpectedly when switching tabs or during auto-detection cycles" },
+                { type: "fix", text: "Context Engine confidence threshold lowered to 0.4 for better suggestion detection" },
+                { type: "fix", text: "Duplicate 'Copy' button removed from Copilot sidebar" },
             ]),
         },
     ];
@@ -254,8 +273,24 @@ export async function bootstrapDatabase(): Promise<void> {
         const exists = await db.get<{ cnt: number }>(sql`SELECT COUNT(*) as cnt FROM changelog WHERE version = ${entry.version} AND date = ${entry.date}`);
         if (!exists || exists.cnt === 0) {
             await db.run(sql`INSERT INTO changelog (version, date, entries, created_at) VALUES (${entry.version}, ${entry.date}, ${entry.entries}, ${new Date().toISOString()})`);
+        } else {
+            // Update existing entry with latest content (in case types/text were corrected)
+            await db.run(sql`UPDATE changelog SET entries = ${entry.entries} WHERE version = ${entry.version} AND date = ${entry.date}`);
         }
     }
+
+    // Browsing history table
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS browsing_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        title TEXT DEFAULT '',
+        hostname TEXT DEFAULT '',
+        visit_count INTEGER DEFAULT 1,
+        last_visited TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
 
     // Column migrations
     for (const col of CAPSULE_COLUMN_MIGRATIONS) {

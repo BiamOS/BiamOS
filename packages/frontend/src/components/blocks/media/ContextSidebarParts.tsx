@@ -26,12 +26,19 @@ export function renderMarkdown(text: string): string {
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .trimEnd();
-        const langLabel = lang
-            ? `<span style="position:absolute;top:4px;right:8px;font-size:0.55rem;color:rgba(0,212,255,0.5);text-transform:uppercase;font-weight:600">${lang}</span>`
-            : '';
-        const block = `<div style="position:relative;background:rgba(0,0,0,0.4);border:1px solid rgba(0,212,255,0.15);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto">${langLabel}<pre style="margin:0;font-family:'Fira Code','Consolas',monospace;font-size:0.65rem;line-height:1.5;color:#e0f0ff;white-space:pre-wrap;word-break:break-word">${escaped}</pre></div>`;
+
+        let block: string;
+        if (lang === "copy") {
+            // Special COPY block — rendered as a styled copyable card
+            block = `<div class="copy-block" data-copy-text="${escaped.replace(/"/g, '&quot;')}" style="position:relative;background:rgba(0,220,130,0.06);border:1px solid rgba(0,220,130,0.2);border-left:3px solid rgba(0,220,130,0.5);border-radius:6px;padding:10px 36px 10px 12px;margin:8px 0;cursor:pointer;transition:background 0.15s" onmouseenter="this.style.background='rgba(0,220,130,0.1)'" onmouseleave="this.style.background='rgba(0,220,130,0.06)'"><span style="position:absolute;top:6px;right:8px;font-size:0.55rem;color:rgba(0,220,130,0.6);font-weight:600;display:flex;align-items:center;gap:2px">📋 COPY</span><pre style="margin:0;font-family:inherit;font-size:0.72rem;line-height:1.6;color:rgba(255,255,255,0.9);white-space:pre-wrap;word-break:break-word">${escaped}</pre></div>`;
+        } else {
+            const langLabel = lang
+                ? `<span style="position:absolute;top:4px;right:8px;font-size:0.55rem;color:rgba(0,212,255,0.5);text-transform:uppercase;font-weight:600">${lang}</span>`
+                : '';
+            block = `<div style="position:relative;background:rgba(0,0,0,0.4);border:1px solid rgba(0,212,255,0.15);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto">${langLabel}<pre style="margin:0;font-family:'Fira Code','Consolas',monospace;font-size:0.65rem;line-height:1.5;color:#e0f0ff;white-space:pre-wrap;word-break:break-word">${escaped}</pre></div>`;
+        }
         codeBlocks.push(block);
-        return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+        return `%%CODEBLOCK_${codeBlocks.length - 1}%%`;
     });
 
     // 2. Escape HTML in remaining text
@@ -74,7 +81,7 @@ export function renderMarkdown(text: string): string {
     for (const line of lines) {
         const trimmed = line.trim();
 
-        const codeMatch = trimmed.match(/^__CODE_BLOCK_(\d+)__$/);
+        const codeMatch = trimmed.match(/^%%CODEBLOCK_(\d+)%%$/);
         if (codeMatch) {
             if (inUl) { result.push("</ul>"); inUl = false; }
             if (inOl) { result.push("</ol>"); inOl = false; }
@@ -281,6 +288,7 @@ export function MarkdownContent({ html, sx }: { html: string; sx?: any }) {
         <Box
             onClick={(e: React.MouseEvent) => {
                 const target = e.target as HTMLElement;
+                // Handle link clicks
                 const anchor = target.closest('a[data-lura-link]') as HTMLAnchorElement;
                 if (anchor?.href) {
                     e.preventDefault();
@@ -288,6 +296,35 @@ export function MarkdownContent({ html, sx }: { html: string; sx?: any }) {
                     window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
                         detail: { url: anchor.href, title: anchor.textContent || anchor.href },
                     }));
+                    return;
+                }
+                // Handle copy-block clicks
+                const copyBlock = target.closest('.copy-block') as HTMLElement;
+                if (copyBlock) {
+                    e.stopPropagation();
+                    const rawText = copyBlock.getAttribute('data-copy-text') || '';
+                    // Decode HTML entities for clean clipboard text
+                    const tmp = document.createElement('textarea');
+                    tmp.innerHTML = rawText;
+                    const cleanText = tmp.value;
+                    navigator.clipboard?.writeText(cleanText).catch(() => {
+                        const ta = document.createElement('textarea');
+                        ta.value = cleanText;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                    });
+                    // Visual feedback
+                    const label = copyBlock.querySelector('span');
+                    if (label) {
+                        const orig = label.innerHTML;
+                        label.innerHTML = '✓ Copied!';
+                        label.style.color = 'rgba(0, 220, 130, 1)';
+                        setTimeout(() => { label.innerHTML = orig; label.style.color = ''; }, 1500);
+                    }
                 }
             }}
             sx={{
@@ -307,3 +344,118 @@ export function MarkdownContent({ html, sx }: { html: string; sx?: any }) {
         />
     );
 }
+
+// ─── Copyable Markdown with per-section copy buttons ────────
+
+/** Split markdown source into logical sections, preserving fenced code blocks */
+function splitMarkdownSections(md: string): string[] {
+    // 1. Extract fenced code blocks as atomic units first
+    const parts: { text: string; isCode: boolean }[] = [];
+    let lastIndex = 0;
+    const codeBlockRegex = /```\w*\r?\n[\s\S]*?```/g;
+    let match;
+    while ((match = codeBlockRegex.exec(md)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push({ text: md.substring(lastIndex, match.index), isCode: false });
+        }
+        parts.push({ text: match[0], isCode: true });
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < md.length) {
+        parts.push({ text: md.substring(lastIndex), isCode: false });
+    }
+
+    // 2. Split non-code parts into paragraphs, keep code blocks as-is
+    const sections: string[] = [];
+    for (const part of parts) {
+        if (part.isCode) {
+            sections.push(part.text.trim());
+        } else {
+            const lines = part.text.split(/\n{2,}/).map(l => l.trim()).filter(Boolean);
+            sections.push(...lines);
+        }
+    }
+
+    return sections.length > 0 ? sections : [md];
+}
+
+/** Strip HTML tags for clean clipboard text */
+function stripHtml(html: string): string {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+}
+
+/** Inline copy button that appears on hover */
+function SectionCopyBtn({ text }: { text: string }) {
+    const [copied, setCopied] = React.useState(false);
+    return (
+        <IconButton
+            size="small"
+            className="section-copy-btn"
+            onClick={(e) => {
+                e.stopPropagation();
+                const clean = stripHtml(text);
+                navigator.clipboard?.writeText(clean).catch(() => {
+                    // Fallback
+                    const ta = document.createElement("textarea");
+                    ta.value = clean;
+                    ta.style.position = "fixed";
+                    ta.style.left = "-9999px";
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(ta);
+                });
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+            }}
+            sx={{
+                position: "absolute", top: 2, right: 2,
+                opacity: 0, transition: "opacity 0.12s",
+                p: 0.3,
+                color: copied ? "rgba(0, 220, 130, 0.8)" : "rgba(0, 212, 255, 0.5)",
+                "&:hover": { color: copied ? "rgba(0, 220, 130, 1)" : "rgba(0, 212, 255, 0.9)" },
+            }}
+            title={copied ? "Copied!" : "Copy this section"}
+        >
+            <ContentCopyIcon sx={{ fontSize: 11 }} />
+        </IconButton>
+    );
+}
+
+export function CopyableMarkdown({ markdown, sx }: { markdown: string; sx?: any }) {
+    const sections = splitMarkdownSections(markdown);
+    // If only 1 section, render normally without per-section buttons
+    if (sections.length <= 1) {
+        return <MarkdownContent html={renderMarkdown(markdown)} sx={sx} />;
+    }
+    return (
+        <Box sx={sx}>
+            {sections.map((section, i) => {
+                const html = renderMarkdown(section);
+                return (
+                    <Box
+                        key={i}
+                        sx={{
+                            position: "relative",
+                            borderRadius: 1,
+                            px: 0.5,
+                            py: 0.2,
+                            mx: -0.5,
+                            transition: "background-color 0.12s",
+                            "&:hover": {
+                                bgcolor: "rgba(0, 212, 255, 0.04)",
+                            },
+                            "&:hover .section-copy-btn": { opacity: 1 },
+                        }}
+                    >
+                        <SectionCopyBtn text={html} />
+                        <MarkdownContent html={html} />
+                    </Box>
+                );
+            })}
+        </Box>
+    );
+}
+

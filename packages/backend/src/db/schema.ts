@@ -29,3 +29,6 @@ export type { HealthCheck } from "./schema/health.schema.js";
 
 export { changelog } from "./schema/changelog.schema.js";
 export type { ChangelogEntry, NewChangelogEntry } from "./schema/changelog.schema.js";
+
+export { browsingHistory } from "./schema/history.schema.js";
+export type { HistoryEntry, NewHistoryEntry } from "./schema/history.schema.js";

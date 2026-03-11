@@ -13,12 +13,13 @@
 // ============================================================
 
 const IS_DEV = import.meta.env?.DEV ?? (typeof process !== "undefined" && process.env?.NODE_ENV !== "production");
+const DEBUG_ON = IS_DEV && (typeof localStorage !== "undefined" && localStorage.getItem("biamos_debug") === "1");
 
 /* eslint-disable no-console */
 const noop = (..._args: any[]) => {};
 
 export const debug = {
-    log: IS_DEV ? console.log.bind(console) : noop,
-    warn: IS_DEV ? console.warn.bind(console) : noop,
+    log: DEBUG_ON ? console.log.bind(console) : noop,
+    warn: DEBUG_ON ? console.warn.bind(console) : noop,
     error: console.error.bind(console), // errors always log
 };

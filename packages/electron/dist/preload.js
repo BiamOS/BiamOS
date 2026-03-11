@@ -40,4 +40,14 @@ setInterval(() => {
     }
     catch { /* ignore */ }
 }, 500);
+// ─── Popup → New Tab bridge ─────────────────────────────────
+// When a webview popup is intercepted in main.ts, it sends the
+// URL here via IPC. We dispatch a DOM event that the renderer
+// picks up and opens as a new BiamOS tab/card.
+electron_1.ipcRenderer.on("open-url-in-tab", (_event, url) => {
+    console.log(`🪟 [Preload] Opening popup URL as new tab: ${url}`);
+    globalThis.dispatchEvent(new globalThis.CustomEvent("biamos:open-as-card", {
+        detail: { url, title: "New Tab" },
+    }));
+});
 console.log("⚡ BiamOS Electron preload loaded (zoom locked)");

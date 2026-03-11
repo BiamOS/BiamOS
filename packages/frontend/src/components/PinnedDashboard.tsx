@@ -50,7 +50,7 @@ interface PinnedItem {
 // ─── Constants ──────────────────────────────────────────────
 
 const API_BASE = "http://localhost:3001/api/pinned";
-const POLL_INTERVAL = 30_000; // 30 seconds
+const POLL_INTERVAL = 60_000; // 60 seconds
 
 // ─── Pin Card ───────────────────────────────────────────────
 
@@ -240,6 +240,14 @@ export const PinnedDashboard = React.memo(function PinnedDashboard() {
         } catch { /* ignore */ }
     }, []);
 
+    /** Trigger backend staleness check + refresh, then re-fetch pin list */
+    const refreshStalePins = useCallback(async () => {
+        try {
+            await fetch(`${API_BASE}/refresh-stale`, { method: "POST" });
+            await fetchPins();
+        } catch { /* ignore */ }
+    }, [fetchPins]);
+
     // Container width tracking for react-grid-layout
     useEffect(() => {
         const el = containerRef.current;
@@ -253,21 +261,25 @@ export const PinnedDashboard = React.memo(function PinnedDashboard() {
         return () => ro.disconnect();
     }, []);
 
-    // Initial load + polling
+    // Initial load + auto-refresh polling
     useEffect(() => {
         setLoading(true);
         fetchPins().finally(() => setLoading(false));
-        timerRef.current = setInterval(fetchPins, POLL_INTERVAL);
+        // Refresh stale pins shortly after startup (3s delay so UI loads first)
+        const startupTimer = setTimeout(refreshStalePins, 3000);
+        // Poll: trigger backend staleness check → refresh stale pins → re-fetch
+        timerRef.current = setInterval(refreshStalePins, POLL_INTERVAL);
 
         // Listen for pin/unpin events from Whitebox for instant sync
         const onPinsChanged = () => fetchPins();
         window.addEventListener("biamos:pins-changed", onPinsChanged);
 
         return () => {
+            clearTimeout(startupTimer);
             if (timerRef.current) clearInterval(timerRef.current);
             window.removeEventListener("biamos:pins-changed", onPinsChanged);
         };
-    }, [fetchPins]);
+    }, [fetchPins, refreshStalePins]);
 
     const handleUnpin = useCallback((id: number) => {
         setPins((prev) => prev.filter((p) => p.id !== id));
