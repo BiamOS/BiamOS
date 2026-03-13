@@ -37,6 +37,8 @@
 
 ## What is BiamOS?
 
+DEMO VIDEO: https://www.youtube.com/watch?v=QOKNlAsJjyw
+
 **BiamOS is not just another wrapper.** It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS acts as your personal agent — extracting data, bypassing complex API auth via **Ghost-Auth**, and generating modular UI dashboards instantly.
 
 > It's not a browser. It's not a chatbot. It's a **desktop-native AI operating layer** that sits between you and the web.
