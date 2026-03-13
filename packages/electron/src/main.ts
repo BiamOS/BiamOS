@@ -139,9 +139,11 @@ function createWindow(): void {
 
     console.log("🪟 BrowserWindow created, loading URL:", DEV_FRONTEND_URL);
 
-    // Show maximized once the page has loaded (avoids white flash)
-    mainWindow.once("ready-to-show", () => {
-        console.log("🪟 ready-to-show fired — showing window");
+    // Show maximized once DOM is ready (so the native splash screen is visible)
+    // NOTE: we use dom-ready instead of ready-to-show, because ready-to-show
+    // fires AFTER React hydrates — by which time the 2.8s splash is already over.
+    mainWindow.webContents.once("dom-ready", () => {
+        console.log("🪟 dom-ready fired — showing window (splash visible)");
         mainWindow?.maximize();
         mainWindow?.show();
         mainWindow?.webContents.setZoomFactor(1);

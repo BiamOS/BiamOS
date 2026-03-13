@@ -133,10 +133,17 @@ export async function answerPageQuestion(ctx: PageQuestion): Promise<ChatAnswer>
                 await logTokenUsage("agent:context-chat", MODEL_THINKING, secondResult.usage ?? {});
                 await incrementAgentUsage("web-copilot", secondResult.usage ?? {});
 
-                const rawAnswer = secondResult.choices?.[0]?.message?.content?.trim() || "";
+                let rawAnswer = secondResult.choices?.[0]?.message?.content?.trim() || "";
+
+                // Fallback: if LLM returned empty content, use raw search results
+                if (!rawAnswer && searchResults.length > 0) {
+                    log.warn(`  ⚠️ Context Chat: LLM returned empty content after search, using raw results`);
+                    rawAnswer = searchResults.map(r => `**${r.title}**\n${r.snippet}\n[Source](${r.url})`).join("\n\n");
+                }
+
                 const { answer, follow_ups } = parseFollowUps(rawAnswer);
                 log.debug(`  💬 Context Chat (with search): "${ctx.question.substring(0, 50)}" → ${answer.substring(0, 80)}... [web_search] (${follow_ups.length} follow-ups)`);
-                return { answer, source: "web_search", follow_ups };
+                return { answer: answer || "Sorry, I couldn't find that information.", source: "web_search", follow_ups };
             }
         }
 
@@ -181,7 +188,7 @@ export async function streamPageQuestion(
         const chatUrl = await getChatUrl();
         const headers = await getHeaders("context-chat-stream");
 
-        // First call: check for tool use (non-streaming)
+        // ⚡ Streaming first call — gives instant feedback instead of blocking
         const firstResponse = await fetch(chatUrl, {
             method: "POST",
             headers,
@@ -194,6 +201,7 @@ export async function streamPageQuestion(
                     : "auto",
                 temperature: 0.3,
                 max_tokens: 1500,
+                stream: true,
             }),
         });
 
@@ -203,66 +211,122 @@ export async function streamPageQuestion(
             return;
         }
 
-        const firstResult = await firstResponse.json();
-        await logTokenUsage("agent:context-chat-stream", MODEL_THINKING, firstResult.usage ?? {});
-        await incrementAgentUsage("web-copilot", firstResult.usage ?? {});
+        if (!firstResponse.body) {
+            onEvent(`data: ${JSON.stringify({ type: "token", content: "Sorry, streaming is not available." })}\n\n`);
+            onEvent(`data: ${JSON.stringify({ type: "done", source: "general", follow_ups: [] })}\n\n`);
+            return;
+        }
 
-        const firstMessage = firstResult.choices?.[0]?.message;
+        // Read the streaming response, collecting both content and tool calls
+        let fullContent = "";
+        const toolCalls: any[] = [];
+        const reader = firstResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        // Handle tool call (web search)
-        if (firstMessage?.tool_calls?.length > 0) {
-            const toolCall = firstMessage.tool_calls[0];
-            if (toolCall.function?.name === "search_web") {
-                let searchQuery = ctx.question;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const dataStr = line.slice(6).trim();
+                if (dataStr === "[DONE]") continue;
+
                 try {
-                    const args = JSON.parse(toolCall.function.arguments);
-                    searchQuery = args.query || ctx.question;
+                    const chunk = JSON.parse(dataStr);
+                    const delta = chunk.choices?.[0]?.delta;
+
+                    // Collect content tokens → stream to frontend immediately
+                    if (delta?.content) {
+                        fullContent += delta.content;
+                        onEvent(`data: ${JSON.stringify({ type: "token", content: delta.content })}\n\n`);
+                    }
+
+                    // Collect tool call fragments
+                    if (delta?.tool_calls) {
+                        for (const tc of delta.tool_calls) {
+                            const idx = tc.index ?? 0;
+                            if (!toolCalls[idx]) {
+                                toolCalls[idx] = { id: tc.id || "", function: { name: "", arguments: "" } };
+                            }
+                            if (tc.id) toolCalls[idx].id = tc.id;
+                            if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                            if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+                        }
+                    }
                 } catch { }
-
-                onEvent(`data: ${JSON.stringify({ type: "search", query: searchQuery })}\n\n`);
-                log.debug(`  🔍 Stream: searching "${searchQuery}"`);
-
-                const searchResults = await searchWeb(searchQuery);
-                const formattedResults = formatSearchResults(searchResults);
-
-                messages.push({
-                    role: "assistant",
-                    content: null,
-                    ...({ tool_calls: firstMessage.tool_calls } as any),
-                });
-                messages.push({
-                    role: "tool" as any,
-                    content: formattedResults,
-                    ...({ tool_call_id: toolCall.id } as any),
-                });
-
-                await streamLLMResponse(chatUrl, headers, messages, "web_search", onEvent);
-                return;
             }
         }
 
-        // No tool call — simulate streaming from direct answer
-        if (firstMessage?.content) {
-            const rawAnswer = firstMessage.content.trim();
-            const { answer, follow_ups } = parseFollowUps(rawAnswer);
+        // Handle tool call (web search) detected from stream
+        if (toolCalls.length > 0 && toolCalls[0]?.function?.name === "search_web") {
+            const toolCall = toolCalls[0];
+            let searchQuery = ctx.question;
+            try {
+                const args = JSON.parse(toolCall.function.arguments);
+                searchQuery = args.query || ctx.question;
+            } catch { }
+
+            onEvent(`data: ${JSON.stringify({ type: "search", query: searchQuery })}\n\n`);
+            log.debug(`  🔍 Stream: searching "${searchQuery}"`);
+
+            const searchResults = await searchWeb(searchQuery);
+            const formattedResults = formatSearchResults(searchResults);
+
+            messages.push({
+                role: "assistant",
+                content: null,
+                ...({ tool_calls: toolCalls } as any),
+            });
+            messages.push({
+                role: "tool" as any,
+                content: formattedResults,
+                ...({ tool_call_id: toolCall.id } as any),
+            });
+
+            await streamLLMResponse(chatUrl, headers, messages, "web_search", onEvent);
+            return;
+        }
+
+        // Direct answer from stream
+        if (fullContent.trim()) {
+            const { answer, follow_ups } = parseFollowUps(fullContent);
             const source: ChatAnswer["source"] = hasPageContent ? "page_context" : "general";
-
-            const words = answer.split(/(\s+)/);
-            let chunk = "";
-            for (let i = 0; i < words.length; i++) {
-                chunk += words[i];
-                if ((i > 0 && i % 8 === 0) || i === words.length - 1) {
-                    onEvent(`data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`);
-                    chunk = "";
-                    await new Promise(r => setTimeout(r, 15));
-                }
-            }
-
             onEvent(`data: ${JSON.stringify({ type: "done", source, follow_ups })}\n\n`);
             return;
         }
 
-        onEvent(`data: ${JSON.stringify({ type: "token", content: "Sorry, I couldn't generate an answer." })}\n\n`);
+        // Empty content — retry once non-streaming as fallback
+        log.warn(`  ⚠️ Stream: first call returned no content, retrying non-streaming...`);
+        const retryResponse = await fetch(chatUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model: MODEL_THINKING,
+                messages,
+                temperature: 0.3,
+                max_tokens: 1500,
+            }),
+        });
+
+        if (retryResponse.ok) {
+            const retryResult = await retryResponse.json();
+            const retryContent = retryResult.choices?.[0]?.message?.content?.trim() || "";
+            if (retryContent) {
+                const { answer, follow_ups } = parseFollowUps(retryContent);
+                const source: ChatAnswer["source"] = hasPageContent ? "page_context" : "general";
+                onEvent(`data: ${JSON.stringify({ type: "token", content: answer })}\n\n`);
+                onEvent(`data: ${JSON.stringify({ type: "done", source, follow_ups })}\n\n`);
+                return;
+            }
+        }
+
+        onEvent(`data: ${JSON.stringify({ type: "token", content: "Sorry, I couldn't generate an answer. Please try again." })}\n\n`);
         onEvent(`data: ${JSON.stringify({ type: "done", source: "general", follow_ups: [] })}\n\n`);
     } catch (err) {
         log.error("  💥 Stream error:", err);
@@ -324,6 +388,44 @@ async function streamLLMResponse(
                     onEvent(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
                 }
             } catch { }
+        }
+    }
+
+    // If streaming produced no content, retry with a non-streaming call
+    if (!fullContent.trim()) {
+        log.warn(`  ⚠️ Stream: empty content, retrying non-streaming...`);
+        try {
+            const retryResponse = await fetch(chatUrl, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    model: MODEL_THINKING,
+                    messages,
+                    temperature: 0.3,
+                    max_tokens: 1500,
+                }),
+            });
+
+            if (retryResponse.ok) {
+                const retryResult = await retryResponse.json();
+                fullContent = retryResult.choices?.[0]?.message?.content?.trim() || "";
+                if (fullContent) {
+                    log.debug(`  ✅ Stream retry succeeded: ${fullContent.substring(0, 60)}...`);
+                    onEvent(`data: ${JSON.stringify({ type: "token", content: fullContent })}\n\n`);
+                }
+            }
+        } catch (retryErr) {
+            log.error(`  ❌ Stream retry failed:`, retryErr);
+        }
+    }
+
+    // Final fallback: if STILL empty, extract raw search results from messages
+    if (!fullContent.trim()) {
+        const toolMsg = messages.find((m: any) => m.role === "tool");
+        if (toolMsg?.content && toolMsg.content !== "No web search results found.") {
+            log.warn(`  ⚠️ Stream: using raw search results as fallback`);
+            fullContent = toolMsg.content;
+            onEvent(`data: ${JSON.stringify({ type: "token", content: fullContent })}\n\n`);
         }
     }
 

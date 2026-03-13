@@ -61,11 +61,11 @@ export const dragHandleSx = {
     alignItems: "center",
     gap: 1,
     px: 1.5,
-    py: 0.5,
+    py: 0.75,
     cursor: "grab",
     bgcolor: "rgba(255, 255, 255, 0.02)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-    minHeight: 32,
+    minHeight: 38,
     "&:active": { cursor: "grabbing" },
     userSelect: "none" as const,
 };
