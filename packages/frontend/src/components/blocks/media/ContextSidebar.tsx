@@ -213,7 +213,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
 
             {/* Hint cards + Chat messages */}
             {open && (
-                <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+                <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", wordBreak: "break-word" }}>
                     {/* Context Hints section (top area) */}
                     {(isAnalyzing || hasHints || isPrivacyBlocked) && (
                         <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>

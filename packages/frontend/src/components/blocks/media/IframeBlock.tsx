@@ -217,11 +217,19 @@ export const IframeBlock = React.memo(function IframeBlock({
         // Build summary from steps
         const stepsSummary = steps
             .filter(s => s.action !== "ask_user")
-            .map((s, i) => `${i + 1}. ${s.description}${s.result ? ` → ${s.result}` : ""}`)
+            .map((s, i) => {
+                let result = s.result || '';
+                // Only show first line, truncate long results
+                const firstLine = result.split('\n')[0];
+                const truncated = firstLine.length > 80 ? firstLine.substring(0, 77) + '…' : firstLine;
+                return `${i + 1}. ${s.description}${truncated ? ` → ${truncated}` : ''}`;
+            })
             .join("\n");
         const statusEmoji = status === "done" ? "✅" : status === "error" ? "❌" : status === "paused" ? "⏸️" : "🔄";
+        const stepCount = steps.filter(s => s.action !== "ask_user").length;
+        const stepBadge = stepCount > 0 ? ` ${stepCount} steps` : "";
         const summary = stepsSummary
-            ? `${statusEmoji} ${currentAction}\n\n**Steps:**\n${stepsSummary}`
+            ? `${statusEmoji}${stepBadge} ${currentAction}\n\n**Steps:**\n${stepsSummary}`
             : `${statusEmoji} ${currentAction}`;
         
         const isDone = status === "done" || status === "error";

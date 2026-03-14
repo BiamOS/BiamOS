@@ -186,6 +186,44 @@ const AGENT_TOOLS = [
             },
         },
     },
+    {
+        type: "function" as const,
+        function: {
+            name: "go_back",
+            description: "Go back to the previous page (like pressing the browser back button). Use this after navigating to another site to return to where you were. For example: compose email on Gmail → navigate to YouTube → search → go_back to Gmail (draft is auto-saved).",
+            parameters: {
+                type: "object",
+                properties: {
+                    description: {
+                        type: "string",
+                        description: "Brief description of why you're going back",
+                    },
+                },
+                required: ["description"],
+            },
+        },
+    },
+    {
+        type: "function" as const,
+        function: {
+            name: "search_web",
+            description: "Search the web WITHOUT leaving the current page. Use this to look up information (YouTube videos, Wikipedia facts, news, etc.) while staying on the current page. The search runs in the background and returns results as text. ALWAYS prefer this over navigate when you need to FIND information from another site.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The search query (e.g. 'AI agent demo YouTube', 'latest Hacker News stories')",
+                    },
+                    description: {
+                        type: "string",
+                        description: "Brief description of what you're searching for and why",
+                    },
+                },
+                required: ["query", "description"],
+            },
+        },
+    },
 ];
 
 // ─── System Prompt ──────────────────────────────────────────
@@ -208,7 +246,8 @@ CORE RULES:
 2. Call exactly ONE tool per step. Never chain multiple actions.
 3. Each DOM element has a "rect" field {x, y, w, h}. Click using CENTER: x + w/2, y + h/2.
 4. Describe each action clearly in the user's language.
-5. Maximum 15 steps. If not done by then, call done with a partial summary.
+5. **DONE = FULLY COMPLETE**: Only call done when EVERY part of the user's task is finished. If the task says "do X, then Y, then Z" — you must complete ALL of X, Y, AND Z before calling done. Never call done with "I will now..." — actually DO it first, then call done.
+6. You have up to 40 steps. Use them all if needed to complete the full task.
 
 ═══════════════════════════════════════════════════
 SAFETY RULES:
@@ -230,17 +269,17 @@ INTERACTION RULES (critical for accuracy):
 ═══════════════════════════════════════════════════
 FORM & TEXT RULES:
 ═══════════════════════════════════════════════════
-13. **COMPLETE TEXT IN ONE CALL**: When typing email bodies, messages, or any long text — compose the ENTIRE text in a SINGLE type_text call. Do NOT split text across multiple steps. Include greeting, body paragraphs, and sign-off all at once. After typing, proceed to the NEXT action (e.g. call ask_user or done) — do NOT re-type.
-14. **NO RE-TYPING**: If ACTIONS TAKEN SO FAR shows a type_text result starting with "✓", that field is DONE. Do NOT type in the same field again. Move to the next step or call done/ask_user.
-15. **TAB NAVIGATION**: In forms (email compose, contact forms), after filling one field, add "\\t" at the end to Tab to the next field instead of clicking.
-16. **ENTER TO CONFIRM**: In "To" fields, add "\\n" after the email address to confirm. In search fields, add "\\n" to submit.
+13. **COMPLETE TEXT IN ONE CALL**: When typing email bodies, messages, or long text — write the COMPLETE text in ONE type_text call. Include greeting + all paragraphs + sign-off in ONE call. CRITICAL: if you call type_text on the same field twice, the SECOND call OVERWRITES the first! So NEVER split body text across multiple type_text calls.
+14. **NO RE-TYPING (CRITICAL)**: If ACTIONS TAKEN SO FAR shows ANY type_text with "✓", that field is DONE. STOP typing. Call done or ask_user IMMEDIATELY. Repeating a type_text that already shows ✓ is a FATAL ERROR — you will overwrite the content and loop forever.
+15. **TAB BETWEEN FIELDS (CRITICAL)**: In email compose and forms, use "\\t" at end of text to Tab to next field. NEVER click on Subject separately — always Tab from To to Subject! Email flow: type_text("email\\n") in To, then type_text("Subject text\\t") tabs to body, then type_text("Body text") in body area.
+16. **ENTER TO CONFIRM**: Use "\\n" at end to confirm in To fields and submit in search fields.
 16. **CONTEXTUAL WRITING**: When composing text (emails, replies, messages):
     - Match the LANGUAGE of the conversation (English email → English reply, German → German)
     - Match the TONE (formal/informal) and STYLE
     - Write substantive, helpful responses — NOT generic one-liners
     - Reference specific details from context to show engagement
     - For emails: include proper greeting, body paragraphs, and sign-off
-17. **NAVIGATION**: If the task requires going to a DIFFERENT website (e.g. "open YouTube", "go to Wikipedia"), use the navigate tool with the full URL. Do NOT try to search for it or click links — just navigate directly.
+17. **SEARCH vs NAVIGATE**: Use search_web to FIND information from other sites (YouTube videos, news, facts) — it runs in the background without leaving the current page. Only use navigate when the user explicitly says "go to" or "open" a website. For multi-step tasks like "compose email mentioning a YouTube video", use search_web (stays on Gmail) instead of navigate (leaves Gmail).
 18. **LANGUAGE**: Always match the user's language in descriptions and composed text.`;
 }
 

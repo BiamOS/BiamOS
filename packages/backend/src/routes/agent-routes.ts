@@ -337,4 +337,74 @@ agentRoutes.post("/act", async (c) => {
     });
 });
 
+// ─── POST /agents/search — Web search for AI agent ──────────
+// Fetches web search results so the agent doesn't need to navigate away.
+
+agentRoutes.post("/search", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const query = body?.query || '';
+
+    if (!query) {
+        return c.json({ error: "query is required" }, 400);
+    }
+
+    log.debug(`  🔍 Agent search: "${query}"`);
+
+    try {
+        // Use DuckDuckGo HTML search (no API key needed)
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        const resp = await fetch(searchUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        const html = await resp.text();
+
+        // Extract results: titles + snippets from DuckDuckGo's HTML
+        const results: { title: string; snippet: string; url: string }[] = [];
+        const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
+        let match;
+        while ((match = resultRegex.exec(html)) !== null && results.length < 5) {
+            results.push({
+                url: match[1].replace(/&amp;/g, '&'),
+                title: match[2].replace(/<[^>]*>/g, '').trim(),
+                snippet: match[3].replace(/<[^>]*>/g, '').trim(),
+            });
+        }
+
+        // Fallback: try simpler regex if no results
+        if (results.length === 0) {
+            const titleRegex = /<a[^>]*class="result__a"[^>]*>(.*?)<\/a>/gs;
+            while ((match = titleRegex.exec(html)) !== null && results.length < 5) {
+                results.push({
+                    url: '',
+                    title: match[1].replace(/<[^>]*>/g, '').trim(),
+                    snippet: '',
+                });
+            }
+        }
+
+        const text = results.length > 0
+            ? results.map((r, i) => `${i + 1}. ${r.title}${r.snippet ? ' — ' + r.snippet : ''}${r.url ? ' (' + r.url + ')' : ''}`).join('\n')
+            : 'No results found for: ' + query;
+
+        log.debug(`  🔍 Agent search: ${results.length} results found`);
+
+        return c.json({
+            biam_protocol: "2.0",
+            action: "search_results",
+            query,
+            results: text,
+            count: results.length,
+        });
+    } catch (err) {
+        log.error(`  🔍 Agent search error: ${err}`);
+        return c.json({
+            biam_protocol: "2.0",
+            action: "search_results",
+            query,
+            results: `Search failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+            count: 0,
+        });
+    }
+});
+
 export { agentRoutes };

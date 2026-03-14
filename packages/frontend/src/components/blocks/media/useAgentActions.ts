@@ -140,22 +140,22 @@ function buildTypeAtScript(x: number, y: number, text: string, clearFirst: boole
     if (endsWithTab) cleanText = text.slice(0, -1);
     if (endsWithEnter) cleanText = text.replace(/\n+$/, '');
 
-    // JSON.stringify for safe embedding, then escape backticks for template literal safety
     const safeText = JSON.stringify(cleanText);
+    const rx = Math.round(x);
+    const ry = Math.round(y);
 
-    // Build script via string concatenation — no template literals = no backtick issues
     const parts: string[] = [];
     parts.push('(function(){try{');
-    parts.push('var el=document.elementFromPoint(' + Math.round(x) + ',' + Math.round(y) + ');');
-    parts.push('if(!el)return JSON.stringify({success:false,error:"No element"});');
+    parts.push('var el=document.elementFromPoint(' + rx + ',' + ry + ');');
+    parts.push('if(!el)return JSON.stringify({success:false,error:"No element at coordinates"});');
 
-    // Smart editable element finding
+    // If not editable, walk up to closest editable parent, then try children
     parts.push('function isEd(e){return e.tagName==="INPUT"||e.tagName==="TEXTAREA"||e.isContentEditable;}');
     parts.push('if(!isEd(el)){');
-    // Prefer input/textarea (specific fields) over contenteditable (large body areas)
-    parts.push('var c=el.querySelector("input,textarea");');
-    parts.push('if(!c)c=el.querySelector("[contenteditable=true]");');
-    parts.push('if(c){el=c;}else{var p=el.closest("input,textarea,[contenteditable=true],[contenteditable]");if(p)el=p;}');
+    parts.push('var p=el.closest("input,textarea,[contenteditable=true]");');
+    parts.push('if(p){el=p;}else{');
+    parts.push('var c=el.querySelector("input,textarea,[contenteditable=true]");');
+    parts.push('if(c){el=c;}}');
     parts.push('}');
 
     parts.push('el.focus();');
@@ -163,18 +163,19 @@ function buildTypeAtScript(x: number, y: number, text: string, clearFirst: boole
     // Clear if needed
     if (clearFirst) {
         parts.push('if(el.tagName==="INPUT"||el.tagName==="TEXTAREA"){el.value="";}');
-        parts.push('else{el.textContent="";}');
+        parts.push('else if(el.isContentEditable){el.textContent="";}');
     }
 
-    // Type text — use execCommand for contenteditable (simulates real typing)
+    // Type text
     parts.push('if(el.tagName==="INPUT"||el.tagName==="TEXTAREA"){');
     parts.push('el.value=' + safeText + ';');
     parts.push('el.dispatchEvent(new Event("input",{bubbles:true}));');
     parts.push('el.dispatchEvent(new Event("change",{bubbles:true}));');
-    parts.push('}else{');
-    // innerText: works on contenteditable, converts \n to <br>, NOT blocked by Trusted Types CSP
+    parts.push('}else if(el.isContentEditable){');
     parts.push('el.innerText=' + safeText + ';');
     parts.push('el.dispatchEvent(new Event("input",{bubbles:true}));');
+    parts.push('}else{');
+    parts.push('return JSON.stringify({success:false,error:"No editable element found"});');
     parts.push('}');
 
     // Tab/Enter key events
@@ -185,7 +186,7 @@ function buildTypeAtScript(x: number, y: number, text: string, clearFirst: boole
         parts.push('el.dispatchEvent(new KeyboardEvent("keydown",{key:"Tab",code:"Tab",keyCode:9,bubbles:true}));');
     }
 
-    parts.push('return JSON.stringify({success:true,x:' + Math.round(x) + ',y:' + Math.round(y) + ',tag:el.tagName.toLowerCase()});');
+    parts.push('return JSON.stringify({success:true,x:' + rx + ',y:' + ry + ',tag:el.tagName.toLowerCase()});');
     parts.push('}catch(e){return JSON.stringify({success:false,error:e.message});}})()');
 
     return parts.join('');
@@ -216,7 +217,7 @@ export function useAgentActions(
 
     const abortRef = useRef(false);
     const stepsRef = useRef<AgentStep[]>([]);
-    const MAX_STEPS = 15;
+    const MAX_STEPS = 40;
 
     // ─── Capture DOM snapshot ───────────────────────────────
     const captureDomSnapshot = useCallback(async (): Promise<string> => {
@@ -294,12 +295,24 @@ export function useAgentActions(
                     case "type_text": {
                         const tx = args.x ?? 0;
                         const ty = args.y ?? 0;
-                        const result = await wv.executeJavaScript(
-                            buildTypeAtScript(tx, ty, args.text, args.clear_first !== false), true
-                        );
-                        const parsed = JSON.parse(result);
-                        const preview = args.text.length > 50 ? args.text.substring(0, 50) + '…' : args.text;
-                        return parsed.success ? `✓ "${preview}"` : parsed.error;
+                        // Auto-retry if element not yet editable (e.g. after Tab to Subject)
+                        for (let typeAttempt = 0; typeAttempt < 3; typeAttempt++) {
+                            const result = await wv.executeJavaScript(
+                                buildTypeAtScript(tx, ty, args.text, args.clear_first !== false), true
+                            );
+                            const parsed = JSON.parse(result);
+                            if (parsed.success) {
+                                const preview = args.text.length > 50 ? args.text.substring(0, 50) + '…' : args.text;
+                                return `✓ "${preview}"`;
+                            }
+                            if (typeAttempt < 2 && parsed.error?.includes('editable')) {
+                                console.log(`⏳ type_text retry ${typeAttempt + 1}/2 — waiting for element...`);
+                                await new Promise(r => setTimeout(r, 1500));
+                                continue;
+                            }
+                            return parsed.error;
+                        }
+                        return 'type_text failed after 3 attempts';
                     }
                     case "scroll": {
                         const result = await wv.executeJavaScript(
@@ -310,10 +323,45 @@ export function useAgentActions(
                     }
                     case "navigate": {
                         const url = args.url || '';
-                        wv.loadURL(url);
-                        await new Promise(r => setTimeout(r, 3000)); // Wait for page load
-                        await waitUntilReady('navigate');
+                        // Navigate from INSIDE the page (bypasses Gmail's beforeunload)
+                        try {
+                            await wv.executeJavaScript(
+                                'window.onbeforeunload=null;window.location.href=' + JSON.stringify(url) + ';'
+                            , true);
+                        } catch {
+                            // Fallback if executeJavaScript fails
+                            wv.loadURL(url).catch(() => {});
+                        }
+                        await new Promise(r => setTimeout(r, 5000));
+                        try { await waitUntilReady('navigate'); } catch { /* timeout ok */ }
+                        const actualUrl = wv.getURL?.() || 'unknown';
+                        console.log(`🧭 Navigate: wanted=${url} → actual=${actualUrl}`);
                         return `✓ Navigated to ${url}`;
+                    }
+                    case "go_back": {
+                        wv.goBack();
+                        await new Promise(r => setTimeout(r, 4000));
+                        try { await waitUntilReady('go_back'); } catch { /* timeout ok */ }
+                        const backUrl = wv.getURL?.() || 'unknown';
+                        console.log(`🧭 Go back: now at ${backUrl}`);
+                        return `✓ Went back to previous page`;
+                    }
+                    case "search_web": {
+                        const query = args.query || '';
+                        console.log(`🔍 Agent searching: "${query}"`);
+                        try {
+                            const resp = await fetch('http://localhost:3001/api/agents/search', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ query }),
+                            });
+                            const data = await resp.json();
+                            const results = data.results || 'No results';
+                            console.log(`🔍 Search results: ${data.count} found`);
+                            return `✓ Search results for "${query}":\n${results}`;
+                        } catch (e) {
+                            return `Search failed: ${e}`;
+                        }
                     }
                     default:
                         return `Unknown action: ${action}`;
@@ -443,9 +491,10 @@ export function useAgentActions(
                             }
 
                             // Execute the action
+                            const stepNum = stepsRef.current.length + 1;
                             setAgentState(prev => ({
                                 ...prev,
-                                currentAction: `🖱️ ${args.description || action}`,
+                                currentAction: `🖱️ [${stepNum}/${MAX_STEPS}] ${args.description || action}`,
                             }));
 
                             const result = await executeAction(action, args);
@@ -544,7 +593,7 @@ export function useAgentActions(
             setAgentState(prev => ({
                 ...prev,
                 status: "done",
-                currentAction: "⚠️ Max steps reached",
+                currentAction: `⚠️ Step limit reached (${MAX_STEPS}/${MAX_STEPS}). Task may be incomplete — try breaking it into smaller commands.`,
             }));
         }
 
