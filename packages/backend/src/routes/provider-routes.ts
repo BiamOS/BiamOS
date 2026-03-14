@@ -22,7 +22,7 @@ providerRoutes.get("/", async (c) => {
         return c.json({
             provider: config.provider,
             baseUrl: config.baseUrl,
-            hasApiKey: !!config.apiKey,
+            hasApiKey: !config.requiresAuth || !!config.apiKey,
             requiresAuth: config.requiresAuth,
         });
     } catch (err) {

@@ -300,6 +300,16 @@ intentRoutes.post("/stream",
                 // with delays so frontend renders them progressively.
                 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
                 let blocksEmitted = false;
+
+                // Send group hint BEFORE blocks so frontend can attach to existing card
+                const firstResult = results[0];
+                if (firstResult && (firstResult as any)._group_name) {
+                    await sendEvent("group_hint", {
+                        group_name: (firstResult as any)._group_name,
+                        integration_id: firstResult.integration_id,
+                    });
+                }
+
                 for (const result of results) {
                     const blocks = (result as any)?.layout?.blocks;
                     if (Array.isArray(blocks) && blocks.length > 1) {

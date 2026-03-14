@@ -11,7 +11,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { debug } from "../utils/debug";
 import type { BiamPayload, CanvasItem, GridLayoutItem } from "../types/canvas";
-import { smartCardSize, findNextSlot } from "../types/canvas";
+import { smartCardSize, findNextSlot, findSlotForWebview } from "../types/canvas";
 import { CARD_CONSTRAINTS } from "../theme/theme";
 import {
     getSavedPinLayouts,
@@ -143,21 +143,22 @@ export function useCanvasItems() {
                         }
 
                         // ─── Intent pin (normal API card) ────────
+                        const pinPayload = {
+                            action: "render_layout",
+                            layout: p.last_layout,
+                            integration_id: p.last_data?.integration_id,
+                            _query: p.query,
+                            _pinnable: { query: p.query, endpoint_id: p.endpoint_id, params: p.params },
+                        } as BiamPayload;
+                        const pinSize = smartCardSize(pinPayload);
                         const card: CanvasItem = {
                             _id: `pin-${p.id}`,
                             _query: p.query,
-                            payload: {
-                                action: "render_layout",
-                                layout: p.last_layout,
-                                integration_id: p.last_data?.integration_id,
-                                _query: p.query,
-                                _pinnable: { query: p.query, endpoint_id: p.endpoint_id, params: p.params },
-                            } as BiamPayload,
+                            payload: pinPayload,
                             layout: savedLayout ?? {
                                 x: (i % 3) * 4,
                                 y: Math.floor(i / 3) * 8,
-                                w: 4,
-                                h: 8,
+                                ...pinSize,
                             },
                             _pinned: true,
                             _pinnedId: p.id,
@@ -597,7 +598,7 @@ export function useCanvasItems() {
                     activeTabIndex: newTabs.length - 1,
                     payload: iframePayload,
                     _query: title || hostname,
-                    layout: { ...item.layout, w: Math.max(item.layout.w, 6), h: Math.max(item.layout.h, 20) },
+                    layout: { ...item.layout, h: Math.max(item.layout.h, 18) },
                 };
             }));
             return;
@@ -605,34 +606,41 @@ export function useCanvasItems() {
 
         // ─── No existing card → create standalone web-view card ─
         const id = `card-${Date.now()}-nav-${Math.random().toString(36).slice(2, 6)}`;
+        const slot = findSlotForWebview(itemsRef.current, 4, 18);
         const card: CanvasItem = {
             _id: id,
             _query: title || hostname,
             payload: iframePayload,
-            layout: { ...findNextSlot(itemsRef.current, 6, 20), w: 6, h: 20 },
+            layout: { x: slot.x, y: slot.y, w: slot.w, h: 18 },
             _loading: false,
         };
         safeSetItems((prev) => [...prev, card]);
     }, []);
 
     // ─── Live Tab Title Updates (Chrome-like) ─────────────
+    // Each tab has its own webview → each fires its own event with cardId + url.
+    // For tab-groups, we match the tab by URL (stable since per-tab webviews).
     useEffect(() => {
         const handler = (e: Event) => {
-            const { url, title, sourceUrl } = (e as CustomEvent<{ url: string; title: string; sourceUrl?: string }>).detail;
+            const { url, title, cardId } = (e as CustomEvent<{
+                url: string; title: string; cardId?: string;
+            }>).detail;
             if (!url || !title) return;
 
-            // Derive a short label from the title (max 25 chars)
             const shortLabel = title.length > 25 ? title.substring(0, 23) + '…' : title;
+
+            // Helper to get hostname for URL comparison
+            const tryHostname = (inputUrl: string) => {
+                try { return new URL(inputUrl).hostname; } catch { return inputUrl; }
+            };
 
             safeSetItems(prev => prev.map(item => {
                 if (item.payload?.integration_id !== 'web-view') return item;
+                if (cardId && item._id !== cardId) return item;
 
                 // ── Standalone card (no tabs) ──
                 if (!item.tabs) {
                     const blocks = item.payload?.layout?.blocks ?? [];
-                    const blockUrl = (blocks[0] as any)?.url || '';
-                    // Only update if this card matches the source URL
-                    if (sourceUrl && blockUrl !== sourceUrl) return item;
                     return {
                         ...item,
                         _query: shortLabel,
@@ -650,20 +658,24 @@ export function useCanvasItems() {
                 }
 
                 // ── Tab-group card ──
-                // Find the active tab and update it if it matches the source
-                const activeIdx = item.activeTabIndex ?? 0;
-                const activeTab = item.tabs[activeIdx];
-                if (!activeTab) return item;
-
-                // Scope: only update the card whose active tab URL matches sourceUrl
-                if (sourceUrl) {
-                    const blocks = activeTab.payload?.layout?.blocks ?? [];
-                    const tabUrl = (blocks[0] as any)?.url || '';
-                    if (tabUrl !== sourceUrl) return item; // not this card
+                // Find which tab has a matching iframe URL (each tab = own webview)
+                let matchedIdx = -1;
+                for (let i = 0; i < item.tabs.length; i++) {
+                    const tabBlocks = item.tabs[i].payload?.layout?.blocks ?? [];
+                    const tabUrl = (tabBlocks.find((b: any) => b.type === 'iframe') as any)?.url || '';
+                    // Match if the tab's current URL shares the same origin+path
+                    // or if the URL from the event is what the webview navigated to
+                    if (tabUrl === url || tryHostname(tabUrl) === tryHostname(url)) {
+                        matchedIdx = i;
+                        break;
+                    }
                 }
+                // Fallback: if no URL match, update the active tab
+                if (matchedIdx === -1) matchedIdx = item.activeTabIndex ?? 0;
+                if (!item.tabs[matchedIdx]) return item;
 
                 const newTabs = item.tabs.map((t, i) =>
-                    i === activeIdx
+                    i === matchedIdx
                         ? {
                             ...t,
                             label: shortLabel,
@@ -680,7 +692,8 @@ export function useCanvasItems() {
                         }
                         : t
                 );
-                return { ...item, tabs: newTabs, _query: shortLabel };
+                const isActiveTab = matchedIdx === (item.activeTabIndex ?? 0);
+                return { ...item, tabs: newTabs, ...(isActiveTab ? { _query: shortLabel } : {}) };
             }));
         };
         window.addEventListener('biamos:tab-title-update', handler);
@@ -700,7 +713,7 @@ export function useCanvasItems() {
         // Build current ID set
         const currentIds = items.map(i => i._id).sort().join(",");
 
-        // Only recompute if the set of card IDs has changed
+        // Only recompute full cache if the set of card IDs has changed
         if (currentIds !== prevIdSetRef.current) {
             prevIdSetRef.current = currentIds;
 
@@ -725,6 +738,15 @@ export function useCanvasItems() {
                     };
                     debug.log(`📦 [Layout Cache] NEW card "${item._id}" → (${item.layout.x},${item.layout.y},${item.layout.w}x${item.layout.h})`);
                 }
+            }
+        }
+
+        // Sync layout changes from streaming and final-update transitions
+        for (const item of items) {
+            const cached = layoutCacheRef.current[item._id];
+            if (cached && (cached.w !== item.layout.w || cached.h !== item.layout.h)) {
+                cached.w = item.layout.w;
+                cached.h = item.layout.h;
             }
         }
 

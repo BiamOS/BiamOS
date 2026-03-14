@@ -694,9 +694,13 @@ export const Whitebox = React.memo(function Whitebox({
     // ─── render_layout (Block System) ─────────────────────────
     if (payload.action === "render_layout" && payload.layout) {
         const isIframe = payload.layout.blocks?.some((b: any) => b.type === "iframe");
-        // Auto-generate pinnable for webview cards
+        // Auto-generate pinnable for webview cards — use ACTIVE tab's URL
+        const activePayload = (tabs && tabs.length > 0 && activeTabIndex != null)
+            ? tabs[activeTabIndex]?.payload
+            : null;
+        const pinSourceBlocks = activePayload?.layout?.blocks ?? payload.layout.blocks ?? [];
         const iframeUrl = isIframe
-            ? (payload.layout.blocks?.find((b: any) => b.type === "iframe") as any)?.url
+            ? (pinSourceBlocks.find((b: any) => b.type === "iframe") as any)?.url
             : undefined;
         const pinData = payload._pinnable ?? (isIframe && iframeUrl
             ? { pin_type: "webview" as const, url: iframeUrl, query: query || iframeUrl }
@@ -713,9 +717,26 @@ export const Whitebox = React.memo(function Whitebox({
             >
                 <ErrorBoundary label={payload.integration_id ?? "Block"} compact>
                     <Box sx={{ minHeight: 0, display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
-                        <CardContextProvider>
-                            <LayoutRenderer layout={payload.layout} stagger />
-                        </CardContextProvider>
+                        {/* Chrome-model: webview cards with tabs → one webview per tab, toggle visibility */}
+                        {isIframe && tabs && tabs.length > 0 ? (
+                            tabs.map((tab, i) => {
+                                if (!tab.payload?.layout) return null;
+                                return (
+                                <Box key={tab.id} sx={{
+                                    display: i === (activeTabIndex ?? 0) ? "flex" : "none",
+                                    flexDirection: "column", flex: 1, minHeight: 0,
+                                }}>
+                                    <CardContextProvider cardId={cardId}>
+                                        <LayoutRenderer layout={tab.payload.layout} stagger />
+                                    </CardContextProvider>
+                                </Box>
+                                );
+                            })
+                        ) : (
+                            <CardContextProvider cardId={cardId}>
+                                <LayoutRenderer layout={payload.layout} stagger />
+                            </CardContextProvider>
+                        )}
                     </Box>
                 </ErrorBoundary>
             </IntegrationFrame>

@@ -267,6 +267,37 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "fix", text: "Duplicate 'Copy' button removed from Copilot sidebar" },
             ]),
         },
+        {
+            version: "0.9.6",
+            date: "2026-03-14",
+            entries: JSON.stringify([
+                { type: "feature", text: "Stream-into-Tab: second query for the same integration streams directly into a new tab instead of creating a separate card" },
+                { type: "feature", text: "Backend group_hint SSE event: enables language-independent group matching (e.g. German 'wetter' correctly groups with English 'Weather' card)" },
+                { type: "feature", text: "Webview dynamic width: iframe cards fill remaining row space; if row is >70% full, wraps to next row at full width" },
+                { type: "feature", text: "Smart Card Sizing: content-aware width and height — cards start compact and only expand when content demands it" },
+                { type: "improvement", text: "Card width default reduced from 3 to 2 columns for a more compact canvas layout" },
+                { type: "improvement", text: "Card height capped at 18 grid rows (~70% viewport) — overflow content is scrollable" },
+                { type: "improvement", text: "Streaming cards no longer jump in width when final result arrives" },
+                { type: "improvement", text: "Pinned cards use smartCardSize for fallback dimensions instead of hardcoded values" },
+                { type: "fix", text: "Delete All Data no longer removes changelog entries (system data preserved)" },
+                { type: "fix", text: "LLM warning banner disappears after configuring API key (re-checks on settings close)" },
+                { type: "fix", text: "Ollama and LM Studio providers no longer trigger the 'No API Key' warning" },
+            ]),
+        },
+        {
+            version: "0.9.7",
+            date: "2026-03-14",
+            entries: JSON.stringify([
+                { type: "feature", text: "Per-Tab Webview Architecture: each tab now has its own independent webview (Chrome model) — no more shared state, reload flashes, or cross-tab contamination" },
+                { type: "feature", text: "URL Omnibox search: suggestions now match both URL and page title (typing 'gmail' finds Gmail pages)" },
+                { type: "improvement", text: "Tab switching is instant — no page reload, each tab preserves its own navigation history and scroll position" },
+                { type: "improvement", text: "URL bar shows recent history when input is cleared (Chrome-like omnibox)" },
+                { type: "improvement", text: "Pinned webview cards now save the active tab's URL instead of the first tab's URL" },
+                { type: "fix", text: "Fixed double page load when navigating in webview (WebviewWithLogging no longer re-renders on URL prop changes)" },
+                { type: "fix", text: "Fixed tab title updates contaminating other tabs within the same card" },
+                { type: "fix", text: "Removed obsolete tab-switch code: lastUrlByTabRef, prevInitialUrlRef, activeTabIdxRef" },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {

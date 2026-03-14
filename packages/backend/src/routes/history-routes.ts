@@ -7,7 +7,7 @@
 // ============================================================
 
 import { Hono } from "hono";
-import { eq, desc, like } from "drizzle-orm";
+import { eq, desc, like, or } from "drizzle-orm";
 import { db } from "../db/db.js";
 import { browsingHistory } from "../db/schema.js";
 
@@ -22,11 +22,17 @@ historyRoutes.get("/", async (c) => {
 
         let entries;
         if (search) {
+            // Search both URL and title (Chrome-like omnibox)
             entries = await db
                 .select()
                 .from(browsingHistory)
-                .where(like(browsingHistory.url, `%${search}%`))
-                .orderBy(desc(browsingHistory.last_visited))
+                .where(
+                    or(
+                        like(browsingHistory.url, `%${search}%`),
+                        like(browsingHistory.title, `%${search}%`),
+                    )!
+                )
+                .orderBy(desc(browsingHistory.visit_count), desc(browsingHistory.last_visited))
                 .limit(limit)
                 .all();
         } else {

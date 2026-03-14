@@ -24,6 +24,7 @@ import { LinkCard } from "./LinkCard";
 import { ContextSidebar } from "./ContextSidebar";
 import { useContextWatcher } from "./useContextWatcher";
 import { buildExtractionScript } from "./extractPageContent";
+import { useCardContext } from "../CardContext";
 
 // ─── Blocklist ──────────────────────────────────────────────
 
@@ -67,7 +68,11 @@ const SCRAPER_API = "http://localhost:3001/api/scrapers";
 
 // ─── Webview with Lifecycle Logging ─────────────────────────
 
-const WebviewWithLogging = React.forwardRef<any, { src: string }>(
+// Wrapped in React.memo with () => true: the webview must NEVER re-render
+// after mount. The `src` prop is only used for the initial load; subsequent
+// navigation is handled internally via loadURL(). Re-rendering would cause
+// the webview to reload from the new src, causing a visible double-load.
+const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
     function WebviewWithLogging({ src }, ref) {
         const localRef = useRef<any>(null);
         const listenersAttachedRef = useRef(false);
@@ -158,7 +163,7 @@ const WebviewWithLogging = React.forwardRef<any, { src: string }>(
             />
         );
     }
-);
+), () => true); // Never re-render — webview handles navigation internally
 
 // ─── IframeBlock ────────────────────────────────────────────
 
@@ -183,40 +188,8 @@ export const IframeBlock = React.memo(function IframeBlock({
     const webviewRef = useRef<any>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
-    // Per-tab URL memory: remembers last navigated URL for each tab
-    const lastUrlByTabRef = useRef<Map<string, string>>(new Map());
-
     // Per-hostname chat history for multi-turn conversations
     const chatHistoryRef = useRef<Map<string, { role: "user" | "assistant"; content: string }[]>>(new Map());
-
-    // Sync with prop changes (tab switches)
-    const prevInitialUrlRef = useRef(initialUrl);
-    React.useEffect(() => {
-        const isRealTabSwitch = prevInitialUrlRef.current !== initialUrl;
-        if (!isRealTabSwitch) return; // Skip re-renders, fullscreen toggles, etc.
-
-        const prevTabKey = prevInitialUrlRef.current;
-        prevInitialUrlRef.current = initialUrl;
-
-        // Save outgoing tab's navigated URL + context hints
-        lastUrlByTabRef.current.set(prevTabKey, currentUrl);
-        ctx.restoreCachedContext(
-            lastUrlByTabRef.current.get(initialUrl) || initialUrl,
-            currentUrl,
-            ctx.contextHints,
-        );
-
-        // Restore to last navigated URL for this tab, not the initial URL
-        const targetUrl = lastUrlByTabRef.current.get(initialUrl) || initialUrl;
-        setCurrentUrl(targetUrl);
-        setUrlInput(targetUrl);
-        setFaviconError(false);
-
-        // Navigate the webview to the restored URL
-        if (isElectron && webviewRef.current?.loadURL) {
-            webviewRef.current.loadURL(targetUrl).catch(() => { /* ERR_ABORTED from redirects is normal */ });
-        }
-    }, [initialUrl, isElectron]);
 
     // ─── Webview-only zoom (Ctrl+Scroll / Ctrl+- / Ctrl+=) ─────
     const applyZoom = useCallback((newPercent: number) => {
@@ -296,10 +269,11 @@ export const IframeBlock = React.memo(function IframeBlock({
     }, [applyZoom]);
 
     // ─── Context Watcher Hook ───────────────────────────────
+    const cardCtx = useCardContext();
     const ctx = useContextWatcher(webviewRef, initialUrl, isElectron, {
         setCurrentUrl,
         setUrlInput,
-    });
+    }, cardCtx?.cardId);
 
     // ─── Derived values ─────────────────────────────────────
     let hostname = currentUrl;
@@ -364,14 +338,24 @@ export const IframeBlock = React.memo(function IframeBlock({
         // Debounced search
         if (suggestionsTimerRef.current) clearTimeout(suggestionsTimerRef.current);
         suggestionsTimerRef.current = setTimeout(async () => {
-            if (!val.trim()) { setShowSuggestions(false); return; }
+            // Empty input → show recent history (Chrome-like)
+            if (!val.trim()) {
+                try {
+                    const res = await fetch('http://localhost:3001/api/history?limit=8');
+                    const data = await res.json();
+                    setUrlSuggestions(data.entries ?? []);
+                    setShowSuggestions(true);
+                } catch { setShowSuggestions(false); }
+                return;
+            }
+            // Non-empty → search by URL + title
             try {
                 const res = await fetch(`http://localhost:3001/api/history?limit=6&q=${encodeURIComponent(val)}`);
                 const data = await res.json();
                 setUrlSuggestions(data.entries ?? []);
                 setShowSuggestions(true);
             } catch { /* ignore */ }
-        }, 200);
+        }, 150);
     }, []);
 
     // In browser: blocked sites get link card

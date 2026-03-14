@@ -49,6 +49,7 @@ export function useContextWatcher(
     initialUrl: string,
     isElectron: boolean,
     navSync: NavigationSync,
+    cardId?: string,
 ) {
     const [contextNotice, setContextNotice] = useState<string | null>(null);
     const [pickerActive, setPickerActive] = useState(false);
@@ -269,7 +270,7 @@ export function useContextWatcher(
                 if (info.title && info.title !== "about:blank") {
                     window.dispatchEvent(
                         new CustomEvent("biamos:tab-title-update", {
-                            detail: { url: info.url, title: info.title, sourceUrl: initialUrl },
+                            detail: { url: info.url, title: info.title, cardId },
                         })
                     );
                 }
@@ -285,7 +286,7 @@ export function useContextWatcher(
                 if (info.url) { navSync.setCurrentUrl(info.url); navSync.setUrlInput(info.url); }
                 if (info.title && info.title !== "about:blank") {
                     window.dispatchEvent(new CustomEvent("biamos:tab-title-update", {
-                        detail: { url: info.url, title: info.title, sourceUrl: initialUrl },
+                        detail: { url: info.url, title: info.title, cardId },
                     }));
                 }
             } catch { /* */ }
@@ -309,7 +310,7 @@ export function useContextWatcher(
                     if (info.url) { navSync.setCurrentUrl(info.url); navSync.setUrlInput(info.url); }
                     if (info.title && info.title !== "about:blank") {
                         window.dispatchEvent(new CustomEvent("biamos:tab-title-update", {
-                            detail: { url: info.url, title: info.title, sourceUrl: initialUrl },
+                            detail: { url: info.url, title: info.title, cardId },
                         }));
                     }
                     handlePageChange();

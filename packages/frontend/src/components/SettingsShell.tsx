@@ -56,8 +56,13 @@ const navItemSx = (active: boolean) => ({
 // Component
 // ============================================================
 
-export const SettingsShell = React.memo(function SettingsShell() {
-    const [activePanel, setActivePanel] = useState<Panel>("general");
+export const SettingsShell = React.memo(function SettingsShell({ initialPanel = "general" }: { initialPanel?: Panel }) {
+    const [activePanel, setActivePanel] = useState<Panel>(initialPanel);
+
+    // Sync when initialPanel changes from parent
+    useEffect(() => {
+        setActivePanel(initialPanel);
+    }, [initialPanel]);
     const [llmMissing, setLlmMissing] = useState(false);
 
     // Check if LLM provider is configured

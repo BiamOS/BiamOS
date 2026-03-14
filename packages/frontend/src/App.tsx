@@ -123,7 +123,9 @@ export default function App() {
     }, [stopSpeech]);
 
     const [showManager, setShowManager] = useState(false);
+    const [settingsPanel, setSettingsPanel] = useState<string>("general");
     const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+    const [llmMissing, setLlmMissing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(1200);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -161,13 +163,19 @@ export default function App() {
     const [splashDone, setSplashDone] = useState(false);
     const onSplashComplete = useCallback(() => setSplashDone(true), []);
 
-    // Check if user has API key configured
+    // Check if user has API key configured (re-check when leaving settings)
     useEffect(() => {
         fetch("/api/system/provider")
             .then(r => r.json())
-            .then(d => setNeedsSetup(!d.hasApiKey))
-            .catch(() => setNeedsSetup(true));
-    }, []);
+            .then(d => {
+                setNeedsSetup(!d.hasApiKey);
+                setLlmMissing(!d.hasApiKey);
+            })
+            .catch(() => {
+                setNeedsSetup(true);
+                setLlmMissing(true);
+            });
+    }, [showManager]);
 
     const toggleManager = () => setShowManager((s) => !s);
 
@@ -301,7 +309,7 @@ export default function App() {
                         {/* Settings view — stays mounted, hidden via CSS */}
                         <Box sx={{ flex: 1, display: showManager ? "flex" : "none", overflow: "auto" }}>
                             <Box sx={{ flex: 1, height: "calc(100vh - 140px)" }}>
-                                <SettingsShell />
+                                <SettingsShell initialPanel={settingsPanel as any} />
                             </Box>
                         </Box>
 
@@ -455,9 +463,9 @@ export default function App() {
                             onSuggestionClick={handleSuggestionClick}
                             onToggle={toggleChat}
                         />
-                        {needsSetup && (
+                        {llmMissing && (
                             <Box
-                                onClick={() => setShowManager(true)}
+                                onClick={() => { setSettingsPanel("llm"); setShowManager(true); }}
                                 sx={{
                                     display: "flex",
                                     alignItems: "center",

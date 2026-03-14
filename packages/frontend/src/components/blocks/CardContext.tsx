@@ -20,7 +20,12 @@ export interface CardState {
     errors: Record<string, string | null>;
 }
 
-interface CardContextValue extends CardState {
+/** Identity info passed down from Whitebox so blocks can scope events */
+export interface CardIdentity {
+    cardId: string;
+}
+
+interface CardContextValue extends CardState, CardIdentity {
     setResult: (blockId: string, data: any) => void;
     setLoading: (blockId: string, loading: boolean) => void;
     setError: (blockId: string, error: string | null) => void;
@@ -36,7 +41,7 @@ export function useCardContext(): CardContextValue | null {
 
 // ─── Provider ───────────────────────────────────────────────
 
-export function CardContextProvider({ children }: { children: React.ReactNode }) {
+export function CardContextProvider({ children, cardId = '' }: { children: React.ReactNode; cardId?: string }) {
     const [state, setState] = useState<CardState>({
         results: {},
         loading: {},
@@ -68,7 +73,7 @@ export function CardContextProvider({ children }: { children: React.ReactNode })
     }, []);
 
     return (
-        <CardCtx.Provider value={{ ...state, setResult, setLoading, setError }}>
+        <CardCtx.Provider value={{ ...state, cardId, setResult, setLoading, setError }}>
             {children}
         </CardCtx.Provider>
     );

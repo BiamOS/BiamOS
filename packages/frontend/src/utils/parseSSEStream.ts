@@ -29,12 +29,14 @@ const yieldToRenderer = () => new Promise<void>((r) => {
  * Parse an SSE stream from a fetch Response.
  * Calls `onStep` for each "step" event with the full step data,
  * calls `onBlock` for each progressive "block" event,
+ * calls `onGroupHint` when the backend signals which group/integration owns this result,
  * and returns the final "result" event data.
  */
 export async function parseSSEStream<T = any>(
     response: Response,
     onStep?: (label: string, stepData?: SSEStepData) => void,
     onBlock?: (block: any, index: number, intentIndex?: number) => void,
+    onGroupHint?: (groupName: string, integrationId?: string) => void,
 ): Promise<T | null> {
     const reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
@@ -62,6 +64,8 @@ export async function parseSSEStream<T = any>(
                     const parsed = JSON.parse(line.slice(6));
                     if (currentEvent === "step") {
                         onStep?.(parsed.label || parsed.step, parsed as SSEStepData);
+                    } else if (currentEvent === "group_hint") {
+                        onGroupHint?.(parsed.group_name, parsed.integration_id);
                     } else if (currentEvent === "block") {
                         onBlock?.(parsed.block, parsed.index, parsed.intentIndex);
                         // Yield to event loop so React flushes the render

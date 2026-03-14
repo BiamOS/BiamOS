@@ -184,37 +184,65 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
 
         // ─── Check if query might target an existing group ────
         const queryWords = text.toLowerCase().split(/\s+/);
-        const matchedGroupCard = canvas.itemsRef.current.find(
+        let matchedGroupCard = canvas.itemsRef.current.find(
             (item) => {
-                if (item._loading || !item._groupName) return false;
-                const gn = item._groupName.toLowerCase();
-                // Direct group name match
-                const nameMatch = queryWords.some(w => gn.startsWith(w) || w.startsWith(gn));
-                if (nameMatch) return true;
-                // Integration ID match (e.g. "OpenMeteoWidget" → "openmeteo")
+                if (item._loading) return false;
+
+                // 1) Group name match (includes, not just startsWith)
+                const gn = (item._groupName || "").toLowerCase();
+                if (gn) {
+                    const nameMatch = queryWords.some(w => gn.includes(w) || w.includes(gn));
+                    if (nameMatch) {
+                        debug.log(`🔗 [Group Match] Hit via groupName: "${gn}" ← query "${text}"`);
+                        return true;
+                    }
+                }
+
+                // 2) Integration ID match (e.g. "open-meteo" or "OpenMeteoWidget")
                 const intId = item.payload?.integration_id;
                 if (intId && typeof intId === "string") {
-                    const intName = intId.toLowerCase().replace(/widget$/i, "");
-                    if (queryWords.some(w => intName.includes(w) || w.includes(intName))) return true;
+                    const intName = intId.toLowerCase().replace(/[-_]?(widget|api|service)$/i, "");
+                    if (queryWords.some(w => intName.includes(w) || w.includes(intName))) {
+                        debug.log(`🔗 [Group Match] Hit via integration_id: "${intId}" ← query "${text}"`);
+                        return true;
+                    }
                 }
-                // Previous query keyword overlap (e.g. existing "wetter wien" matches new "wetter budapest")
-                const prevQuery = item._query?.toLowerCase();
-                if (prevQuery) {
-                    const prevWords = prevQuery.split(/\s+/).filter(w => w.length >= 3);
-                    const newWords = queryWords.filter(w => w.length >= 3);
+
+                // 3) Query keyword overlap — check main query AND all tab labels
+                const queriesToCheck: string[] = [];
+                if (item._query) queriesToCheck.push(item._query.toLowerCase());
+                if (item.tabs) {
+                    for (const tab of item.tabs) {
+                        if (tab.label) queriesToCheck.push(tab.label.toLowerCase());
+                        if (tab.payload?._query) queriesToCheck.push(String(tab.payload._query).toLowerCase());
+                    }
+                }
+
+                const newWords = queryWords.filter(w => w.length >= 3);
+                for (const pq of queriesToCheck) {
+                    const prevWords = pq.split(/\s+/).filter(w => w.length >= 3);
                     const overlap = newWords.filter(w => prevWords.includes(w));
-                    if (overlap.length > 0 && overlap.length >= Math.min(prevWords.length, newWords.length) * 0.5) return true;
+                    if (overlap.length > 0 && overlap.length >= Math.min(prevWords.length, newWords.length) * 0.4) {
+                        debug.log(`🔗 [Group Match] Hit via query overlap: "${pq}" ∩ "${text}" → [${overlap.join(", ")}]`);
+                        return true;
+                    }
                 }
+
+                debug.log(`🔗 [Group Match] No match: card "${item._id}" (group="${gn}", intId="${intId || "none"}", query="${item._query}") vs "${text}"`);
                 return false;
             }
         );
 
         let loadingId = "";
         let loadingSpawned = false;
+        // Track streaming tab ID for group-matched streaming
+        let streamingTabId = "";
         if (matchedGroupCard) {
-            loadingId = "";
+            // We'll stream blocks directly into a new tab on this card
+            streamingTabId = `tab-stream-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            loadingId = ""; // No standalone card needed
             canvas.setItems((prev) => prev.map((item) =>
-                item._id === matchedGroupCard._id
+                item._id === matchedGroupCard!._id
                     ? { ...item, _pendingTabLoading: true, _pendingPipelineStep: "🎯 Intent received" }
                     : item
             ));
@@ -286,7 +314,7 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
                 // Update pending tab-loading cards only (no skeleton to update)
                 if (matchedGroupCard) {
                     canvas.setItems((prev) => prev.map((item) => {
-                        if (item._pendingTabLoading && item._id === matchedGroupCard._id) {
+                        if (item._pendingTabLoading && item._id === matchedGroupCard!._id) {
                             return { ...item, _pendingPipelineStep: label };
                         }
                         return item;
@@ -295,6 +323,70 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
             },
                 // Progressive block rendering — blocks create/grow the real card
                 (block, _blockIdx) => {
+                    // ─── Matched group: stream into a new tab ────────
+                    if (matchedGroupCard && streamingTabId) {
+                        canvas.setItems((prev) => prev.map(item => {
+                            if (item._id !== matchedGroupCard!._id) return item;
+
+                            const tabs = item.tabs ?? [{
+                                id: `tab-original-${item._id}`,
+                                label: item._query || "Original",
+                                payload: item.payload,
+                            }];
+
+                            // Find streaming tab
+                            const existingStreamTab = tabs.find(t => t.id === streamingTabId);
+
+                            if (!existingStreamTab) {
+                                // First block: CREATE new streaming tab
+                                const newTabPayload = {
+                                    action: "render_layout" as const,
+                                    _query: text,
+                                    layout: { blocks: [block] },
+                                } as BiamPayload;
+                                const newTab = {
+                                    id: streamingTabId,
+                                    label: text,
+                                    payload: newTabPayload,
+                                };
+                                const newTabs = [...tabs, newTab];
+                                return {
+                                    ...item,
+                                    tabs: newTabs,
+                                    activeTabIndex: newTabs.length - 1,
+                                    payload: newTabPayload,
+                                    _query: text,
+                                    _streaming: true,
+                                    _pendingTabLoading: false,
+                                };
+                            } else {
+                                // Subsequent blocks: append to streaming tab
+                                const currentBlocks = existingStreamTab.payload?.layout?.blocks || [];
+                                const updatedPayload = {
+                                    ...existingStreamTab.payload,
+                                    layout: { blocks: [...currentBlocks, block] },
+                                } as BiamPayload;
+                                const updatedTabs = tabs.map(t =>
+                                    t.id === streamingTabId ? { ...t, payload: updatedPayload } : t
+                                );
+                                // Grow card height as needed
+                                const newSize = smartCardSize(updatedPayload);
+                                return {
+                                    ...item,
+                                    tabs: updatedTabs,
+                                    payload: updatedPayload,
+                                    layout: {
+                                        ...item.layout,
+                                        w: Math.max(item.layout.w, newSize.w),
+                                        h: Math.max(item.layout.h, newSize.h),
+                                    },
+                                };
+                            }
+                        }));
+                        return;
+                    }
+
+                    // ─── Standalone card streaming ───────────────────
                     if (!loadingId) return;
                     canvas.setItems((prev) => {
                         const existing = prev.find(i => i._id === loadingId);
@@ -302,36 +394,75 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
                         if (!existing) {
                             // First block: CREATE a real card with actual content
                             loadingSpawned = true;
+                            const partialPayload = {
+                                action: "render_layout" as const,
+                                _query: text,
+                                layout: { blocks: [block] },
+                            };
+                            const initSize = smartCardSize(partialPayload);
                             debug.log(`📐 [SSE] Creating card "${loadingId}" — prev has ${prev.length} items: [${prev.map(i => i._id + '(' + i.layout.x + ',' + i.layout.y + ',' + i.layout.w + 'x' + i.layout.h + ')').join(', ')}]`);
-                            const pos = findNextSlot(prev, 4, 10);
+                            const pos = findNextSlot(prev, initSize.w, initSize.h);
                             return [...prev, {
                                 _id: loadingId,
                                 _query: text,
                                 _streaming: true,
                                 _loading: false,
-                                payload: {
-                                    action: "render_layout",
-                                    _query: text,
-                                    layout: { blocks: [block] },
-                                },
-                                layout: { ...pos, w: 4, h: 10 },
+                                payload: partialPayload,
+                                layout: { ...pos, ...initSize },
                             }];
                         } else if ((existing as any)._streaming) {
-                            // Subsequent blocks: append to existing card
+                            // Subsequent blocks: append to existing card + grow layout
                             return prev.map(item => {
                                 if (item._id !== loadingId) return item;
                                 const currentBlocks = item.payload?.layout?.blocks || [];
+                                const updatedPayload = {
+                                    ...item.payload,
+                                    layout: { blocks: [...currentBlocks, block] },
+                                };
+                                // Recalculate size with accumulated blocks (grow, never shrink)
+                                const newSize = smartCardSize(updatedPayload);
                                 return {
                                     ...item,
-                                    payload: {
-                                        ...item.payload,
-                                        layout: { blocks: [...currentBlocks, block] },
+                                    payload: updatedPayload,
+                                    layout: {
+                                        ...item.layout,
+                                        w: Math.max(item.layout.w, newSize.w),
+                                        h: Math.max(item.layout.h, newSize.h),
                                     },
                                 };
                             });
                         }
                         return prev;
                     });
+                },
+                // onGroupHint — backend signals which group owns this result (before blocks)
+                (hintGroupName: string, hintIntegrationId?: string) => {
+                    // Already matched? skip
+                    if (matchedGroupCard && streamingTabId) return;
+
+                    debug.log(`🔗 [Group Hint] Backend says group="${hintGroupName}", integration="${hintIntegrationId || 'none'}"`);
+
+                    // Find an existing card that matches this group or integration
+                    const hintMatch = canvas.itemsRef.current.find(item => {
+                        if (item._loading || (item as any)._streaming) return false;
+                        // Match by group name
+                        if (item._groupName && item._groupName.toLowerCase() === hintGroupName.toLowerCase()) return true;
+                        // Match by integration_id
+                        if (hintIntegrationId && item.payload?.integration_id === hintIntegrationId) return true;
+                        return false;
+                    });
+
+                    if (hintMatch) {
+                        debug.log(`🔗 [Group Hint] Matched existing card "${hintMatch._id}" — will stream as tab`);
+                        matchedGroupCard = hintMatch;
+                        streamingTabId = `tab-stream-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+                        // If a standalone streaming card was already created, remove it
+                        if (loadingSpawned && loadingId) {
+                            canvas.setItems(prev => prev.filter(item => item._id !== loadingId));
+                            loadingId = "";
+                        }
+                    }
                 });
 
             setPipelineStep(null);
@@ -475,6 +606,30 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
 
                         const groupName = (result as any)._group_name as string | undefined;
 
+                        // If we streamed directly into a tab, finalize it now
+                        if (rIdx === 0 && matchedGroupCard && streamingTabId) {
+                            const finalSize = smartCardSize(result);
+                            canvas.setItems((prev) => prev.map(item => {
+                                if (item._id !== matchedGroupCard!._id) return item;
+                                const tabs = (item.tabs ?? []).map(t =>
+                                    t.id === streamingTabId
+                                        ? { ...t, label: (result as any)._intent?.entity || result._query || text, payload: { ...result, _query: result._query || text } as BiamPayload }
+                                        : t
+                                );
+                                const activeTab = tabs.find(t => t.id === streamingTabId);
+                                return {
+                                    ...item,
+                                    tabs,
+                                    payload: activeTab?.payload ?? item.payload,
+                                    _query: activeTab?.label || item._query,
+                                    _streaming: false,
+                                    _groupName: groupName || item._groupName,
+                                    layout: { ...item.layout, h: Math.max(item.layout.h, finalSize.h) },
+                                };
+                            }));
+                            continue;
+                        }
+
                         if (groupName) {
                             const existingItem = canvas.itemsRef.current.find(
                                 (item) => !item._loading && !(item as any)._streaming && item._groupName === groupName
@@ -501,7 +656,7 @@ export function useIntentHandler(options?: { speak?: (text: string) => void }) {
                                     ...item,
                                     _query: query,
                                     payload: { ...result, _query: query },
-                                    layout: { ...item.layout, ...size },
+                                    layout: { ...item.layout, h: Math.max(item.layout.h, size.h) },
                                     _loading: false,
                                     _streaming: false,
                                     _groupName: groupName,
