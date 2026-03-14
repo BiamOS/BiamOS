@@ -310,6 +310,23 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "improvement", text: "Webview readiness polling: agent waits for page transitions to complete before interacting (handles Gmail/SPA navigation)" },
             ]),
         },
+        {
+            version: "1.0.0-alpha",
+            date: "2026-03-14",
+            entries: JSON.stringify([
+                { type: "feature", text: "AI Agent — Background Web Search: new search_web tool lets the agent search the web (via DuckDuckGo) without leaving the current page — finds YouTube videos, news, and facts while staying on Gmail" },
+                { type: "feature", text: "AI Agent — Go Back Navigation: new go_back tool acts like the browser back button, enabling multi-site flows (Gmail → YouTube → go_back → Gmail)" },
+                { type: "feature", text: "AI Agent — Smart Email Composition: Tab-based navigation between form fields (To → Tab → Subject → Tab → Body) instead of unreliable coordinate clicking" },
+                { type: "feature", text: "AI Agent — Search API Endpoint: POST /api/agents/search returns real web search results with clean, decoded URLs and descriptions" },
+                { type: "improvement", text: "AI Agent — Auto-retry: if an element isn't editable yet (e.g. Gmail Subject after Tab), the agent waits 1.5s and retries automatically up to 3 times — saves 2+ LLM API calls per email" },
+                { type: "improvement", text: "AI Agent — Anti-Loop Rules: strengthened prompt rules prevent the agent from re-typing text that's already been entered (was causing infinite loops)" },
+                { type: "improvement", text: "AI Agent — Step Display: agent step results are now truncated to 80 chars in the sidebar for cleaner overview" },
+                { type: "improvement", text: "Copilot sidebar: word-break/wrap for long text content — no more horizontal overflow" },
+                { type: "improvement", text: "Navigation: switched from loadURL (blocked by Gmail's beforeunload) to window.location.href injected via executeJavaScript" },
+                { type: "fix", text: "Navigate from Gmail: Gmail's draft save warning no longer blocks webview navigation" },
+                { type: "fix", text: "DuckDuckGo search URLs are now decoded from redirect format to clean, readable links" },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {

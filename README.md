@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v0.9.4-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v1.0.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -93,6 +93,7 @@ BiamOS runs **two independent AI assistants**, each with a distinct role:
 - 📸 **Screenshot Analysis** — takes a visual snapshot for multimodal understanding
 - 🔍 **Web Search Buddy** — answers questions with clickable source links
 - 💬 **Context Chat** — multi-turn conversations scoped to the current site
+- 🤖 **AI Browser Agent (Alpha)** — autonomous click, type, scroll, search, and navigate across any website
 
 </td>
 </tr>
@@ -105,6 +106,38 @@ BiamOS runs **two independent AI assistants**, each with a distinct role:
 4. The Copilot analyzes the inbox and responds — **no API, no OAuth, just local AI magic** 👻
 
 ---
+
+## 🤖 AI Browser Agent (Alpha)
+
+> **Your AI can now control the browser.**
+
+Type `/act` followed by a task, and the AI Browser Agent takes over — clicking, typing, scrolling, and searching autonomously. No APIs needed, no code required.
+
+```
+/act Open Gmail, compose an email to team@company.com. Subject: "AI Market Update".
+    Search the web for "top AI browser agents 2026" and write a professional
+    briefing with the top 3 tools, their links, and what each does. Don't send.
+```
+
+**What happens:**
+1. 📧 Agent opens Gmail, clicks Compose, fills To and Subject
+2. 🔍 Background web search runs (no tab switch!) — finds real results with links
+3. ✍️ Agent writes the email body with research findings
+4. ⏸️ Pauses before sending — asks for your confirmation
+
+### Agent Tools
+| Tool | Description |
+|------|-------------|
+| `click_at` | Click any element by coordinates |
+| `type_text` | Type into inputs, textareas, contenteditable |
+| `scroll` | Scroll up/down to reveal content |
+| `navigate` | Go to a different website |
+| `go_back` | Return to the previous page |
+| `search_web` | Background web search without leaving the current page |
+| `ask_user` | Pause and ask for confirmation before destructive actions |
+
+> ⚠️ **Alpha**: This is the first release of autonomous browser automation. Works best with Gmail, YouTube, Google, and Hacker News. More sites and capabilities coming soon.
+
 
 ## ✨ Core Features
 
@@ -202,13 +235,13 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v0.9.4** — Fresh install fixes, developer documentation panel, and changelog auto-sync.
+See the latest changes: **v1.0.0-alpha** — AI Browser Agent with autonomous web automation, background web search, smart email composition, and multi-site navigation.
 
 ---
 
 ## 🛣️ Roadmap
 
-- [ ] **Autopilot Mode** — Multi-step browser automation (click, fill, submit)
+- [x] **Autopilot Mode** — Multi-step browser automation (click, fill, submit) ✅ *v1.0.0-alpha*
 - [ ] **Plugin Marketplace** — Community-created integrations
 - [ ] **Scheduled Agents** — Cron-based data collection and alerts
 - [ ] **macOS & Linux Builds** — Cross-platform Electron packaging
