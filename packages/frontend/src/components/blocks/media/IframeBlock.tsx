@@ -25,6 +25,8 @@ import { ContextSidebar } from "./ContextSidebar";
 import { useContextWatcher } from "./useContextWatcher";
 import { buildExtractionScript } from "./extractPageContent";
 import { useCardContext } from "../CardContext";
+import { useAgentActions } from "./useAgentActions";
+import { AgentOverlay } from "./AgentOverlay";
 
 // ─── Blocklist ──────────────────────────────────────────────
 
@@ -190,6 +192,46 @@ export const IframeBlock = React.memo(function IframeBlock({
 
     // Per-hostname chat history for multi-turn conversations
     const chatHistoryRef = useRef<Map<string, { role: "user" | "assistant"; content: string }[]>>(new Map());
+
+    // ─── AI Browser Agent ───────────────────────────────────
+    const agent = useAgentActions(webviewRef, isElectron);
+    const agentTaskRef = useRef("");
+
+    // Sync agent state → sidebar chat hint
+    useEffect(() => {
+        const { status, currentAction, steps } = agent.agentState;
+        const taskLabel = agentTaskRef.current;
+        if (!taskLabel) return;
+        const queryKey = `🤖 Agent: ${taskLabel}`;
+
+        // When agent stops/resets → mark chat hint as done
+        if (status === "idle") {
+            ctx.setContextHints(prev => prev.map(h =>
+                h.query === queryKey && h.loading
+                    ? { ...h, loading: false, data: { ...h.data, summary: (h.data?.summary || "") + "\n\n⏹️ Gestoppt" } }
+                    : h
+            ));
+            return;
+        }
+
+        // Build summary from steps
+        const stepsSummary = steps
+            .filter(s => s.action !== "ask_user")
+            .map((s, i) => `${i + 1}. ${s.description}${s.result ? ` → ${s.result}` : ""}`)
+            .join("\n");
+        const statusEmoji = status === "done" ? "✅" : status === "error" ? "❌" : status === "paused" ? "⏸️" : "🔄";
+        const summary = stepsSummary
+            ? `${statusEmoji} ${currentAction}\n\n**Steps:**\n${stepsSummary}`
+            : `${statusEmoji} ${currentAction}`;
+        
+        const isDone = status === "done" || status === "error";
+
+        ctx.setContextHints(prev => prev.map(h =>
+            h.query === queryKey
+                ? { ...h, loading: !isDone, data: { summary, _source: "page_context" } }
+                : h
+        ));
+    }, [agent.agentState]);
 
     // ─── Webview-only zoom (Ctrl+Scroll / Ctrl+- / Ctrl+=) ─────
     const applyZoom = useCallback((newPercent: number) => {
@@ -747,6 +789,13 @@ export const IframeBlock = React.memo(function IframeBlock({
             <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
                 {/* Main webview/iframe area */}
                 <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    {/* AI Agent Overlay */}
+                    <AgentOverlay
+                        state={agent.agentState}
+                        task={agentTaskRef.current}
+                        onStop={agent.stopAgent}
+                        onContinue={() => agent.continueAgent(agentTaskRef.current)}
+                    />
                     {ctrlHeld && (
                         <Box
                             onMouseDown={() => setCtrlHeld(false)}
@@ -807,6 +856,22 @@ export const IframeBlock = React.memo(function IframeBlock({
                         }}
                         onTriggerAnalysis={ctx.triggerManualAnalysis}
                         onManualQuery={async (query) => {
+                            // ─── /act command → Start AI Agent ─────────
+                            if (query.trim().toLowerCase().startsWith("/act ") || query.trim().toLowerCase() === "/act") {
+                                const task = query.replace(/^\/act\s*/i, "").trim() || "Analyze this page and tell me what you see";
+                                agentTaskRef.current = task;
+                                // Show agent activity in chat
+                                ctx.setContextHints(prev => [...prev, {
+                                    query: `🤖 Agent: ${task}`,
+                                    reason: "Manual query",
+                                    expanded: true,
+                                    loading: true,
+                                    timestamp: Date.now(),
+                                    data: { summary: "Starting AI Browser Agent..." },
+                                }]);
+                                agent.startAgent(task);
+                                return;
+                            }
                             // Extract page context from webview for the Context Chat Agent
                             let pageUrl = "";
                             let pageTitle = "";

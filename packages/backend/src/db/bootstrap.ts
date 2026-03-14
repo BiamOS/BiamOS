@@ -298,6 +298,18 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "fix", text: "Removed obsolete tab-switch code: lastUrlByTabRef, prevInitialUrlRef, activeTabIdxRef" },
             ]),
         },
+        {
+            version: "0.9.8",
+            date: "2026-03-14",
+            entries: JSON.stringify([
+                { type: "feature", text: "AI Browser Agent: the Copilot can now click, type, and scroll inside any webview — type /act followed by a task to start (e.g. '/act find the most important email and open it')" },
+                { type: "feature", text: "Agent Visual Overlay: pulsing cyan border, animated cursor dot at click targets, and status bar with step counter during agent activity" },
+                { type: "feature", text: "Human-in-the-loop safety: agent pauses and asks for confirmation before sending, submitting, or deleting anything" },
+                { type: "improvement", text: "Coordinate-based clicking (elementFromPoint) instead of CSS selectors — works reliably on complex SPAs like Gmail and YouTube" },
+                { type: "improvement", text: "Contextual text composition: agent matches language, tone, and style of surrounding conversation when writing replies" },
+                { type: "improvement", text: "Webview readiness polling: agent waits for page transitions to complete before interacting (handles Gmail/SPA navigation)" },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {

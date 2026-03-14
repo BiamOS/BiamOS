@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 BiamOS Contributors
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import { eq } from "drizzle-orm";
 import { db } from "../db/db.js";
 import { agents } from "../db/schema.js";
@@ -9,6 +10,7 @@ import { updateAgentSchema } from "../validators/schemas.js";
 import { getProviderConfig, getModelsUrl } from "../services/llm-provider.js";
 import { SEED_AGENTS } from "../agents/agent-defaults.js";
 import { log } from "../utils/logger.js";
+import { streamAgentStep } from "../services/agent-actions.js";
 
 const agentRoutes = new Hono();
 
@@ -298,6 +300,40 @@ agentRoutes.post("/:name/reset", async (c) => {
         biam_protocol: "2.0",
         action: "agent_reset",
         agent: updated,
+    });
+});
+
+// ─── POST /act — AI Browser Agent Step (SSE) ───────────────
+// Receives screenshot + DOM snapshot, returns the next action.
+// The frontend calls this in a loop until "done" or "ask_user".
+
+agentRoutes.post("/act", async (c) => {
+    const body = await c.req.json().catch(() => null);
+
+    if (!body || !body.task) {
+        return c.json({ error: "task is required" }, 400);
+    }
+
+    log.debug(`  🤖 Agent /act: task="${body.task?.substring(0, 60)}" steps=${body.history?.length || 0}`);
+
+    c.header("Content-Type", "text/event-stream");
+    c.header("Cache-Control", "no-cache");
+    c.header("Connection", "keep-alive");
+
+    return stream(c, async (s) => {
+        await streamAgentStep(
+            {
+                task: body.task,
+                page_url: body.page_url || "",
+                page_title: body.page_title || "",
+                dom_snapshot: body.dom_snapshot || "",
+                screenshot: body.screenshot || undefined,
+                history: body.history || [],
+            },
+            (event) => {
+                s.write(event);
+            },
+        );
     });
 });
 

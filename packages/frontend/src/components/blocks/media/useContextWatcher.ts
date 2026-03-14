@@ -92,10 +92,11 @@ export function useContextWatcher(
             if (cached && cached.length > 0) {
                 setContextHints(cached);
             } else {
-                setContextHints([]);
+                // Keep agent hints — don't clear conversation when agent navigates
+                setContextHints(prev => prev.filter(h => h.query.startsWith("🤖")));
             }
         } catch {
-            setContextHints([]);
+            setContextHints(prev => prev.filter(h => h.query.startsWith("🤖")));
         }
         lastAnalyzedUrlRef.current = "";
     }, [saveCurrentContext]);

@@ -339,7 +339,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                     display: "flex", flexDirection: "column", alignItems: "center",
                                     justifyContent: "center", flex: 1, gap: 1, py: 2,
                                 }}>
-                                    <Typography sx={{ fontSize: "1.5rem" }}>💬</Typography>
+                                    <Typography sx={{ fontSize: "1.5rem" }}>🤖</Typography>
                                     <Typography sx={{
                                         color: "rgba(0, 212, 255, 0.3)",
                                         fontSize: "0.7rem",
@@ -347,7 +347,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                         textAlign: "center",
                                         lineHeight: 1.5,
                                     }}>
-                                        Ask anything about this page
+                                        Ask me anything or give me a task
                                     </Typography>
                                     {!hasHints && !isAnalyzing && !isPrivacyBlocked && onTriggerAnalysis && (
                                         <Box
@@ -563,6 +563,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 py: 0.5,
                             }}>
                                 {[
+                                    { cmd: "/act", emoji: "🤖", desc: "AI Agent — click, type, navigate" },
                                     { cmd: "/summarize", emoji: "📝", desc: "Summarize this page" },
                                     { cmd: "/translate", emoji: "🌍", desc: "Translate (e.g. /translate German)" },
                                     { cmd: "/extract", emoji: "📊", desc: "Extract structured data" },
