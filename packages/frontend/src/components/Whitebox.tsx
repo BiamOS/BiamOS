@@ -261,7 +261,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         }}
                         size="small"
                         sx={{
-                            p: 0.3,
+                            p: 0.5,
                             color: isPinned ? accentAlpha(0.8) : "rgba(255, 255, 255, 0.15)",
                             transition: "all 0.2s ease",
                             "&:hover": {
@@ -270,7 +270,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                             },
                         }}
                     >
-                        {isPinned ? <PinIcon sx={{ fontSize: 13 }} /> : <PinOutlinedIcon sx={{ fontSize: 13 }} />}
+                        {isPinned ? <PinIcon sx={{ fontSize: 16 }} /> : <PinOutlinedIcon sx={{ fontSize: 16 }} />}
                     </IconButton>
                 )}
 
@@ -289,7 +289,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         }}
                         size="small"
                         sx={{
-                            p: 0.3,
+                            p: 0.5,
                             color: refreshing ? accentAlpha(0.6) : "rgba(255, 255, 255, 0.15)",
                             transition: "all 0.2s ease",
                             animation: refreshing ? "spin 1s linear infinite" : "none",
@@ -303,7 +303,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                             },
                         }}
                     >
-                        <RefreshIcon sx={{ fontSize: 13 }} />
+                        <RefreshIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                 )}
 
@@ -313,7 +313,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         onClick={(e) => { e.stopPropagation(); setShowDebug(prev => !prev); }}
                         size="small"
                         sx={{
-                            p: 0.3,
+                            p: 0.5,
                             color: showDebug ? accentAlpha(0.8) : "rgba(255, 255, 255, 0.15)",
                             "&:hover": {
                                 color: accentAlpha(0.9),
@@ -321,7 +321,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                             },
                         }}
                     >
-                        <DebugIcon sx={{ fontSize: 13 }} />
+                        <DebugIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                 )}
                 <IconButton
@@ -330,7 +330,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                     size="small"
                     sx={{
                         ml: "auto",
-                        p: 0.3,
+                        p: 0.5,
                         color: isFullscreen ? accentAlpha(0.7) : "rgba(255, 255, 255, 0.15)",
                         "&:hover": {
                             color: accentAlpha(0.9),
@@ -338,14 +338,14 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         },
                     }}
                 >
-                    {isFullscreen ? <FullscreenExitIcon sx={{ fontSize: 15 }} /> : <FullscreenIcon sx={{ fontSize: 15 }} />}
+                    {isFullscreen ? <FullscreenExitIcon sx={{ fontSize: 17 }} /> : <FullscreenIcon sx={{ fontSize: 17 }} />}
                 </IconButton>
                 <IconButton
                     className="no-drag"
                     onClick={(e) => { e.stopPropagation(); onRemove(); }}
                     size="small"
                     sx={{
-                        p: 0.3,
+                        p: 0.5,
                         color: "rgba(255, 255, 255, 0.15)",
                         "&:hover": {
                             color: "rgba(255, 80, 80, 0.9)",
@@ -353,7 +353,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                         },
                     }}
                 >
-                    <CloseIcon sx={{ fontSize: 14 }} />
+                    <CloseIcon sx={{ fontSize: 16 }} />
                 </IconButton>
             </Box>
 

@@ -414,50 +414,53 @@ export const IframeBlock = React.memo(function IframeBlock({
     }
 
     const navBtnSx = {
-        width: 28, height: 28,
+        width: 34, height: 34,
+        borderRadius: "50%",
         color: COLORS.textMuted,
-        transition: "color 0.15s ease",
-        "&:hover": { color: COLORS.textPrimary, bgcolor: "rgba(255,255,255,0.06)" },
+        transition: "all 0.15s ease",
+        "&:hover": { color: COLORS.textPrimary, bgcolor: "rgba(255,255,255,0.08)" },
     };
 
     return (
         <Box sx={{ overflow: "hidden", display: "flex", flexDirection: "column", height: height || "100%", flex: 1, minHeight: 200 }}>
             {/* Browser-style toolbar */}
-            <Box sx={{
-                display: "flex", alignItems: "center", gap: 0.5, px: 1, py: 0.5,
+            <Box className="no-drag" sx={{
+                display: "flex", alignItems: "center", gap: 0, px: 0.5, py: 0.5,
                 bgcolor: "rgba(255, 255, 255, 0.03)",
                 borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                 flexShrink: 0,
+                minHeight: 42,
             }}>
                 {/* Navigation buttons */}
-                <Tooltip title="Back" arrow><IconButton size="small" onClick={handleBack} sx={navBtnSx}><ArrowBackIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
-                <Tooltip title="Forward" arrow><IconButton size="small" onClick={handleForward} sx={navBtnSx}><ArrowForwardIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
-                <Tooltip title="Refresh" arrow><IconButton size="small" onClick={handleRefresh} sx={navBtnSx}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+                <Tooltip title="Back" arrow><IconButton size="small" onClick={handleBack} sx={navBtnSx}><ArrowBackIcon sx={{ fontSize: 20 }} /></IconButton></Tooltip>
+                <Tooltip title="Forward" arrow><IconButton size="small" onClick={handleForward} sx={navBtnSx}><ArrowForwardIcon sx={{ fontSize: 20 }} /></IconButton></Tooltip>
+                <Tooltip title="Refresh" arrow><IconButton size="small" onClick={handleRefresh} sx={navBtnSx}><RefreshIcon sx={{ fontSize: 20 }} /></IconButton></Tooltip>
 
                 {/* URL bar */}
                 <Box
                     component="form"
                     onSubmit={handleNavigate}
                     sx={{
-                        flex: 1, display: "flex", alignItems: "center", gap: 0.5,
+                        flex: 1, display: "flex", alignItems: "center", gap: 0.8,
                         position: "relative",
                         bgcolor: urlFocused ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                        borderRadius: 1.5,
+                        borderRadius: 6,
                         border: `1px solid ${urlFocused ? accentAlpha(0.3) : "rgba(255,255,255,0.04)"}`,
-                        px: 1, py: 0.2,
+                        px: 1.2, py: 0.4,
+                        mx: 0.5,
                         transition: "all 0.2s ease",
                         "&:hover": { bgcolor: "rgba(255,255,255,0.06)" },
                     }}
                 >
                     {faviconError ? (
                         icon ? (
-                            <Box component="span" sx={{ fontSize: 14, lineHeight: 1 }}>{icon}</Box>
+                            <Box component="span" sx={{ fontSize: 15, lineHeight: 1 }}>{icon}</Box>
                         ) : (
-                            <LanguageIcon sx={{ fontSize: 16, color: COLORS.textMuted, flexShrink: 0 }} />
+                            <LanguageIcon sx={{ fontSize: 17, color: COLORS.textMuted, flexShrink: 0 }} />
                         )
                     ) : (
                         <Box component="img" src={faviconUrl} alt=""
-                            sx={{ width: 16, height: 16, borderRadius: "2px", flexShrink: 0 }}
+                            sx={{ width: 17, height: 17, borderRadius: "3px", flexShrink: 0 }}
                             onError={() => setFaviconError(true)}
                         />
                     )}
@@ -469,10 +472,10 @@ export const IframeBlock = React.memo(function IframeBlock({
                         placeholder="Enter URL or search..."
                         sx={{
                             flex: 1,
-                            fontSize: "0.8rem",
+                            fontSize: "0.85rem",
                             color: urlFocused ? COLORS.textPrimary : COLORS.textSecondary,
                             fontWeight: 500,
-                            "& .MuiInputBase-input": { p: 0, py: 0.15 },
+                            "& .MuiInputBase-input": { p: 0, py: 0.1 },
                         }}
                         inputProps={{ spellCheck: false, autoComplete: "off" }}
                     />
@@ -531,7 +534,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                 {/* Right-side actions */}
                 <Tooltip title="Open externally" arrow>
                     <IconButton size="small" component="a" href={currentUrl} target="_blank" rel="noopener noreferrer" sx={navBtnSx}>
-                        <OpenInNewIcon sx={{ fontSize: 17 }} />
+                        <OpenInNewIcon sx={{ fontSize: 19 }} />
                     </IconButton>
                 </Tooltip>
                 <Tooltip title="New Tab" arrow>
@@ -540,7 +543,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         color: accentAlpha(0.6),
                         "&:hover": { color: COLORS.accent, bgcolor: accentAlpha(0.1) },
                     }}>
-                        <AddIcon sx={{ fontSize: 19 }} />
+                        <AddIcon sx={{ fontSize: 21 }} />
                     </IconButton>
                 </Tooltip>
 
@@ -559,7 +562,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                             ...navBtnSx,
                             color: historyOpen ? accentAlpha(0.8) : navBtnSx.color,
                         }}>
-                            <HistoryIcon sx={{ fontSize: 18 }} />
+                            <HistoryIcon sx={{ fontSize: 20 }} />
                         </IconButton>
                     </Tooltip>
                     {historyOpen && (

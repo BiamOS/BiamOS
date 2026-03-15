@@ -50,7 +50,33 @@ const child_process_1 = require("child_process");
 // Cross-origin popups → open as a new BiamOS tab (YouTube, Drive, etc.)
 electron_1.app.on("web-contents-created", (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-        // Determine if same-origin by comparing hostnames
+        // ── OAuth popups: allow as real popup windows ──────────
+        // Providers like Google Sign-In use window.open() + postMessage
+        // to send the auth result back to the parent page. Redirecting
+        // these to BiamOS tabs breaks that callback channel.
+        const OAUTH_POPUP_PATTERNS = [
+            "accounts.google.com",
+            "appleid.apple.com",
+            "login.microsoftonline.com",
+            "login.live.com",
+            "github.com/login/oauth",
+        ];
+        const isOAuthPopup = OAUTH_POPUP_PATTERNS.some((p) => url.includes(p));
+        if (isOAuthPopup) {
+            console.log(`🔐 [Popup] OAuth provider detected → real popup: ${url}`);
+            return {
+                action: "allow",
+                overrideBrowserWindowOptions: {
+                    width: 500,
+                    height: 700,
+                    autoHideMenuBar: true,
+                    webPreferences: {
+                        partition: "persist:lura", // share cookies with webview
+                    },
+                },
+            };
+        }
+        // ── Normal popups: same-origin vs cross-origin ────────
         let popupHost = "";
         let currentHost = "";
         try {

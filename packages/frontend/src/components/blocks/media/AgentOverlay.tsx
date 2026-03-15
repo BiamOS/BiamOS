@@ -32,6 +32,7 @@ export const AgentOverlay = React.memo(function AgentOverlay({
     const isPaused = state.status === "paused";
     const isDone = state.status === "done";
     const isError = state.status === "error";
+    const isFinished = isDone || isError;
 
     return (
         <>
@@ -147,12 +148,20 @@ export const AgentOverlay = React.memo(function AgentOverlay({
                     backdropFilter: "blur(12px)",
                     boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
                     maxWidth: "80%",
-                    animation: "slideUp 0.3s ease-out",
+                    animation: isFinished
+                        ? "slideUp 0.3s ease-out, fadeOut 1s ease-out 4s forwards"
+                        : "slideUp 0.3s ease-out",
+                    cursor: isFinished ? "pointer" : "default",
                     "@keyframes slideUp": {
                         from: { opacity: 0, transform: "translateX(-50%) translateY(10px)" },
                         to: { opacity: 1, transform: "translateX(-50%) translateY(0)" },
                     },
+                    "@keyframes fadeOut": {
+                        from: { opacity: 1 },
+                        to: { opacity: 0, pointerEvents: "none" },
+                    },
                 }}
+                onClick={isFinished ? onStop : undefined}
             >
                 {/* Pulsing dot */}
                 {isActive && (

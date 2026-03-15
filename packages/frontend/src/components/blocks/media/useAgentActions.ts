@@ -49,8 +49,11 @@ const DOM_SNAPSHOT_SCRIPT = `
         '[role="link"]',
         '[role="tab"]',
         '[role="menuitem"]',
+        '[role="textbox"]',
         '[onclick]',
         '[contenteditable="true"]',
+        '[contenteditable="plaintext-only"]',
+        '[data-text="true"]',
     ];
     
     const seen = new Set();
@@ -172,8 +175,14 @@ function buildTypeAtScript(x: number, y: number, text: string, clearFirst: boole
     parts.push('el.dispatchEvent(new Event("input",{bubbles:true}));');
     parts.push('el.dispatchEvent(new Event("change",{bubbles:true}));');
     parts.push('}else if(el.isContentEditable){');
-    parts.push('el.innerText=' + safeText + ';');
-    parts.push('el.dispatchEvent(new Event("input",{bubbles:true}));');
+    // Use execCommand instead of innerText — this triggers React/Draft.js
+    // synthetic events so the app's internal state updates correctly.
+    // Without this, Twitter's Post button stays disabled, Gmail ignores the text, etc.
+    parts.push('el.focus();');
+    if (clearFirst) {
+        parts.push('document.execCommand("selectAll",false,null);');
+    }
+    parts.push('document.execCommand("insertText",false,' + safeText + ');');
     parts.push('}else{');
     parts.push('return JSON.stringify({success:false,error:"No editable element found"});');
     parts.push('}');
@@ -199,6 +208,51 @@ function buildScrollScript(direction: "up" | "down", amount: number): string {
         window.scrollBy({ top: ${pixels}, behavior: 'smooth' });
         return JSON.stringify({ success: true });
     })()`;
+}
+
+// ─── Focus + Detect Script (for native typing) ─────────────
+// Focuses the editable element at x,y and returns whether it's
+// contenteditable (for native sendInputEvent) or input/textarea.
+
+function buildFocusScript(x: number, y: number, clearFirst: boolean): string {
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    const parts: string[] = [];
+    parts.push('(function(){try{');
+    parts.push('var el=document.elementFromPoint(' + rx + ',' + ry + ');');
+    parts.push('if(!el)return JSON.stringify({success:false,error:"No element at coordinates"});');
+    // Walk up / down to find editable element
+    parts.push('function isEd(e){return e.tagName==="INPUT"||e.tagName==="TEXTAREA"||e.isContentEditable;}');
+    parts.push('if(!isEd(el)){');
+    parts.push('var p=el.closest("input,textarea,[contenteditable=true],[contenteditable=plaintext-only],[role=textbox]");');
+    parts.push('if(p){el=p;}else{');
+    parts.push('var c=el.querySelector("input,textarea,[contenteditable=true],[contenteditable=plaintext-only],[role=textbox]");');
+    parts.push('if(c){el=c;}else{');
+    // Global fallback: find the nearest visible contenteditable/textbox in the viewport
+    parts.push('var allCE=document.querySelectorAll("[contenteditable=true],[contenteditable=plaintext-only],[role=textbox]");');
+    parts.push('var best=null,bestDist=Infinity;');
+    parts.push('for(var i=0;i<allCE.length;i++){');
+    parts.push('var r=allCE[i].getBoundingClientRect();');
+    parts.push('if(r.width>0&&r.height>0&&r.top>=0&&r.bottom<=window.innerHeight){');
+    parts.push('var dx=(' + rx + ')-(r.x+r.width/2),dy=(' + ry + ')-(r.y+r.height/2);');
+    parts.push('var dist=Math.sqrt(dx*dx+dy*dy);');
+    parts.push('if(dist<bestDist){bestDist=dist;best=allCE[i];}');
+    parts.push('}');
+    parts.push('}');
+    parts.push('if(best){el=best;}');
+    parts.push('}}');
+    parts.push('}');
+    parts.push('if(!isEd(el))return JSON.stringify({success:false,error:"No editable element found"});');
+    parts.push('el.focus();');
+    parts.push('var isCE=el.isContentEditable&&el.tagName!=="INPUT"&&el.tagName!=="TEXTAREA";');
+    // Clear content if needed
+    if (clearFirst) {
+        parts.push('if(isCE){document.execCommand("selectAll",false,null);document.execCommand("delete",false,null);}');
+        parts.push('else if(el.tagName==="INPUT"||el.tagName==="TEXTAREA"){el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));}');
+    }
+    parts.push('return JSON.stringify({success:true,isContentEditable:isCE,tag:el.tagName.toLowerCase()});');
+    parts.push('}catch(e){return JSON.stringify({success:false,error:e.message});}})()');;
+    return parts.join('');
 }
 
 // ─── Hook ───────────────────────────────────────────────────
@@ -288,29 +342,92 @@ export function useAgentActions(
                     case "click": {
                         const cx = args.x ?? 0;
                         const cy = args.y ?? 0;
+                        // Capture URL before click to detect navigation
+                        let urlBefore = '';
+                        try { urlBefore = await wv.executeJavaScript('location.href', true); } catch { /* */ }
+
                         const result = await wv.executeJavaScript(buildClickAtScript(cx, cy), true);
                         const parsed = JSON.parse(result);
-                        return parsed.success ? `✓ ${args.description || parsed.tag}` : parsed.error;
+                        if (!parsed.success) return parsed.error;
+
+                        // Detect if the click caused a navigation (e.g. clicking a link)
+                        await new Promise(r => setTimeout(r, 1500));
+                        let urlAfter = '';
+                        try { urlAfter = await wv.executeJavaScript('location.href', true); } catch { urlAfter = ''; }
+                        if (urlAfter && urlBefore && urlAfter !== urlBefore) {
+                            debug.log(`🤖 [Agent] Click caused navigation: ${urlBefore} → ${urlAfter}`);
+                            // Wait for the new page to load
+                            await new Promise(r => setTimeout(r, 3000));
+                            await waitUntilReady('post-click-nav');
+                        }
+
+                        return `✓ ${args.description || parsed.tag}`;
                     }
                     case "type_text": {
                         const tx = args.x ?? 0;
                         const ty = args.y ?? 0;
-                        // Auto-retry if element not yet editable (e.g. after Tab to Subject)
+                        const text = args.text || '';
+                        const clearFirst = args.clear_first !== false;
+
+                        // Auto-retry if element not yet editable
                         for (let typeAttempt = 0; typeAttempt < 3; typeAttempt++) {
-                            const result = await wv.executeJavaScript(
-                                buildTypeAtScript(tx, ty, args.text, args.clear_first !== false), true
+                            // Step 1: Focus element and detect type
+                            const focusResult = await wv.executeJavaScript(
+                                buildFocusScript(tx, ty, clearFirst), true
                             );
-                            const parsed = JSON.parse(result);
-                            if (parsed.success) {
-                                const preview = args.text.length > 50 ? args.text.substring(0, 50) + '…' : args.text;
+                            const focusParsed = JSON.parse(focusResult);
+
+                            if (!focusParsed.success) {
+                                if (typeAttempt < 2 && focusParsed.error?.includes('editable')) {
+                                    console.log(`⏳ type_text retry ${typeAttempt + 1}/2 — waiting for element...`);
+                                    await new Promise(r => setTimeout(r, 1500));
+                                    continue;
+                                }
+                                return focusParsed.error;
+                            }
+
+                            if (focusParsed.isContentEditable && wv.sendInputEvent) {
+                                // ── Native input for contenteditable ──────
+                                // Uses Electron's native keyboard API — indistinguishable
+                                // from real typing. Works with Twitter, Gmail, Notion, etc.
+
+                                // Let the editor settle after focus (prevents lost input)
+                                await new Promise(r => setTimeout(r, 500));
+
+                                for (const char of text) {
+                                    if (char === '\n') {
+                                        wv.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+                                        wv.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+                                    } else if (char === '\t') {
+                                        wv.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+                                        wv.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+                                    } else {
+                                        wv.sendInputEvent({ type: 'char', keyCode: char });
+                                    }
+                                }
+
+                                // Give time for the editor to process all input events
+                                await new Promise(r => setTimeout(r, 300));
+
+                                const preview = text.length > 50 ? text.substring(0, 50) + '…' : text;
                                 return `✓ "${preview}"`;
+                            } else {
+                                // ── Standard input/textarea (value assignment works fine) ──
+                                const result = await wv.executeJavaScript(
+                                    buildTypeAtScript(tx, ty, text, clearFirst), true
+                                );
+                                const parsed = JSON.parse(result);
+                                if (parsed.success) {
+                                    const preview = text.length > 50 ? text.substring(0, 50) + '…' : text;
+                                    return `✓ "${preview}"`;
+                                }
+                                if (typeAttempt < 2 && parsed.error?.includes('editable')) {
+                                    console.log(`⏳ type_text retry ${typeAttempt + 1}/2 — waiting for element...`);
+                                    await new Promise(r => setTimeout(r, 1500));
+                                    continue;
+                                }
+                                return parsed.error;
                             }
-                            if (typeAttempt < 2 && parsed.error?.includes('editable')) {
-                                console.log(`⏳ type_text retry ${typeAttempt + 1}/2 — waiting for element...`);
-                                await new Promise(r => setTimeout(r, 1500));
-                                continue;
-                            }
-                            return parsed.error;
                         }
                         return 'type_text failed after 3 attempts';
                     }
@@ -523,7 +640,9 @@ export function useAgentActions(
                             }));
 
                             // Wait for page to settle (extra time for SPA transitions)
-                            await new Promise(r => setTimeout(r, 2000));
+                            await new Promise(r => setTimeout(r, 2500));
+                            // Verify webview is still responsive
+                            await waitUntilReady('post-action');
                             return true; // Continue loop
                         }
 

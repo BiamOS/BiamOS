@@ -90,13 +90,17 @@ export function useContextWatcher(
             const cacheKey = u.hostname.replace("www.", "") + u.pathname;
             const cached = contextCacheRef.current?.get(cacheKey);
             if (cached && cached.length > 0) {
-                setContextHints(cached);
+                // Merge cached hints with existing chat history
+                setContextHints(prev => {
+                    const chatHistory = prev.filter(h => h.reason === "Manual query");
+                    return [...cached, ...chatHistory];
+                });
             } else {
-                // Keep agent hints — don't clear conversation when agent navigates
-                setContextHints(prev => prev.filter(h => h.query.startsWith("🤖")));
+                // Keep agent hints AND chat history — don't clear conversation on navigate
+                setContextHints(prev => prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query"));
             }
         } catch {
-            setContextHints(prev => prev.filter(h => h.query.startsWith("🤖")));
+            setContextHints(prev => prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query"));
         }
         lastAnalyzedUrlRef.current = "";
     }, [saveCurrentContext]);
@@ -180,8 +184,8 @@ export function useContextWatcher(
             }
 
             // Clear auto-detected hints while loading new ones,
-            // but KEEP manual chat queries (user conversation history)
-            setContextHints(prev => prev.filter(h => h.reason === "Manual query"));
+            // but KEEP manual chat queries AND agent progress hints
+            setContextHints(prev => prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖")));
             setIsAnalyzing(true);
 
             // Call context analysis API
@@ -210,8 +214,8 @@ export function useContextWatcher(
                     // Only show "no context" hint if user has no active chat
                     // If they already have a conversation, just keep it clean
                     setContextHints(prev => {
-                        const manualQueries = prev.filter(h => h.reason === "Manual query");
-                        if (manualQueries.length > 0) return manualQueries;
+                        const keepHints = prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖"));
+                        if (keepHints.length > 0) return keepHints;
                         return [{
                             query: "💬 No specific context detected",
                             reason: "low_confidence",
@@ -227,8 +231,8 @@ export function useContextWatcher(
 
                 // Merge new suggestions with existing manual chat queries
                 setContextHints(prev => {
-                    const manualQueries = prev.filter(h => h.reason === "Manual query");
-                    return [...suggestions, ...manualQueries];
+                    const keepHints = prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖"));
+                    return [...suggestions, ...keepHints];
                 });
                 if (!sidebarOpen) setSidebarOpen(true);
 
@@ -279,7 +283,6 @@ export function useContextWatcher(
         };
 
         const onIpcMessage = async () => {
-            handlePageChange();
             try {
                 const info = await wv.executeJavaScript(
                     `({ url: location.href, title: document.title })`
@@ -289,6 +292,12 @@ export function useContextWatcher(
                     window.dispatchEvent(new CustomEvent("biamos:tab-title-update", {
                         detail: { url: info.url, title: info.title, cardId },
                     }));
+                }
+                // Only trigger context analysis on URL changes (not title-only,
+                // which happens with modals, dropdowns, notifications, etc.)
+                if (info.url && info.url !== lastDetectedUrlRef.current) {
+                    lastDetectedUrlRef.current = info.url;
+                    handlePageChange();
                 }
             } catch { /* */ }
         };
@@ -305,7 +314,9 @@ export function useContextWatcher(
                 const info = await wv.executeJavaScript(
                     `({ url: location.href, title: document.title })`
                 );
-                if (info.url !== lastDetectedUrlRef.current || info.title !== lastDetectedTitleRef.current) {
+                const urlChanged = info.url && info.url !== lastDetectedUrlRef.current;
+                const titleChanged = info.title && info.title !== lastDetectedTitleRef.current;
+                if (urlChanged || titleChanged) {
                     lastDetectedUrlRef.current = info.url;
                     lastDetectedTitleRef.current = info.title;
                     if (info.url) { navSync.setCurrentUrl(info.url); navSync.setUrlInput(info.url); }
@@ -314,7 +325,8 @@ export function useContextWatcher(
                             detail: { url: info.url, title: info.title, cardId },
                         }));
                     }
-                    handlePageChange();
+                    // Only re-analyze on URL change (modals/tooltips only change title)
+                    if (urlChanged) handlePageChange();
                 }
             } catch { /* webview not ready */ }
         }, CONTEXT_POLL_INTERVAL);

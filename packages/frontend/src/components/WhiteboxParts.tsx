@@ -59,13 +59,13 @@ export const cardSx = {
 export const dragHandleSx = {
     display: "flex",
     alignItems: "center",
-    gap: 1,
-    px: 1.5,
-    py: 0.75,
+    gap: 0.5,
+    px: 1,
+    py: 0.5,
     cursor: "grab",
     bgcolor: "rgba(255, 255, 255, 0.02)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-    minHeight: 38,
+    minHeight: 36,
     "&:active": { cursor: "grabbing" },
     userSelect: "none" as const,
 };
