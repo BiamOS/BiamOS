@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v1.0.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v1.0.1--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -28,17 +28,46 @@
 
 ---
 
-<!-- 🎥 REPLACE WITH YOUR DEMO GIF/VIDEO -->
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="BiamOS Demo" width="800"/>
-</p>
+## 🎬 See It In Action
+
+<table>
+<tr>
+<td align="center" width="33%">
+
+**🚀 Agent v2: NASA → X Post**
+
+[![AI Agent Demo](https://img.youtube.com/vi/ycjD5EDTw28/maxresdefault.jpg)](https://youtu.be/ycjD5EDTw28?si=M-HOXTNraJhX0mXI)
+
+*One prompt — reads NASA.gov, takes notes, navigates to X, writes a post with source link.*
+
+</td>
+<td align="center" width="33%">
+
+**📧 Gmail → YouTube → Email**
+
+[![Workflow Demo](https://img.youtube.com/vi/hPPa_Wx1dnM/maxresdefault.jpg)](https://youtu.be/hPPa_Wx1dnM?si=vc1Fww9B7nuwzoEV)
+
+*Composes email, searches YouTube in background, writes briefing — all autonomous.*
+
+</td>
+<td align="center" width="33%">
+
+**🧬 Platform Overview**
+
+[![Overview Demo](https://img.youtube.com/vi/QOKNlAsJjyw/maxresdefault.jpg)](https://youtu.be/QOKNlAsJjyw?si=ZfFY957UVoGrVQ5o)
+
+*Full overview: Ghost-Auth, Context Engine, Integrations, AI Pipeline.*
+
+</td>
+</tr>
+</table>
+
+> **👆 Click any thumbnail to watch on YouTube**
 
 ---
 
 ## What is BiamOS?
 
-DEMO VIDEO: https://www.youtube.com/watch?v=QOKNlAsJjyw
-BASIC WORKFLOW VIDEO: https://youtu.be/hPPa_Wx1dnM
 
 **BiamOS is not just another wrapper.** It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS acts as your personal agent — extracting data, bypassing complex API auth via **Ghost-Auth**, and generating modular UI dashboards instantly.
 
@@ -236,7 +265,7 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v1.0.0-alpha** — AI Browser Agent with autonomous web automation, background web search, smart email composition, and multi-site navigation.
+See the latest changes: **v1.0.1-alpha** — AI Browser Agent with autonomous web automation, background web search, smart email composition, and multi-site navigation.
 
 ---
 
