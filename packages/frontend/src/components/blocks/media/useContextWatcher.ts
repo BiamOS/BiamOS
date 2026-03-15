@@ -175,7 +175,11 @@ export function useContextWatcher(
             if (!isForced) {
                 const cached = contextCacheRef.current.get(cacheKey);
                 if (cached) {
-                    setContextHints(cached.map(h => ({ ...h })));
+                    // Merge cached hints with existing agent + chat hints
+                    setContextHints(prev => {
+                        const keepHints = prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query");
+                        return [...cached.map(h => ({ ...h })), ...keepHints];
+                    });
                     if (cached.length > 0 && !sidebarOpen) setSidebarOpen(true);
                     setContextNotice(cached.length > 0 ? `🧠 ${cached[0].query} (cached)` : null);
                     if (cached.length > 0) setTimeout(() => setContextNotice(null), 3000);

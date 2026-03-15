@@ -37,6 +37,8 @@ const DOM_SNAPSHOT_SCRIPT = `
 (function() {
     const MAX_ELEMENTS = 80;
     const result = [];
+    // SoM (Set-of-Mark) map: stores center coordinates by ID for click resolution
+    const somMap = {};
     
     // Find all interactive elements
     const selectors = [
@@ -57,6 +59,7 @@ const DOM_SNAPSHOT_SCRIPT = `
     ];
     
     const seen = new Set();
+    let somId = 0;
     for (const sel of selectors) {
         for (const el of document.querySelectorAll(sel)) {
             if (seen.has(el) || result.length >= MAX_ELEMENTS) continue;
@@ -67,36 +70,12 @@ const DOM_SNAPSHOT_SCRIPT = `
             if (rect.width === 0 || rect.height === 0) continue;
             if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
             
-            // Build a unique CSS selector
-            let cssSelector = '';
-            if (el.id) {
-                cssSelector = '#' + CSS.escape(el.id);
-            } else if (el.getAttribute('data-testid')) {
-                cssSelector = '[data-testid="' + el.getAttribute('data-testid') + '"]';
-            } else if (el.getAttribute('aria-label')) {
-                cssSelector = '[aria-label="' + el.getAttribute('aria-label').replace(/"/g, '\\\\"') + '"]';
-            } else {
-                // Generate nth-child path
-                const path = [];
-                let current = el;
-                while (current && current !== document.body && path.length < 4) {
-                    const tag = current.tagName.toLowerCase();
-                    const parent = current.parentElement;
-                    if (parent) {
-                        const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
-                        if (siblings.length > 1) {
-                            const idx = siblings.indexOf(current) + 1;
-                            path.unshift(tag + ':nth-of-type(' + idx + ')');
-                        } else {
-                            path.unshift(tag);
-                        }
-                    } else {
-                        path.unshift(tag);
-                    }
-                    current = parent;
-                }
-                cssSelector = path.join(' > ');
-            }
+            const id = somId++;
+            const cx = Math.round(rect.x + rect.width / 2);
+            const cy = Math.round(rect.y + rect.height / 2);
+            
+            // Store center coordinates for SoM click resolution
+            somMap[id] = { x: cx, y: cy, w: Math.round(rect.width), h: Math.round(rect.height) };
             
             // Get visible text
             const text = (el.textContent || el.getAttribute('placeholder') || el.getAttribute('alt') || el.getAttribute('title') || '').trim().substring(0, 60);
@@ -104,35 +83,64 @@ const DOM_SNAPSHOT_SCRIPT = `
             const type = el.getAttribute('type') || '';
             const href = el.getAttribute('href') || '';
             const role = el.getAttribute('role') || '';
+            const ariaLabel = el.getAttribute('aria-label') || '';
             
-            result.push({
-                selector: cssSelector,
-                tag,
-                type,
-                role,
-                text,
-                href: href.substring(0, 80),
-                rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
-            });
+            // Compact text format: [ID] tag "label" (x:N y:N w:N h:N)
+            let label = ariaLabel || text;
+            let line = '[' + id + '] ' + tag;
+            if (type) line += '[' + type + ']';
+            if (role) line += '[role=' + role + ']';
+            if (label) line += ' "' + label.replace(/"/g, "'") + '"';
+            if (href) line += ' href="' + href.substring(0, 80) + '"';
+            line += ' (x:' + cx + ' y:' + cy + ' w:' + Math.round(rect.width) + ' h:' + Math.round(rect.height) + ')';
+            
+            result.push(line);
         }
     }
     
-    return JSON.stringify(result);
+    // Store SoM map globally for click resolution
+    window.__biamos_som = somMap;
+    
+    return result.join('\\n');
 })()`;
 
 // ─── Action Execution Scripts ───────────────────────────────
 
 function buildClickAtScript(x: number, y: number): string {
+    const rx = Math.round(x);
+    const ry = Math.round(y);
     return `
     (function() {
-        const el = document.elementFromPoint(${Math.round(x)}, ${Math.round(y)});
-        if (!el) return JSON.stringify({ success: false, error: 'No element at (${Math.round(x)}, ${Math.round(y)})' });
+        const x = ${rx}, y = ${ry};
+        const el = document.elementFromPoint(x, y);
+        if (!el) return JSON.stringify({ success: false, error: 'No element at (' + x + ', ' + y + ')' });
+
+        // ── Pre-Flight Z-Index Check ──
+        // Verify the element at coordinates is actually the intended target,
+        // not a cookie banner, overlay, or modal sitting on top.
         el.scrollIntoView({ block: 'nearest' });
-        const opts = { bubbles: true, cancelable: true, view: window, clientX: ${Math.round(x)}, clientY: ${Math.round(y)} };
-        el.dispatchEvent(new MouseEvent('mousedown', opts));
-        el.dispatchEvent(new MouseEvent('mouseup', opts));
-        el.dispatchEvent(new MouseEvent('click', opts));
-        return JSON.stringify({ success: true, x: ${Math.round(x)}, y: ${Math.round(y)}, tag: el.tagName.toLowerCase() });
+        const topEl = document.elementFromPoint(x, y);
+        if (topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el)) {
+            // Something is covering our target — report it
+            const blocker = topEl.tagName.toLowerCase() + (topEl.className ? '.' + String(topEl.className).split(' ')[0] : '');
+            return JSON.stringify({ success: false, error: 'Element blocked by overlay: ' + blocker + ' at (' + x + ', ' + y + ')' });
+        }
+        const clickTarget = topEl || el;
+
+        // ── Hover Injection ──
+        // Simulate realistic mouse approach: mousemove → mouseenter → mouseover
+        // This activates lazy-loaded event handlers and hover-triggered menus.
+        const hoverOpts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+        clickTarget.dispatchEvent(new MouseEvent('mousemove', hoverOpts));
+        clickTarget.dispatchEvent(new MouseEvent('mouseenter', { ...hoverOpts, bubbles: false }));
+        clickTarget.dispatchEvent(new MouseEvent('mouseover', hoverOpts));
+
+        // ── Click Sequence ──
+        const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+        clickTarget.dispatchEvent(new MouseEvent('mousedown', opts));
+        clickTarget.dispatchEvent(new MouseEvent('mouseup', opts));
+        clickTarget.dispatchEvent(new MouseEvent('click', opts));
+        return JSON.stringify({ success: true, x: x, y: y, tag: clickTarget.tagName.toLowerCase() });
     })()`;
 }
 
@@ -275,13 +283,13 @@ export function useAgentActions(
 
     // ─── Capture DOM snapshot ───────────────────────────────
     const captureDomSnapshot = useCallback(async (): Promise<string> => {
-        if (!isElectron || !webviewRef.current?.executeJavaScript) return "[]";
+        if (!isElectron || !webviewRef.current?.executeJavaScript) return "";
         try {
             const raw = await webviewRef.current.executeJavaScript(DOM_SNAPSHOT_SCRIPT);
-            return typeof raw === "string" ? raw : JSON.stringify(raw);
+            return typeof raw === "string" ? raw : String(raw);
         } catch (err) {
             debug.log("🤖 [Agent] DOM snapshot failed:", err);
-            return "[]";
+            return "";
         }
     }, [webviewRef, isElectron]);
 
@@ -299,31 +307,85 @@ export function useAgentActions(
         return undefined;
     }, [webviewRef, isElectron]);
 
-    // ─── Wait until webview is ready ────────────────────────
-    const waitUntilReady = useCallback(async (label: string): Promise<boolean> => {
+    // ─── Wait for page to be ready (DOM silence + not loading) ─
+    // Replaces hardcoded setTimeout waits with intelligent detection:
+    // 1. Webview must not be loading
+    // 2. JS must be executable
+    // 3. DOM must be "silent" (no mutations for 300ms)
+    // Falls back to timeout cap of 8s.
+    const waitForPageReady = useCallback(async (label: string): Promise<boolean> => {
         const wv = webviewRef.current;
         if (!wv?.executeJavaScript) return false;
 
+        const startTime = Date.now();
+        const MAX_WAIT_MS = 8000;
+        const DOM_SILENCE_MS = 300;
+
+        // Phase 1: Wait for webview to stop loading and accept JS
         for (let i = 0; i < 8; i++) {
-            // Wait if the webview is still loading
+            if (Date.now() - startTime > MAX_WAIT_MS) break;
+
             if (wv.isLoading?.()) {
                 debug.log(`🤖 [Agent] ${label}: webview loading, waiting... (${i + 1}/8)`);
                 setAgentState(prev => ({ ...prev, currentAction: "⏳ Page loading..." }));
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 500));
                 continue;
             }
-            // Test if executeJavaScript works
             try {
                 await wv.executeJavaScript("1", true);
-                return true;
+                break; // JS works, proceed to Phase 2
             } catch {
                 debug.log(`🤖 [Agent] ${label}: script injection blocked, waiting... (${i + 1}/8)`);
                 setAgentState(prev => ({ ...prev, currentAction: "⏳ Waiting for page..." }));
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 500));
             }
         }
-        debug.log(`🤖 [Agent] ${label}: webview never became ready after 8 attempts`);
-        return false;
+
+        // Phase 2: Wait for DOM silence (no mutations for 300ms)
+        try {
+            await wv.executeJavaScript(`
+                (function() {
+                    if (window.__biamos_domWatch) return;
+                    window.__biamos_lastMutation = Date.now();
+                    var obs = new MutationObserver(function() {
+                        window.__biamos_lastMutation = Date.now();
+                    });
+                    obs.observe(document.body || document.documentElement, {
+                        childList: true, subtree: true, attributes: true
+                    });
+                    window.__biamos_domWatch = obs;
+                })();
+            `, true);
+
+            // Poll until DOM is silent for DOM_SILENCE_MS
+            let silenceChecks = 0;
+            while (silenceChecks < 16) {
+                if (Date.now() - startTime > MAX_WAIT_MS) {
+                    debug.log(`🤖 [Agent] ${label}: timeout after ${MAX_WAIT_MS}ms`);
+                    break;
+                }
+                const elapsed = await wv.executeJavaScript(
+                    `Date.now() - (window.__biamos_lastMutation || 0)`, true
+                );
+                if (elapsed >= DOM_SILENCE_MS) {
+                    debug.log(`🤖 [Agent] ${label}: DOM silent for ${elapsed}ms ✔`);
+                    return true;
+                }
+                silenceChecks++;
+                await new Promise(r => setTimeout(r, 200));
+            }
+        } catch {
+            debug.log(`🤖 [Agent] ${label}: MutationObserver failed, basic check`);
+        }
+
+        // Final check: can we execute JS?
+        try {
+            await wv.executeJavaScript("1", true);
+            return true;
+        } catch {
+            debug.log(`🤖 [Agent] ${label}: webview never became ready`);
+            return false;
+        }
     }, [webviewRef]);
 
     // ─── Execute a single action ────────────────────────────
@@ -332,14 +394,13 @@ export function useAgentActions(
         if (!wv?.executeJavaScript) return "No webview available";
 
         // Ensure webview is ready before executing
-        const ready = await waitUntilReady("pre-action");
+        const ready = await waitForPageReady("pre-action");
         if (!ready) return "Action failed: webview not ready after waiting";
 
         const tryExecute = async (attempt: number): Promise<string> => {
             try {
                 switch (action) {
-                    case "click_at":
-                    case "click": {
+                    case "click_at": {
                         const cx = args.x ?? 0;
                         const cy = args.y ?? 0;
                         // Capture URL before click to detect navigation
@@ -357,11 +418,53 @@ export function useAgentActions(
                         if (urlAfter && urlBefore && urlAfter !== urlBefore) {
                             debug.log(`🤖 [Agent] Click caused navigation: ${urlBefore} → ${urlAfter}`);
                             // Wait for the new page to load
-                            await new Promise(r => setTimeout(r, 3000));
-                            await waitUntilReady('post-click-nav');
+                            await waitForPageReady('post-click-nav');
                         }
 
                         return `✓ ${args.description || parsed.tag}`;
+                    }
+                    case "click": {
+                        // ── SoM-ID Click ──
+                        // Resolve element ID from the Set-of-Mark map,
+                        // then delegate to coordinate-based click.
+                        const somId = args.id;
+                        if (somId === undefined || somId === null) {
+                            return 'Action failed: click requires an "id" parameter';
+                        }
+
+                        // Resolve SoM ID to coordinates
+                        let coords: { x: number; y: number } | null = null;
+                        try {
+                            const somResult = await wv.executeJavaScript(
+                                `JSON.stringify(window.__biamos_som && window.__biamos_som[${somId}] || null)`, true
+                            );
+                            coords = JSON.parse(somResult);
+                        } catch { /* */ }
+
+                        if (!coords) {
+                            return `Action failed: SoM ID [${somId}] not found — element may have changed`;
+                        }
+
+                        debug.log(`🤖 [Agent] SoM click: [${somId}] → (${coords.x}, ${coords.y})`);
+
+                        // Capture URL before click to detect navigation
+                        let somUrlBefore = '';
+                        try { somUrlBefore = await wv.executeJavaScript('location.href', true); } catch { /* */ }
+
+                        const somResult = await wv.executeJavaScript(buildClickAtScript(coords.x, coords.y), true);
+                        const somParsed = JSON.parse(somResult);
+                        if (!somParsed.success) return somParsed.error;
+
+                        // Detect navigation
+                        await new Promise(r => setTimeout(r, 1500));
+                        let somUrlAfter = '';
+                        try { somUrlAfter = await wv.executeJavaScript('location.href', true); } catch { somUrlAfter = ''; }
+                        if (somUrlAfter && somUrlBefore && somUrlAfter !== somUrlBefore) {
+                            debug.log(`🤖 [Agent] SoM click caused navigation: ${somUrlBefore} → ${somUrlAfter}`);
+                            await waitForPageReady('post-click-nav');
+                        }
+
+                        return `✓ ${args.description || somParsed.tag}`;
                     }
                     case "type_text": {
                         const tx = args.x ?? 0;
@@ -449,16 +552,34 @@ export function useAgentActions(
                             // Fallback if executeJavaScript fails
                             wv.loadURL(url).catch(() => {});
                         }
-                        await new Promise(r => setTimeout(r, 5000));
-                        try { await waitUntilReady('navigate'); } catch { /* timeout ok */ }
+                        await waitForPageReady('navigate');
                         const actualUrl = wv.getURL?.() || 'unknown';
                         console.log(`🧭 Navigate: wanted=${url} → actual=${actualUrl}`);
+                        // Detect navigation failure by checking page content
+                        // Electron sets the URL even when the page fails to load,
+                        // so we check the actual body text for error indicators.
+                        let pageContent = '';
+                        try {
+                            pageContent = await wv.executeJavaScript(
+                                '(document.title + " " + (document.body?.innerText?.substring(0, 300) || "")).toLowerCase()', true
+                            );
+                        } catch { /* */ }
+                        const errorPatterns = [
+                            'can\'t be reached', 'cannot be reached', 'not be reached',
+                            'err_name_not_resolved', 'err_connection_refused', 'err_connection_timed_out',
+                            'dns_probe', 'took too long to respond', 'no internet',
+                            'refused to connect', 'is not available', 'nxdomain',
+                        ];
+                        const isNavError = errorPatterns.some(p => pageContent.includes(p));
+                        if (isNavError) {
+                            console.log(`🧭 Navigate FAILED: ${url} → error page detected`);
+                            return `Navigation FAILED: "${url}" could not be loaded — the site cannot be reached. The URL may be MISSPELLED. Use search_web to find the correct URL.`;
+                        }
                         return `✓ Navigated to ${url}`;
                     }
                     case "go_back": {
                         wv.goBack();
-                        await new Promise(r => setTimeout(r, 4000));
-                        try { await waitUntilReady('go_back'); } catch { /* timeout ok */ }
+                        await waitForPageReady('go_back');
                         const backUrl = wv.getURL?.() || 'unknown';
                         console.log(`🧭 Go back: now at ${backUrl}`);
                         return `✓ Went back to previous page`;
@@ -480,6 +601,14 @@ export function useAgentActions(
                             return `Search failed: ${e}`;
                         }
                     }
+                    case "take_notes": {
+                        // Notes are stored in the action history (result field)
+                        // and persist across page navigations. The LLM sees them
+                        // in the "ACTIONS TAKEN SO FAR" section of subsequent steps.
+                        const notes = args.notes || '';
+                        console.log(`📝 Agent notes: ${notes.substring(0, 100)}...`);
+                        return `📝 Notes saved: ${notes}`;
+                    }
                     default:
                         return `Unknown action: ${action}`;
                 }
@@ -488,7 +617,7 @@ export function useAgentActions(
                 if (attempt < 3) {
                     debug.log(`🤖 [Agent] Action failed (attempt ${attempt + 1}), re-checking readiness...`);
                     await new Promise(r => setTimeout(r, 2000));
-                    const ok = await waitUntilReady(`retry-${attempt + 1}`);
+                    const ok = await waitForPageReady(`retry-${attempt + 1}`);
                     if (ok) return tryExecute(attempt + 1);
                 }
                 return `Action failed: ${errStr.substring(0, 100)}`;
@@ -496,14 +625,14 @@ export function useAgentActions(
         };
 
         return tryExecute(0);
-    }, [webviewRef, waitUntilReady]);
+    }, [webviewRef, waitForPageReady]);
 
     // ─── Run one step of the agent loop ─────────────────────
     const runStep = useCallback(async (task: string): Promise<boolean> => {
         if (abortRef.current) return false;
 
         // Wait for webview to be ready
-        const ready = await waitUntilReady("step-start");
+        const ready = await waitForPageReady("step-start");
         if (!ready) {
             setAgentState(prev => ({ ...prev, status: "error", currentAction: "❌ Webview not available" }));
             return false;
@@ -639,10 +768,8 @@ export function useAgentActions(
                                 steps: stepsRef.current,
                             }));
 
-                            // Wait for page to settle (extra time for SPA transitions)
-                            await new Promise(r => setTimeout(r, 2500));
-                            // Verify webview is still responsive
-                            await waitUntilReady('post-action');
+                            // Wait for page to settle (intelligent DOM silence detection)
+                            await waitForPageReady('post-action');
                             return true; // Continue loop
                         }
 

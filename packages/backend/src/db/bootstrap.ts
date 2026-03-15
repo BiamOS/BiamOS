@@ -327,6 +327,23 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "fix", text: "DuckDuckGo search URLs are now decoded from redirect format to clean, readable links" },
             ]),
         },
+
+        {
+            version: "1.0.1-alpha",
+            date: "2026-03-15",
+            entries: JSON.stringify([
+                { type: "feature", text: "AI Agent — Set-of-Mark Click System: each DOM element gets a numeric ID ([0], [1], [2]...). Agent now calls click(id: 7) instead of guessing x,y coordinates — dramatically more reliable" },
+                { type: "feature", text: "AI Agent — Intelligent Page Readiness: replaced all hardcoded setTimeout waits (2.5s, 4s, 5s) with MutationObserver-based DOM silence detection — pages are ready in ~400ms instead of 5s" },
+                { type: "feature", text: "AI Agent — take_notes Tool: agent can save observations before navigating away — notes persist in action history across page navigations, enabling multi-site research tasks" },
+                { type: "feature", text: "AI Agent — Navigation Failure Detection: DNS errors and unreachable sites are now reported back to the agent instead of silently claiming success — prevents infinite retry loops" },
+                { type: "improvement", text: "AI Agent — Pre-Flight Z-Index Check: agent verifies target element is topmost before clicking — detects cookie banners, modals, and overlays that would block the click" },
+                { type: "improvement", text: "AI Agent — Hover Injection: dispatches mousemove → mouseenter → mouseover before click sequence — activates lazy-loaded handlers and hover-dependent UI elements" },
+                { type: "improvement", text: "AI Agent — Compact DOM Format: snapshot output reduced by ~50% tokens (from JSON to text format with SoM IDs)" },
+                { type: "improvement", text: "AI Agent — Planning Rules: agent now plans multi-step tasks, reads pages efficiently (max 4-5 steps), and uses search_web for unknown URLs instead of guessing" },
+                { type: "improvement", text: "AI Agent — Safety: mandatory ask_user before any post/send/submit/delete action, screenshot verification after typing for error indicators (character limits, warnings)" },
+                { type: "fix", text: "Context panel no longer clears agent progress when navigating between sites during an agent task" },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {
