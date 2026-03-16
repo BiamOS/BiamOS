@@ -447,6 +447,9 @@ export function useAgentActions(
 
                         debug.log(`🤖 [Agent] SoM click: [${somId}] → (${coords.x}, ${coords.y})`);
 
+                        // Ghost Mouse: emit SoM-resolved coordinates
+                        setAgentState(prev => ({ ...prev, cursorPos: { x: coords.x, y: coords.y } }));
+
                         // Capture URL before click to detect navigation
                         let somUrlBefore = '';
                         try { somUrlBefore = await wv.executeJavaScript('location.href', true); } catch { /* */ }
@@ -736,6 +739,33 @@ export function useAgentActions(
                                 return false; // Stop loop — user decides
                             }
 
+                            // ── Ghost Mouse: emit cursor position BEFORE executing ──
+                            // This makes the AI cursor visible for every action type.
+                            if (action === "click_at" || action === "type_text") {
+                                const gx = args.x ?? 0;
+                                const gy = args.y ?? 0;
+                                if (gx > 0 || gy > 0) {
+                                    setAgentState(prev => ({ ...prev, cursorPos: { x: gx, y: gy } }));
+                                }
+                            } else if (action === "scroll" || action === "navigate" || action === "go_back") {
+                                // Move cursor to viewport center for non-positional actions
+                                try {
+                                    const wv = webviewRef.current;
+                                    const bounds = wv?.getBoundingClientRect?.();
+                                    if (bounds) {
+                                        setAgentState(prev => ({
+                                            ...prev,
+                                            cursorPos: {
+                                                x: Math.round(bounds.width / 2),
+                                                y: Math.round(bounds.height / 2),
+                                            },
+                                        }));
+                                    }
+                                } catch { /* */ }
+                            }
+                            // Note: "click" (SoM) cursor position is resolved during
+                            // executeAction when coordinates become available.
+
                             // Execute the action
                             const stepNum = stepsRef.current.length + 1;
                             setAgentState(prev => ({
@@ -744,16 +774,6 @@ export function useAgentActions(
                             }));
 
                             const result = await executeAction(action, args);
-
-                            // Extract cursor position from result
-                            try {
-                                const match = result.match(/\((\d+),\s*(\d+)\)/);
-                                if (match) {
-                                    const cx = parseInt(match[1]);
-                                    const cy = parseInt(match[2]);
-                                    setAgentState(prev => ({ ...prev, cursorPos: { x: cx, y: cy } }));
-                                }
-                            } catch { /* */ }
 
                             const step: AgentStep = {
                                 action,
