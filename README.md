@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v1.0.1--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v1.1.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -139,9 +139,9 @@ BiamOS runs **two independent AI assistants**, each with a distinct role:
 
 ## 🤖 AI Browser Agent (Alpha)
 
-> **Your AI can now control the browser.**
+> **Your AI can now control the browser — and learn from it.**
 
-Type `/act` followed by a task, and the AI Browser Agent takes over — clicking, typing, scrolling, and searching autonomously. No APIs needed, no code required.
+Type `/act` followed by a task, and the AI Browser Agent takes over — clicking, typing, scrolling, and searching autonomously. The agent **learns from verified tasks** and replays them as lightning-fast reflexes on similar future requests.
 
 ```
 /act Open Gmail, compose an email to team@company.com. Subject: "AI Market Update".
@@ -154,19 +154,41 @@ Type `/act` followed by a task, and the AI Browser Agent takes over — clicking
 2. 🔍 Background web search runs (no tab switch!) — finds real results with links
 3. ✍️ Agent writes the email body with research findings
 4. ⏸️ Pauses before sending — asks for your confirmation
+5. 👍 Press thumbs up → workflow saved as a **learned reflex** for next time
 
 ### Agent Tools
 | Tool | Description |
 |------|-------------|
-| `click_at` | Click any element by coordinates |
-| `type_text` | Type into inputs, textareas, contenteditable |
+| `click` | Click any element by Set-of-Mark ID from DOM snapshot |
+| `click_at` | Fallback: click by x,y coordinates |
+| `type_text` | Type into inputs with optional `submit_after` (auto-Enter for search bars) |
 | `scroll` | Scroll up/down to reveal content |
 | `navigate` | Go to a different website |
 | `go_back` | Return to the previous page |
 | `search_web` | Background web search without leaving the current page |
+| `take_notes` | Save observations that persist across page navigations |
 | `ask_user` | Pause and ask for confirmation before destructive actions |
 
-> ⚠️ **Alpha**: This is the first release of autonomous browser automation. Works best with Gmail, YouTube, Google, and Hacker News. More sites and capabilities coming soon.
+### 🧠 Agent Memory (Muscle Memory System)
+
+The agent **learns from your feedback**. When you verify a task with 👍, the workflow is stored as a reflex:
+
+- **Semantic matching** — recognizes similar tasks even with different wording
+- **Cross-domain lookup** — finds matching workflows across all websites
+- **Auto-deduplication** — similar intents merge instead of creating duplicates
+- **Local embeddings** — all-MiniLM-L6-v2 runs on-device, no API calls needed
+- **Memory Manager UI** — Settings → Memory to view, verify, and manage all learned workflows
+
+### 🔄 Self-Healing Agent Loop
+
+When the agent gets stuck repeating a failing action, it **heals itself**:
+1. Detects 2 consecutive identical failures
+2. Auto-scrolls the page (element might be off-screen)
+3. Injects a recovery instruction into its history
+4. Takes a fresh screenshot + DOM snapshot
+5. Retries with a completely different approach
+
+> No more infinite loops. No wasted API calls. The agent adapts and completes the task.
 
 
 ## ✨ Core Features
@@ -265,13 +287,15 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v1.0.1-alpha** — AI Browser Agent with autonomous web automation, background web search, smart email composition, and multi-site navigation.
+See the latest changes: **v1.1.0-alpha** — Agent Memory System with semantic intent matching, Memory Manager UI, self-healing agent loop, and workflow deduplication.
 
 ---
 
 ## 🛣️ Roadmap
 
 - [x] **Autopilot Mode** — Multi-step browser automation (click, fill, submit) ✅ *v1.0.0-alpha*
+- [x] **Agent Memory** — Learns from verified tasks, replays as reflexes ✅ *v1.1.0-alpha*
+- [x] **Self-Healing Agent** — Auto-recovers from stuck loops ✅ *v1.1.0-alpha*
 - [ ] **Plugin Marketplace** — Community-created integrations
 - [ ] **Scheduled Agents** — Cron-based data collection and alerts
 - [ ] **macOS & Linux Builds** — Cross-platform Electron packaging

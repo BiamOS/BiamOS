@@ -90,7 +90,7 @@ const AGENT_TOOLS = [
         type: "function" as const,
         function: {
             name: "type_text",
-            description: "Click on an input/textarea/contenteditable element at x,y coordinates and type text into it. Use the rect field from the DOM snapshot to calculate the center of the element.",
+            description: "Click on an input/textarea/contenteditable element at x,y coordinates and type text into it. Use the rect field from the DOM snapshot to calculate the center of the element. Set submit_after=true for search bars and forms that need Enter to be pressed after typing.",
             parameters: {
                 type: "object",
                 properties: {
@@ -109,6 +109,10 @@ const AGENT_TOOLS = [
                     clear_first: {
                         type: "boolean",
                         description: "If true, clear existing text before typing (default: true)",
+                    },
+                    submit_after: {
+                        type: "boolean",
+                        description: "If true, press Enter after typing to submit (use for search bars, login forms). Default: false.",
                     },
                     description: {
                         type: "string",
@@ -324,7 +328,7 @@ FORM & TEXT RULES:
 24. **COMPLETE TEXT IN ONE CALL**: When typing email bodies, messages, or long text — write the COMPLETE text in ONE type_text call. Include greeting + all paragraphs + sign-off in ONE call. CRITICAL: if you call type_text on the same field twice, the SECOND call OVERWRITES the first! So NEVER split body text across multiple type_text calls.
 25. **NO RE-TYPING (CRITICAL)**: If ACTIONS TAKEN SO FAR shows ANY type_text with "✓", that field is DONE. STOP typing. Call done or ask_user IMMEDIATELY. Repeating a type_text that already shows ✓ is a FATAL ERROR — you will overwrite the content and loop forever.
 26. **TAB BETWEEN FIELDS (CRITICAL)**: In email compose and forms, use "\\\\t" at end of text to Tab to next field. NEVER click on Subject separately — always Tab from To to Subject! Email flow: type_text("email\\\\n") in To, then type_text("Subject text\\\\t") tabs to body, then type_text("Body text") in body area.
-27. **ENTER TO CONFIRM**: Use "\\\\n" at end to confirm in To fields and submit in search fields.
+27. **SEARCH BAR SUBMISSION (CRITICAL)**: When typing into a search bar (YouTube, Twitter, Google, etc.), ALWAYS set submit_after=true to press Enter after typing. Without this, the search will NOT execute and nothing will happen. Example: type_text(x, y, "query", submit_after=true). For email To fields, still use "\\\\\\\\n" at end of text.
 28. **CONTEXTUAL WRITING**: When composing text (emails, replies, messages):
     - Match the LANGUAGE of the conversation (English email → English reply, German → German)
     - Match the TONE (formal/informal) and STYLE

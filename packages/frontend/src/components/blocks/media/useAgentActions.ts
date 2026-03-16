@@ -477,6 +477,7 @@ export function useAgentActions(
                         const ty = args.y ?? 0;
                         const text = args.text || '';
                         const clearFirst = args.clear_first !== false;
+                        const submitAfter = args.submit_after === true;
 
                         // Auto-retry if element not yet editable
                         for (let typeAttempt = 0; typeAttempt < 3; typeAttempt++) {
@@ -519,7 +520,17 @@ export function useAgentActions(
                                 await new Promise(r => setTimeout(r, 300));
 
                                 const preview = text.length > 50 ? text.substring(0, 50) + '…' : text;
-                                return `✓ "${preview}"`;
+
+                                // Submit after typing if requested (press Enter)
+                                if (submitAfter && wv.sendInputEvent) {
+                                    await new Promise(r => setTimeout(r, 200));
+                                    wv.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+                                    wv.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+                                    // Wait longer for search results to load
+                                    await new Promise(r => setTimeout(r, 2500));
+                                }
+
+                                return `✓ "${preview}"${submitAfter ? ' + ⏎' : ''}`;
                             } else {
                                 // ── Standard input/textarea (value assignment works fine) ──
                                 const result = await wv.executeJavaScript(
@@ -528,7 +539,17 @@ export function useAgentActions(
                                 const parsed = JSON.parse(result);
                                 if (parsed.success) {
                                     const preview = text.length > 50 ? text.substring(0, 50) + '…' : text;
-                                    return `✓ "${preview}"`;
+
+                                    // Submit after typing if requested (press Enter)
+                                    if (submitAfter && wv.sendInputEvent) {
+                                        await new Promise(r => setTimeout(r, 200));
+                                        wv.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+                                        wv.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+                                        // Wait longer for search results to load
+                                        await new Promise(r => setTimeout(r, 2500));
+                                    }
+
+                                    return `✓ "${preview}"${submitAfter ? ' + ⏎' : ''}`;
                                 }
                                 if (typeAttempt < 2 && parsed.error?.includes('editable')) {
                                     console.log(`⏳ type_text retry ${typeAttempt + 1}/2 — waiting for element...`);
@@ -811,6 +832,42 @@ export function useAgentActions(
                                     true,
                                 ) ?? '';
                             } catch { /* */ }
+
+                            // ── Self-Healing: if same action failed 2+ times, recover instead of abort ──
+                            const prevSteps = stepsRef.current;
+                            if (prevSteps.length >= 2) {
+                                const last2 = prevSteps.slice(-2);
+                                const currentSig = `${action}|${args.description || ''}`;
+                                const allSame = last2.every(s =>
+                                    `${s.action}|${s.description}` === currentSig &&
+                                    (s.result?.includes('NO DOM CHANGE') || s.result?.includes('No element') || s.result?.includes('failed'))
+                                );
+                                if (allSame) {
+                                    debug.log(`🔄 [Self-Heal] Same action "${action}" failed 2x — triggering recovery`);
+
+                                    // Auto-scroll the page (element might be off-screen)
+                                    try {
+                                        const wv = webviewRef.current as any;
+                                        await wv?.executeJavaScript?.('window.scrollBy(0, 300)', true);
+                                        await new Promise(r => setTimeout(r, 500));
+                                    } catch { /* */ }
+
+                                    // Inject recovery warning into step history
+                                    const recoveryStep: AgentStep = {
+                                        action: "system_recovery",
+                                        description: `🔄 AUTO-RECOVERY: "${args.description || action}" failed 2x consecutively. Page auto-scrolled. You MUST try a COMPLETELY DIFFERENT approach — use a different element, different selector, or navigate to the target differently. DO NOT repeat the same action.`,
+                                        result: "Recovery triggered — fresh screenshot + DOM will follow",
+                                    };
+                                    stepsRef.current = [...stepsRef.current, recoveryStep];
+                                    setAgentState(prev => ({
+                                        ...prev,
+                                        steps: stepsRef.current,
+                                        currentAction: `🔄 Self-healing: trying different approach...`,
+                                    }));
+
+                                    return true; // Continue loop — runStep will take fresh screenshot + DOM
+                                }
+                            }
 
                             const result = await executeAction(action, args);
 

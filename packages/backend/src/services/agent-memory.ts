@@ -121,10 +121,37 @@ export async function saveWorkflowTrace(
     // Insert new workflow
     // Compute embedding for semantic matching (non-blocking: if it fails, we still save)
     let embeddingB64 = '';
+    let queryEmbedding: Float32Array | null = null;
     try {
-        const emb = await computeEmbedding(cleanTask);
-        if (emb) embeddingB64 = embeddingToBase64(emb);
+        queryEmbedding = await computeEmbedding(cleanTask);
+        if (queryEmbedding) embeddingB64 = embeddingToBase64(queryEmbedding);
     } catch { /* embedding optional */ }
+
+    // ── Semantic dedup: check if a similar verified workflow already exists ──
+    if (queryEmbedding) {
+        const DEDUP_THRESHOLD = 0.65;
+        const allWorkflows = await db.select().from(agentWorkflows);
+
+        for (const wf of allWorkflows) {
+            if (!wf.intent_embedding || !wf.verified) continue;
+            const storedEmb = base64ToEmbedding(wf.intent_embedding);
+            const score = cosineSimilarity(queryEmbedding, storedEmb);
+
+            if (score >= DEDUP_THRESHOLD) {
+                // Merge: increment the existing verified workflow instead of creating a duplicate
+                await db
+                    .update(agentWorkflows)
+                    .set({
+                        success_count: wf.success_count + 1,
+                        updated_at: now,
+                    })
+                    .where(eq(agentWorkflows.id, wf.id));
+
+                log.debug(`  🧠 Memory: dedup merge → workflow #${wf.id} (score=${score.toFixed(3)}) "${wf.intent_text?.substring(0, 40)}" — ${wf.success_count + 1} successes`);
+                return wf.id;
+            }
+        }
+    }
 
     const result = await db.run(sql`
         INSERT INTO agent_workflows (domain, intent_hash, intent_text, steps_json, success_count, fail_count, verified, intent_embedding, created_at, updated_at)

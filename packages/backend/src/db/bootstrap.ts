@@ -344,6 +344,24 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "fix", text: "Context panel no longer clears agent progress when navigating between sites during an agent task" },
             ]),
         },
+
+        {
+            version: "1.1.0-alpha",
+            date: "2026-03-16",
+            entries: JSON.stringify([
+                { type: "feature", text: "Agent Memory System: the AI agent now learns from verified tasks — stores workflows as 'muscle memory' and replays them as reflexes on similar future requests" },
+                { type: "feature", text: "Memory Manager UI: new Settings → Memory panel shows all learned workflows with stat cards, expandable step details, verify/unverify toggle, delete, and clear all functions" },
+                { type: "feature", text: "Semantic Intent Matching: agent recognizes similar tasks even with completely different wording (e.g. 'open YouTube and find newest KD CSapat video' matches 'show me latest KD CSapat video')" },
+                { type: "feature", text: "Workflow Deduplication: similar verified workflows are automatically merged instead of creating duplicates — success count increases on the best existing workflow" },
+                { type: "feature", text: "AI Agent — submit_after: new type_text flag that auto-presses Enter after typing — eliminates stuck search bar loops on YouTube, Twitter, Google" },
+                { type: "feature", text: "AI Agent — Self-Healing Loop: when the agent repeats the same failing action twice, it auto-scrolls the page, injects a recovery instruction, and retries with a fresh approach instead of aborting" },
+                { type: "improvement", text: "Cross-domain workflow lookup: semantic matching searches all domains, not just the current page's domain" },
+                { type: "improvement", text: "Local embedding model (all-MiniLM-L6-v2) runs entirely on-device for semantic matching — no API calls needed" },
+                { type: "improvement", text: "Agent prompt rule 27 updated: LLM now instructed to always use submit_after=true for search bars" },
+                { type: "fix", text: "Memory API routes moved before /:name wildcard — GET /agents/memory was being caught by the agent name parameter route" },
+                { type: "fix", text: "Intent hash now strips /act prefix before hashing — prevents command artifacts from interfering with workflow matching" },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {

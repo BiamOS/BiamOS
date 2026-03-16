@@ -161,6 +161,115 @@ agentRoutes.get("/", async (c) => {
     });
 });
 
+// ─── GET /agents/memory — List all learned workflows ────────
+
+agentRoutes.get("/memory", async (c) => {
+    const { agentWorkflows } = await import("../db/schema.js");
+    const workflows = await db
+        .select()
+        .from(agentWorkflows)
+        .orderBy(agentWorkflows.id);
+
+    const items = workflows.map((wf) => {
+        let stepCount = 0;
+        let steps: any[] = [];
+        try {
+            steps = JSON.parse(wf.steps_json);
+            stepCount = steps.length;
+        } catch { /* ignore */ }
+
+        return {
+            id: wf.id,
+            domain: wf.domain,
+            intent_hash: wf.intent_hash,
+            intent_text: wf.intent_text,
+            success_count: wf.success_count,
+            fail_count: wf.fail_count,
+            verified: !!wf.verified,
+            has_embedding: !!wf.intent_embedding,
+            step_count: stepCount,
+            steps,
+            created_at: wf.created_at,
+            updated_at: wf.updated_at,
+        };
+    });
+
+    return c.json({
+        biam_protocol: "2.0",
+        action: "memory_list",
+        workflows: items,
+        stats: {
+            total: items.length,
+            verified: items.filter((w) => w.verified).length,
+            with_embedding: items.filter((w) => w.has_embedding).length,
+            domains: [...new Set(items.map((w) => w.domain))].length,
+        },
+    });
+});
+
+// ─── DELETE /agents/memory/:id — Delete single workflow ─────
+
+agentRoutes.delete("/memory/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+        return c.json({ error: "Invalid workflow ID" }, 400);
+    }
+
+    const { agentWorkflows } = await import("../db/schema.js");
+    await db.delete(agentWorkflows).where(eq(agentWorkflows.id, id));
+    log.debug(`  🧠 Memory: deleted workflow #${id}`);
+
+    return c.json({
+        biam_protocol: "2.0",
+        action: "memory_deleted",
+        deleted_id: id,
+    });
+});
+
+// ─── DELETE /agents/memory — Clear all workflows ────────────
+
+agentRoutes.delete("/memory", async (c) => {
+    const { agentWorkflows } = await import("../db/schema.js");
+    const before = await db.select().from(agentWorkflows);
+    await db.delete(agentWorkflows);
+    log.debug(`  🧠 Memory: cleared all ${before.length} workflows`);
+
+    return c.json({
+        biam_protocol: "2.0",
+        action: "memory_cleared",
+        deleted_count: before.length,
+    });
+});
+
+// ─── PATCH /agents/memory/:id — Toggle verified status ──────
+
+agentRoutes.patch("/memory/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) {
+        return c.json({ error: "Invalid workflow ID" }, 400);
+    }
+
+    const body = await c.req.json().catch(() => null);
+    if (body?.verified === undefined) {
+        return c.json({ error: "verified field is required" }, 400);
+    }
+
+    const { agentWorkflows } = await import("../db/schema.js");
+    await db
+        .update(agentWorkflows)
+        .set({ verified: !!body.verified, updated_at: new Date().toISOString() })
+        .where(eq(agentWorkflows.id, id));
+
+    log.debug(`  🧠 Memory: workflow #${id} ${body.verified ? "verified ✅" : "unverified"}`);
+
+    return c.json({
+        biam_protocol: "2.0",
+        action: "memory_updated",
+        id,
+        verified: !!body.verified,
+    });
+});
+
 // ─── GET /agents/:name — Get single agent ──────────────────
 
 agentRoutes.get("/:name", async (c) => {
