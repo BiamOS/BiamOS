@@ -11,6 +11,7 @@ import { getProviderConfig, getModelsUrl } from "../services/llm-provider.js";
 import { SEED_AGENTS } from "../agents/agent-defaults.js";
 import { log } from "../utils/logger.js";
 import { streamAgentStep } from "../services/agent-actions.js";
+import { saveWorkflowTrace, feedbackWorkflow, extractDomain } from "../services/agent-memory.js";
 
 const agentRoutes = new Hono();
 
@@ -404,6 +405,47 @@ agentRoutes.post("/search", async (c) => {
             results: `Search failed: ${err instanceof Error ? err.message : 'unknown error'}`,
             count: 0,
         });
+    }
+});
+
+// ─── POST /agents/memory/save — Save agent workflow trace ───
+
+agentRoutes.post("/memory/save", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body?.domain || !body?.task || !body?.steps) {
+        return c.json({ error: "domain, task, and steps are required" }, 400);
+    }
+
+    try {
+        const id = await saveWorkflowTrace(body.domain, body.task, body.steps);
+        return c.json({
+            biam_protocol: "2.0",
+            action: "memory_saved",
+            workflow_id: id,
+        });
+    } catch (err) {
+        log.error(`  🧠 Memory save error: ${err}`);
+        return c.json({ error: "Failed to save workflow" }, 500);
+    }
+});
+
+// ─── POST /agents/memory/feedback — 👍/👎 workflow ──────────
+
+agentRoutes.post("/memory/feedback", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (body?.workflow_id == null || body?.positive == null) {
+        return c.json({ error: "workflow_id and positive are required" }, 400);
+    }
+
+    try {
+        await feedbackWorkflow(body.workflow_id, body.positive);
+        return c.json({
+            biam_protocol: "2.0",
+            action: body.positive ? "workflow_verified" : "workflow_rejected",
+        });
+    } catch (err) {
+        log.error(`  🧠 Memory feedback error: ${err}`);
+        return c.json({ error: "Failed to update workflow" }, 500);
     }
 });
 

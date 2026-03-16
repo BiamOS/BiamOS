@@ -356,6 +356,23 @@ export async function bootstrapDatabase(): Promise<void> {
         }
     }
 
+    // Agent memory table (Local Action Memory — Phase 1)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS agent_workflows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT NOT NULL,
+        intent_hash TEXT NOT NULL,
+        intent_text TEXT NOT NULL,
+        steps_json TEXT NOT NULL,
+        success_count INTEGER NOT NULL DEFAULT 1,
+        fail_count INTEGER NOT NULL DEFAULT 0,
+        verified INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(domain, intent_hash)
+      );
+    `);
+
     // Browsing history table
     await db.run(sql`
       CREATE TABLE IF NOT EXISTS browsing_history (
@@ -376,4 +393,7 @@ export async function bootstrapDatabase(): Promise<void> {
     for (const col of PINNED_COLUMN_MIGRATIONS) {
         try { await db.run(sql.raw(`ALTER TABLE pinned_intents ADD COLUMN ${col}`)); } catch { }
     }
+
+    // Agent memory V2: semantic embedding column
+    try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN intent_embedding TEXT DEFAULT ''`)); } catch { }
 }

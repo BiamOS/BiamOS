@@ -236,7 +236,19 @@ export const IframeBlock = React.memo(function IframeBlock({
 
         ctx.setContextHints(prev => prev.map(h =>
             h.query === queryKey
-                ? { ...h, loading: !isDone, data: { summary, _source: "page_context" } }
+                ? {
+                    ...h,
+                    loading: !isDone,
+                    data: {
+                        summary,
+                        _source: "page_context",
+                        // Pass workflow ID for feedback buttons in sidebar
+                        ...(isDone && agent.agentState.lastWorkflowId ? {
+                            _workflowId: agent.agentState.lastWorkflowId,
+                            _sendFeedback: agent.sendFeedback,
+                        } : {}),
+                    },
+                }
                 : h
         ));
     }, [agent.agentState]);
@@ -806,6 +818,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         task={agentTaskRef.current}
                         onStop={agent.stopAgent}
                         onContinue={() => agent.continueAgent(agentTaskRef.current)}
+                        onFeedback={agent.sendFeedback}
                     />
                     {ctrlHeld && (
                         <Box
@@ -871,15 +884,18 @@ export const IframeBlock = React.memo(function IframeBlock({
                             if (query.trim().toLowerCase().startsWith("/act ") || query.trim().toLowerCase() === "/act") {
                                 const task = query.replace(/^\/act\s*/i, "").trim() || "Analyze this page and tell me what you see";
                                 agentTaskRef.current = task;
-                                // Show agent activity in chat
-                                ctx.setContextHints(prev => [...prev, {
-                                    query: `🤖 Agent: ${task}`,
-                                    reason: "Manual query",
-                                    expanded: true,
-                                    loading: true,
-                                    timestamp: Date.now(),
-                                    data: { summary: "Starting AI Browser Agent..." },
-                                }]);
+                                // Show agent activity in chat — remove old agent hints first
+                                ctx.setContextHints(prev => [
+                                    ...prev.filter(h => !h.query.startsWith('🤖 Agent:')),
+                                    {
+                                        query: `🤖 Agent: ${task}`,
+                                        reason: "Manual query",
+                                        expanded: true,
+                                        loading: true,
+                                        timestamp: Date.now(),
+                                        data: { summary: "Starting AI Browser Agent..." },
+                                    },
+                                ]);
                                 agent.startAgent(task);
                                 return;
                             }

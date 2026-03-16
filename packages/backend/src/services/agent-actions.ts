@@ -16,6 +16,7 @@ import { getChatUrl, getHeaders } from "./llm-provider.js";
 import { log } from "../utils/logger.js";
 import { MODEL_THINKING } from "../config/models.js";
 import { logTokenUsage, incrementAgentUsage } from "../server-utils.js";
+import { lookupWorkflow, extractDomain } from "./agent-memory.js";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -341,7 +342,8 @@ NAVIGATION RULES:
     - **YouTube**: To find the newest video from a channel → navigate to youtube.com → search for the channel → go to the channel page → click "Videos" tab → videos are sorted by newest first by default → click the first (top-left) video.
     - **Twitter/X**: To find a user's latest tweet → navigate to x.com → search for the user → go to their profile → the timeline shows newest first → interact with the first tweet.
     - **Amazon**: To find cheapest product → search → use sort/filter by price.
-33. **LANGUAGE**: Always match the user's language in descriptions and composed text.`;
+33. **LANGUAGE**: Always match the user's language in descriptions and composed text.
+34. **DOM-DIFF FEEDBACK**: If a step result contains "⚠️ [NO DOM CHANGE]", your click/action had no visible effect on the page. The element may be wrong, blocked by an overlay, or not interactive. Try a DIFFERENT element or approach — never retry the same action.`;
 }
 
 // ─── Stream Agent Step ──────────────────────────────────────
@@ -350,7 +352,29 @@ export async function streamAgentStep(
     ctx: AgentRequest,
     onEvent: (event: string) => void,
 ): Promise<void> {
-    const systemPrompt = buildAgentPrompt(ctx.task, ctx.page_url, ctx.page_title, ctx.history || []);
+    let systemPrompt = buildAgentPrompt(ctx.task, ctx.page_url, ctx.page_title, ctx.history || []);
+
+    // ── Local Action Memory: RAG lookup ──
+    // Check if we have a known workflow for this domain + intent
+    try {
+        const domain = extractDomain(ctx.page_url);
+        const match = await lookupWorkflow(domain, ctx.task);
+        if (match) {
+            const stepsText = match.steps
+                .map((s, i) => `${i + 1}. ${s.action}${s.value ? `("${s.value}")` : ''} — ${s.description}`)
+                .join('\n');
+            systemPrompt += `\n\n═══════════════════════════════════════════════════
+KNOWN WORKFLOW (from ${match.verified ? 'verified ✅' : `${match.success_count}x successful`} previous runs):
+═══════════════════════════════════════════════════
+A similar task on ${match.domain} has succeeded before with this path:
+${stepsText}
+
+Follow this path if the page structure looks similar. If the DOM has changed significantly, fall back to your standard reasoning.`;
+            log.debug(`  🧠 Memory: injected workflow #${match.id} into prompt (${match.steps.length} steps)`);
+        }
+    } catch (err) {
+        log.debug(`  🧠 Memory: lookup error (non-fatal): ${err}`);
+    }
 
     const messages: { role: string; content: any }[] = [
         { role: "system", content: systemPrompt },

@@ -479,6 +479,64 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                                                     {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
                                                                 </Typography>
                                                             )}
+                                                            {/* 👍/👎 Agent workflow feedback */}
+                                                            {hint.data._workflowId && hint.data._sendFeedback && (
+                                                                <Box sx={{
+                                                                    display: "flex", gap: 0.8, mt: 0.8, pt: 0.6,
+                                                                    borderTop: "1px solid rgba(0, 212, 255, 0.08)",
+                                                                    alignItems: "center",
+                                                                }}>
+                                                                    <Typography sx={{
+                                                                        color: "rgba(0, 212, 255, 0.4)",
+                                                                        fontSize: "0.55rem",
+                                                                        fontWeight: 500,
+                                                                    }}>
+                                                                        Was this correct?
+                                                                    </Typography>
+                                                                    <Box
+                                                                        component="button"
+                                                                        onClick={() => hint.data._sendFeedback(true)}
+                                                                        sx={{
+                                                                            display: "inline-flex", alignItems: "center", gap: 0.3,
+                                                                            px: 1, py: 0.3,
+                                                                            fontSize: "0.6rem", fontWeight: 600,
+                                                                            color: "rgba(0, 200, 100, 0.8)",
+                                                                            bgcolor: "rgba(0, 200, 100, 0.08)",
+                                                                            border: "1px solid rgba(0, 200, 100, 0.2)",
+                                                                            borderRadius: 1.5,
+                                                                            cursor: "pointer",
+                                                                            transition: "all 0.15s ease",
+                                                                            "&:hover": {
+                                                                                bgcolor: "rgba(0, 200, 100, 0.2)",
+                                                                                borderColor: "rgba(0, 200, 100, 0.4)",
+                                                                            },
+                                                                        }}
+                                                                    >
+                                                                        👍 Yes, remember!
+                                                                    </Box>
+                                                                    <Box
+                                                                        component="button"
+                                                                        onClick={() => hint.data._sendFeedback(false)}
+                                                                        sx={{
+                                                                            display: "inline-flex", alignItems: "center", gap: 0.3,
+                                                                            px: 1, py: 0.3,
+                                                                            fontSize: "0.6rem", fontWeight: 600,
+                                                                            color: "rgba(255, 80, 80, 0.6)",
+                                                                            bgcolor: "transparent",
+                                                                            border: "1px solid rgba(255, 80, 80, 0.15)",
+                                                                            borderRadius: 1.5,
+                                                                            cursor: "pointer",
+                                                                            transition: "all 0.15s ease",
+                                                                            "&:hover": {
+                                                                                bgcolor: "rgba(255, 80, 80, 0.1)",
+                                                                                borderColor: "rgba(255, 80, 80, 0.3)",
+                                                                            },
+                                                                        }}
+                                                                    >
+                                                                        👎 No
+                                                                    </Box>
+                                                                </Box>
+                                                            )}
                                                         </>
                                                     ) : hint.data?.error ? (
                                                         <Typography sx={{ color: "rgba(255,100,100,0.7)", fontSize: "0.7rem" }}>

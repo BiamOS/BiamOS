@@ -126,4 +126,7 @@ bootstrapDatabase()
 
     // Background: Embedding health check (non-blocking)
     runBackgroundTasks().catch(() => {});
+
+    // Background: Pre-load embedding model for semantic intent matching
+    import("./services/embedding.js").then(m => m.preloadModel()).catch(() => {});
   });

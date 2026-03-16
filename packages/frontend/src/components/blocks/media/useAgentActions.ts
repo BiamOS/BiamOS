@@ -28,6 +28,7 @@ export interface AgentState {
     currentAction: string;
     pauseQuestion: string | null;
     cursorPos: { x: number; y: number } | null;
+    lastWorkflowId: number | null;
 }
 
 // ─── DOM Snapshot Script ────────────────────────────────────
@@ -275,10 +276,12 @@ export function useAgentActions(
         currentAction: "",
         pauseQuestion: null,
         cursorPos: null,
+        lastWorkflowId: null,
     });
 
     const abortRef = useRef(false);
     const stepsRef = useRef<AgentStep[]>([]);
+    const currentTaskRef = useRef<string>('');
     const MAX_STEPS = 40;
 
     // ─── Capture DOM snapshot ───────────────────────────────
@@ -720,6 +723,32 @@ export function useAgentActions(
                                     currentAction: `✅ ${args.summary || "Done"}`,
                                     pauseQuestion: null,
                                 }));
+
+                                // ── Auto-save workflow to memory ──
+                                try {
+                                    const wv = webviewRef.current as any;
+                                    const pageUrl = await wv?.executeJavaScript?.('location.href', true) ?? '';
+                                    const domain = pageUrl ? new URL(pageUrl).hostname.replace(/^www\./, '') : '';
+                                    if (domain && currentTaskRef.current) {
+                                        const resp = await fetch('/api/agents/memory/save', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                domain,
+                                                task: currentTaskRef.current,
+                                                steps: stepsRef.current,
+                                            }),
+                                        });
+                                        const data = await resp.json();
+                                        if (data.workflow_id > 0) {
+                                            setAgentState(prev => ({ ...prev, lastWorkflowId: data.workflow_id }));
+                                            debug.log(`🧠 [Memory] Saved workflow #${data.workflow_id}`);
+                                        }
+                                    }
+                                } catch (e) {
+                                    debug.log('🧠 [Memory] Save error (non-fatal):', e);
+                                }
+
                                 return false; // Stop loop
                             }
 
@@ -773,14 +802,41 @@ export function useAgentActions(
                                 currentAction: `🖱️ [${stepNum}/${MAX_STEPS}] ${args.description || action}`,
                             }));
 
+                            // ── Phase 3 Critic: DOM-Diff before action ──
+                            let domHashBefore = '';
+                            try {
+                                const wv = webviewRef.current as any;
+                                domHashBefore = await wv?.executeJavaScript?.(
+                                    `document.querySelectorAll('*').length + '|' + document.title + '|' + location.href`,
+                                    true,
+                                ) ?? '';
+                            } catch { /* */ }
+
                             const result = await executeAction(action, args);
+
+                            // ── Phase 3 Critic: DOM-Diff after action ──
+                            let domDiffSuffix = '';
+                            if (domHashBefore && ["click", "click_at", "type_text"].includes(action)) {
+                                try {
+                                    await new Promise(r => setTimeout(r, 300)); // Brief settle
+                                    const wv = webviewRef.current as any;
+                                    const domHashAfter = await wv?.executeJavaScript?.(
+                                        `document.querySelectorAll('*').length + '|' + document.title + '|' + location.href`,
+                                        true,
+                                    ) ?? '';
+                                    if (domHashAfter && domHashAfter === domHashBefore) {
+                                        domDiffSuffix = ' ⚠️ [NO DOM CHANGE]';
+                                        debug.log('🔍 [Critic] DOM unchanged after action — flagging');
+                                    }
+                                } catch { /* */ }
+                            }
 
                             const step: AgentStep = {
                                 action,
                                 selector: args.selector,
                                 value: args.text,
                                 description: args.description || action,
-                                result,
+                                result: result + domDiffSuffix,
                             };
                             stepsRef.current = [...stepsRef.current, step];
                             setAgentState(prev => ({
@@ -828,7 +884,10 @@ export function useAgentActions(
             currentAction: "🚀 Starting...",
             pauseQuestion: null,
             cursorPos: null,
+            lastWorkflowId: null,
         });
+
+        currentTaskRef.current = task;
 
         let stepCount = 0;
         let shouldContinue = true;
@@ -863,15 +922,20 @@ export function useAgentActions(
             }));
         }
 
-        // Auto-dismiss status bar after 5 seconds
+        // Auto-dismiss: errors dismiss after 8s, done tasks stay until feedback
         setTimeout(() => {
             setAgentState(prev => {
-                if (prev.status === "done" || prev.status === "error") {
+                // Only auto-dismiss errors, or done tasks WITHOUT feedback pending
+                if (prev.status === "error") {
+                    return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
+                }
+                // Done tasks with a workflow to rate stay visible
+                if (prev.status === "done" && !prev.lastWorkflowId) {
                     return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
                 }
                 return prev;
             });
-        }, 5000);
+        }, 8000);
     }, [runStep]);
 
     // ─── Continue after pause ───────────────────────────────
@@ -909,10 +973,42 @@ export function useAgentActions(
         }));
     }, []);
 
+    // ─── Memory feedback ────────────────────────────────────
+    const sendFeedback = useCallback(async (positive: boolean) => {
+        const wfId = agentState.lastWorkflowId;
+        if (!wfId || wfId < 0) return;
+        try {
+            await fetch('/api/agents/memory/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workflow_id: wfId, positive }),
+            });
+            debug.log(`🧠 [Memory] Feedback sent: ${positive ? '👍' : '👎'} for workflow #${wfId}`);
+
+            // Show confirmation, then dismiss after 2s
+            setAgentState(prev => ({
+                ...prev,
+                currentAction: positive ? '✅ Workflow saved! Next time even faster 🧠' : '❌ Workflow rejected',
+                lastWorkflowId: null, // Hide buttons
+            }));
+            setTimeout(() => {
+                setAgentState(prev => {
+                    if (prev.status === 'done') {
+                        return { ...prev, status: 'idle', currentAction: '', pauseQuestion: null };
+                    }
+                    return prev;
+                });
+            }, 2500);
+        } catch (e) {
+            debug.log('🧠 [Memory] Feedback error:', e);
+        }
+    }, [agentState.lastWorkflowId]);
+
     return {
         agentState,
         startAgent,
         continueAgent,
         stopAgent,
+        sendFeedback,
     };
 }

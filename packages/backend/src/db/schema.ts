@@ -32,3 +32,7 @@ export type { ChangelogEntry, NewChangelogEntry } from "./schema/changelog.schem
 
 export { browsingHistory } from "./schema/history.schema.js";
 export type { HistoryEntry, NewHistoryEntry } from "./schema/history.schema.js";
+
+export { agentWorkflows } from "./schema/agent-memory.schema.js";
+export type { AgentWorkflow, NewAgentWorkflow } from "./schema/agent-memory.schema.js";
+

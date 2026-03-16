@@ -12,6 +12,8 @@ import React, { useRef, useEffect, useCallback } from "react";
 import { Box, Typography, IconButton } from "@mui/material";
 import StopIcon from "@mui/icons-material/Stop";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import ThumbUpAltIcon from "@mui/icons-material/ThumbUpAlt";
+import ThumbDownAltIcon from "@mui/icons-material/ThumbDownAlt";
 import type { AgentState } from "./useAgentActions";
 
 // ─── Particle System ────────────────────────────────────────
@@ -40,6 +42,7 @@ interface AgentOverlayProps {
     task: string;
     onStop: () => void;
     onContinue: () => void;
+    onFeedback?: (positive: boolean) => void;
 }
 
 export const AgentOverlay = React.memo(function AgentOverlay({
@@ -47,6 +50,7 @@ export const AgentOverlay = React.memo(function AgentOverlay({
     task,
     onStop,
     onContinue,
+    onFeedback,
 }: AgentOverlayProps) {
     // ─── Refs for animation loop ────────────────────────────
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -455,6 +459,42 @@ export const AgentOverlay = React.memo(function AgentOverlay({
                     >
                         <StopIcon sx={{ fontSize: 16 }} />
                     </IconButton>
+                )}
+
+                {/* 👍/👎 Feedback buttons (when done and has workflow) */}
+                {isDone && state.lastWorkflowId && onFeedback && (
+                    <Box sx={{ display: 'flex', gap: 0.5, ml: 0.5 }}>
+                        <IconButton
+                            onClick={(e) => { e.stopPropagation(); onFeedback(true); }}
+                            size="small"
+                            title="Workflow was correct — remember it!"
+                            sx={{
+                                color: "rgba(0, 200, 100, 0.7)",
+                                p: 0.3,
+                                "&:hover": {
+                                    color: "rgba(0, 200, 100, 1)",
+                                    bgcolor: "rgba(0, 200, 100, 0.15)",
+                                },
+                            }}
+                        >
+                            <ThumbUpAltIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                        <IconButton
+                            onClick={(e) => { e.stopPropagation(); onFeedback(false); }}
+                            size="small"
+                            title="Workflow was wrong"
+                            sx={{
+                                color: "rgba(255, 80, 80, 0.5)",
+                                p: 0.3,
+                                "&:hover": {
+                                    color: "rgba(255, 80, 80, 0.9)",
+                                    bgcolor: "rgba(255, 80, 80, 0.1)",
+                                },
+                            }}
+                        >
+                            <ThumbDownAltIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                    </Box>
                 )}
             </Box>
         </>
