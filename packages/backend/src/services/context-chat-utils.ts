@@ -105,7 +105,7 @@ export function shouldForceSearch(question: string, history?: ChatMessage[]): bo
 // ─── Prompt Builder ─────────────────────────────────────────
 
 export function buildSystemPrompt(ctx: PageQuestion, hasPageContent: boolean, streaming: boolean): string {
-    const pageSnippet = ctx.page_text.substring(0, 3500);
+    const pageSnippet = ctx.page_text.substring(0, 6000);
     const followUpBlock = `After your answer, add on a new line:
 ---FOLLOWUPS---
 1-2 short follow-up suggestions (NOT clarifying questions). Same language as the user. Under 50 chars each.`;

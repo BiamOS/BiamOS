@@ -7,7 +7,8 @@ import { db } from "../db/db.js";
 import { agents } from "../db/schema.js";
 import { zValidator } from "@hono/zod-validator";
 import { updateAgentSchema } from "../validators/schemas.js";
-import { getProviderConfig, getModelsUrl } from "../services/llm-provider.js";
+import { getProviderConfig, getModelsUrl, getChatUrl, getHeaders } from "../services/llm-provider.js";
+import { MODEL_FAST } from "../config/models.js";
 import { SEED_AGENTS } from "../agents/agent-defaults.js";
 import { log } from "../utils/logger.js";
 import { streamAgentStep } from "../services/agent-actions.js";
@@ -439,6 +440,8 @@ agentRoutes.post("/act", async (c) => {
                 dom_snapshot: body.dom_snapshot || "",
                 screenshot: body.screenshot || undefined,
                 history: body.history || [],
+                step_number: body.step_number ?? undefined,
+                max_steps: body.max_steps ?? undefined,
             },
             (event) => {
                 s.write(event);
@@ -460,38 +463,92 @@ agentRoutes.post("/search", async (c) => {
 
     log.debug(`  🔍 Agent search: "${query}"`);
 
-    try {
-        // Use DuckDuckGo HTML search (no API key needed)
-        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-        const resp = await fetch(searchUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-        });
-        const html = await resp.text();
+    const MAX_RESULTS = 8;
+    const MAX_RETRIES = 2;
 
-        // Extract results: titles + snippets from DuckDuckGo's HTML
+    // Extract real URL from DDG redirect wrapper
+    function extractRealUrl(rawUrl: string): string {
+        try {
+            const u = rawUrl.replace(/&amp;/g, '&');
+            const parsed = new URL(u, "https://duckduckgo.com");
+            const uddg = parsed.searchParams.get("uddg");
+            if (uddg) return decodeURIComponent(uddg);
+        } catch { /* use raw */ }
+        return rawUrl.replace(/&amp;/g, '&');
+    }
+
+    // Parse DDG HTML with multiple fallback strategies
+    function parseDdgResults(html: string): { title: string; snippet: string; url: string }[] {
         const results: { title: string; snippet: string; url: string }[] = [];
-        const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
+        const stripTags = (s: string) => s.replace(/<[^>]*>/g, '').trim();
+
+        // Strategy 1: Full match (title + snippet + URL)
+        const fullRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
         let match;
-        while ((match = resultRegex.exec(html)) !== null && results.length < 5) {
+        while ((match = fullRegex.exec(html)) !== null && results.length < MAX_RESULTS) {
             results.push({
-                url: match[1].replace(/&amp;/g, '&'),
-                title: match[2].replace(/<[^>]*>/g, '').trim(),
-                snippet: match[3].replace(/<[^>]*>/g, '').trim(),
+                url: extractRealUrl(match[1]),
+                title: stripTags(match[2]),
+                snippet: stripTags(match[3]),
             });
         }
+        if (results.length > 0) return results;
 
-        // Fallback: try simpler regex if no results
-        if (results.length === 0) {
-            const titleRegex = /<a[^>]*class="result__a"[^>]*>(.*?)<\/a>/gs;
-            while ((match = titleRegex.exec(html)) !== null && results.length < 5) {
-                results.push({
-                    url: '',
-                    title: match[1].replace(/<[^>]*>/g, '').trim(),
-                    snippet: '',
-                });
+        // Strategy 2: Links with snippets as separate divs
+        const linkRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gs;
+        const snippetRegex = /<[^>]*class="result__snippet"[^>]*>(.*?)<\/(?:a|div|span)>/gs;
+        const links: { url: string; title: string }[] = [];
+        const snippets: string[] = [];
+
+        while ((match = linkRegex.exec(html)) !== null && links.length < MAX_RESULTS) {
+            links.push({ url: extractRealUrl(match[1]), title: stripTags(match[2]) });
+        }
+        while ((match = snippetRegex.exec(html)) !== null) {
+            snippets.push(stripTags(match[1]));
+        }
+        if (links.length > 0) {
+            return links.map((l, i) => ({
+                ...l,
+                snippet: snippets[i] || '',
+            }));
+        }
+
+        // Strategy 3: Bare minimum — any result link
+        const bareRegex = /<a[^>]*class="[^"]*result[^"]*"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gs;
+        while ((match = bareRegex.exec(html)) !== null && results.length < MAX_RESULTS) {
+            const title = stripTags(match[2]);
+            if (title.length > 3) {
+                results.push({ url: extractRealUrl(match[1]), title, snippet: '' });
             }
         }
 
+        return results;
+    }
+
+    try {
+        let results: { title: string; snippet: string; url: string }[] = [];
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            if (attempt > 0) {
+                log.debug(`  🔍 Agent search: retry ${attempt}/${MAX_RETRIES} after empty result`);
+                await new Promise(r => setTimeout(r, 1000 * attempt)); // Backoff
+            }
+
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            const resp = await fetch(searchUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+            });
+            const html = await resp.text();
+            results = parseDdgResults(html);
+
+            if (results.length > 0) break;
+        }
+
+        // Format as text for the agent (backward compatible)
         const text = results.length > 0
             ? results.map((r, i) => `${i + 1}. ${r.title}${r.snippet ? ' — ' + r.snippet : ''}${r.url ? ' (' + r.url + ')' : ''}`).join('\n')
             : 'No results found for: ' + query;
@@ -503,6 +560,7 @@ agentRoutes.post("/search", async (c) => {
             action: "search_results",
             query,
             results: text,
+            structured: results, // Structured JSON for future use
             count: results.length,
         });
     } catch (err) {
@@ -514,6 +572,123 @@ agentRoutes.post("/search", async (c) => {
             results: `Search failed: ${err instanceof Error ? err.message : 'unknown error'}`,
             count: 0,
         });
+    }
+});
+
+// ─── POST /agents/genui — Generate interactive HTML dashboard ─
+// The LLM generates a full Tailwind-styled HTML page that gets
+// loaded into the webview as a Data-URI sandbox. Buttons call
+// triggerAgent() which posts back to BiamOS via console-message.
+
+agentRoutes.post("/genui", async (c) => {
+    const body = await c.req.json().catch(() => null);
+
+    if (!body?.prompt || typeof body.prompt !== "string" || !body.prompt.trim()) {
+        return c.json({ error: "prompt is required" }, 400);
+    }
+
+    const prompt = body.prompt.trim();
+    const data = body.data || null;
+
+    log.debug(`  🎨 GenUI: prompt="${prompt.substring(0, 60)}"`);
+
+    try {
+        const chatUrl = await getChatUrl();
+        const headers = await getHeaders("GenUI");
+
+        const systemPrompt = `You are an expert dashboard designer for BiamOS. Transform provided data into stunning, information-rich HTML dashboards.
+
+YOUR PHILOSOPHY: Be CREATIVE with layout, design, icons, badges, and visual hierarchy. Be STRICT about data accuracy — never invent facts, URLs, or content. If data is missing, skip that field — don't fake it.
+
+DATA FORMAT:
+- Data arrives as structured JSON with an "items" array. Each item has: title, url, source, date, category, priority, summary, details.
+- Iterate the items array to build cards. Use every field that exists — skip missing fields gracefully.
+- Additional context may be in "search_context" (text from web searches).
+
+DATA RULES:
+1. All text, URLs, and numbers MUST come from the provided data. NEVER invent URLs or use placeholders (example.com, etc.).
+2. You CAN and SHOULD add: emoji indicators (🔴 urgent, 🟡 medium, 🟢 low), status badges, priority tags, category labels, and visual cues derived from the tone/content of the data.
+3. If an item has priority "urgent" or "high" — highlight it prominently with red accents, badges, or icons.
+4. Filter out navigation aids: search engine results (Gmail, Proton Mail links, login pages) are NOT dashboard content. Only show real user data.
+
+SUMMARY HEADER:
+- Start with a contextual emoji + summary line: "📬 6 Emails — 2 urgent, 1 action required" or "📰 5 Articles from today's AI news".
+- Below the summary, add a quick-glance stats bar if applicable (e.g., urgent count, categories, date range).
+
+INTERACTIVITY:
+- Items WITH URLs: use <a href="URL" target="_blank"> styled as cyan links or buttons.
+- Items WITHOUT URLs: make cards EXPANDABLE with onclick="this.querySelector('.detail').classList.toggle('hidden')". Show a "▼ Details" indicator so users know they can click.
+- ACTION BUTTONS: For items where follow-up actions make sense (reply to email, visit profile, etc.), add a button that calls:
+  onclick="biam.prefillCommand('/act <describe the action with full context>')"
+  Example: onclick="biam.prefillCommand('/act Reply to John\\'s email about the Q2 deadline')"
+  This pre-fills the user's command input — they press Enter to execute. Do NOT auto-trigger anything.
+- ALWAYS show core info at a glance (title, from/source, date, priority) — full detail only on expand.
+
+DESIGN LANGUAGE:
+- <!DOCTYPE html> with Tailwind CDN + Inter font.
+- Dark theme: bg-gray-950 body, bg-gray-800/bg-gray-850 cards, text-white headings.
+- Color-coded left borders: border-l-4 border-red-500 (urgent), border-yellow-500 (important), border-cyan-500 (normal), border-gray-600 (low priority).
+- Cards in "grid grid-cols-1 md:grid-cols-2 gap-4" (2 columns on desktop, 1 on mobile).
+- Each card: rounded-xl p-5, subtle hover effect (hover:bg-gray-750 transition-colors), cursor-pointer for expandable cards.
+- Card inner structure: 
+  * Top row: title (font-semibold text-lg) + date badge (text-xs bg-gray-700 rounded-full px-2 py-0.5)
+  * Meta row: from/source in text-sm text-gray-400 + any priority badges
+  * Snippets: 2-3 lines of preview text in text-sm text-gray-300 (visible by default)
+  * Expandable detail: hidden div with full content, rich text, metadata
+  * Action button (if applicable): small cyan button calling biam.prefillCommand()
+- If items have actionable deadlines, show a "⏰ Due: Today" or "📅 Deadline: Tomorrow" tag.
+- Use smooth transitions: transition-all duration-200.
+- Body padding: p-6 max-w-6xl mx-auto.
+4. Output ONLY valid HTML. No markdown, no explanations, no code fences.`;
+
+
+
+        const userMessage = data
+            ? `${prompt}\n\nHere is the data to display:\n${JSON.stringify(data, null, 2)}`
+            : prompt;
+
+        const response = await fetch(chatUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model: MODEL_FAST,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userMessage },
+                ],
+                temperature: 0.3,
+                max_tokens: 8000,
+            }),
+        });
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => "");
+            log.error(`  🎨 GenUI LLM error: ${response.status} ${errText.substring(0, 200)}`);
+            return c.json({ error: `LLM error: ${response.status}` }, 502);
+        }
+
+        const result = await response.json();
+        let html = result.choices?.[0]?.message?.content || "";
+
+        // Strip markdown fences if the LLM wrapped it anyway
+        html = html.replace(/^```html?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+
+        if (!html || !html.includes("<")) {
+            return c.json({ error: "LLM did not return valid HTML" }, 502);
+        }
+
+        log.debug(`  🎨 GenUI: generated ${html.length} chars of HTML`);
+
+        return c.json({
+            biam_protocol: "2.0",
+            action: "genui_render",
+            html,
+        });
+    } catch (err) {
+        log.error(`  🎨 GenUI error: ${err}`);
+        return c.json({
+            error: err instanceof Error ? err.message : "GenUI generation failed",
+        }, 500);
     }
 });
 

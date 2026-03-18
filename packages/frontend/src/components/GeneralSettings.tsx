@@ -36,6 +36,7 @@ import {
     QueryStats as StatsIcon,
     Extension as IntegIcon,
     TravelExplore as WebSearchIcon,
+    Science as AdvancedIcon,
 } from "@mui/icons-material";
 import {
     GradientButton,
@@ -66,6 +67,7 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
     const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
     const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
     const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+    const [advancedMode, setAdvancedMode] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -76,6 +78,9 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
             const json = await res.json();
             if (json.settings?.web_search_fallback !== undefined) {
                 setWebSearchEnabled(json.settings.web_search_fallback !== "false");
+            }
+            if (json.settings?.advanced_mode !== undefined) {
+                setAdvancedMode(json.settings.advanced_mode === "true");
             }
         } catch (err) { console.warn("[GeneralSettings] settings load failed:", err); }
         setLoading(false);
@@ -167,6 +172,39 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                                     body: JSON.stringify({ key: "web_search_fallback", value: String(newVal) }),
                                 });
                             } catch { setWebSearchEnabled(!newVal); }
+                        }}
+                        sx={{
+                            "& .MuiSwitch-switchBase.Mui-checked": { color: accentAlpha(1) },
+                            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { bgcolor: accentAlpha(0.5) },
+                        }}
+                    />
+                </Box>
+            </Box>
+
+            {/* ═══ Advanced Mode ═══ */}
+            <Box sx={{ ...panelSx, mt: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <AdvancedIcon sx={{ color: accentAlpha(0.7), fontSize: 20 }} />
+                        <Box>
+                            <Typography sx={{ ...sectionLabelSx, mb: 0 }}>Advanced Mode</Typography>
+                            <Typography variant="caption" sx={{ color: COLORS.textMuted, display: "block" }}>
+                                Show Integration Builder for creating custom API integrations
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Switch
+                        checked={advancedMode}
+                        onChange={async (e) => {
+                            const newVal = e.target.checked;
+                            setAdvancedMode(newVal);
+                            try {
+                                await fetch("/api/system/settings", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ key: "advanced_mode", value: String(newVal) }),
+                                });
+                            } catch { setAdvancedMode(!newVal); }
                         }}
                         sx={{
                             "& .MuiSwitch-switchBase.Mui-checked": { color: accentAlpha(1) },

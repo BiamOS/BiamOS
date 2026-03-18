@@ -27,6 +27,7 @@ import { buildExtractionScript } from "./extractPageContent";
 import { useCardContext } from "../CardContext";
 import { useAgentActions } from "./useAgentActions";
 import { AgentOverlay } from "./AgentOverlay";
+import { ConstellationOverlay } from "./ConstellationOverlay";
 
 // ─── Blocklist ──────────────────────────────────────────────
 
@@ -93,11 +94,140 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
 
             const tag = `🌐 [Webview]`;
 
+            // Increase listener limit — we attach ~12 listeners which exceeds the default 10
+            try { wv.setMaxListeners?.(20); } catch { /* not all webview impls support this */ }
+
             wv.addEventListener('did-start-loading', () => {
                 debug.log(`${tag} ⏳ Loading started...`);
             });
             wv.addEventListener('did-finish-load', () => {
                 debug.log(`${tag} ✅ Loaded: ${wv.getURL?.() || 'unknown'}`);
+                
+                // ── Auto-dismiss overlays (2-pass system) ──────────
+                // Pass 1 (1.5s): Cookie consent banners
+                // Pass 2 (3.0s): Location redirects, newsletter modals,
+                //                 paywalls, ad overlays, generic close buttons
+                const currentUrl = wv.getURL?.() || '';
+                if (currentUrl && !currentUrl.startsWith('data:') && !currentUrl.startsWith('about:')) {
+                    // ── Pass 1: Cookie Consent ──
+                    setTimeout(() => {
+                        try {
+                            wv.executeJavaScript(`
+                                (function() {
+                                    var keywords = [
+                                        'einverstanden', 'akzeptieren', 'accept all', 'accept cookies',
+                                        'alle akzeptieren', 'accept', 'agree', 'zustimmen',
+                                        'i agree', 'got it', 'ok', 'allow all', 'allow cookies',
+                                        'alle cookies akzeptieren', 'consent', 'continue',
+                                        'accept & close', 'ich stimme zu', 'alles klar',
+                                        'alle zulassen', 'j\\'accepte', 'tout accepter'
+                                    ];
+                                    var clickable = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+                                    for (var i = 0; i < clickable.length; i++) {
+                                        var el = clickable[i];
+                                        var text = (el.textContent || el.value || '').trim().toLowerCase();
+                                        if (text.length < 50 && keywords.some(function(kw) { return text.includes(kw); })) {
+                                            el.click();
+                                            console.log('🍪 Auto-accepted cookie: ' + text);
+                                            return;
+                                        }
+                                    }
+                                    var overlays = document.querySelectorAll('[class*="consent"], [class*="cookie"], [id*="consent"], [id*="cookie"], [class*="gdpr"], [id*="gdpr"]');
+                                    for (var j = 0; j < overlays.length; j++) {
+                                        var btns = overlays[j].querySelectorAll('button, a, [role="button"]');
+                                        for (var k = 0; k < btns.length; k++) {
+                                            var t = (btns[k].textContent || '').trim().toLowerCase();
+                                            if (t.length < 50 && keywords.some(function(kw) { return t.includes(kw); })) {
+                                                btns[k].click();
+                                                console.log('🍪 Auto-accepted cookie (overlay): ' + t);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                })();
+                            `, true).catch(() => {});
+                        } catch { /* page may have navigated away */ }
+                    }, 1500);
+
+                    // ── Pass 2: All other overlays ──
+                    setTimeout(() => {
+                        try {
+                            wv.executeJavaScript(`
+                                (function() {
+                                    // --- Location Redirects ---
+                                    var locKeywords = [
+                                        'wechseln sie zu', 'switch to', 'go to your',
+                                        'redirect', 'weiterleiten', 'bleiben', 'stay on',
+                                        'nein, danke', 'no thanks', 'nein danke'
+                                    ];
+                                    var stayKeywords = ['bleiben', 'stay', 'nein', 'no thanks', 'nein danke', 'nicht wechseln', 'dismiss'];
+                                    var allClickable = document.querySelectorAll('button, a, [role="button"]');
+                                    for (var i = 0; i < allClickable.length; i++) {
+                                        var el = allClickable[i];
+                                        var text = (el.textContent || '').trim().toLowerCase();
+                                        if (text.length < 60 && stayKeywords.some(function(kw) { return text.includes(kw); })) {
+                                            var parent = el.closest('[class*="modal"], [class*="overlay"], [class*="popup"], [class*="redirect"], [class*="banner"]');
+                                            if (parent) {
+                                                el.click();
+                                                console.log('🌍 Auto-dismissed redirect: ' + text);
+                                                return;
+                                            }
+                                        }
+                                    }
+
+                                    // --- Newsletter, Subscribe, Paywall Modals ---
+                                    var modalSelectors = [
+                                        '[class*="subscribe"]', '[class*="newsletter"]', '[class*="signup"]',
+                                        '[class*="paywall"]', '[class*="ad-overlay"]', '[class*="popup"]',
+                                        '[id*="subscribe"]', '[id*="newsletter"]', '[id*="popup"]',
+                                        '[class*="modal"]', '[class*="lightbox"]'
+                                    ];
+                                    var closeKeywords = ['×', '✕', '✖', 'x', 'close', 'schlie\\u00dfen', 'dismiss',
+                                                         'no thanks', 'nein danke', 'later', 'sp\\u00e4ter', 'skip',
+                                                         'nicht jetzt', 'not now', 'maybe later'];
+
+                                    for (var s = 0; s < modalSelectors.length; s++) {
+                                        var modals = document.querySelectorAll(modalSelectors[s]);
+                                        for (var m = 0; m < modals.length; m++) {
+                                            var modal = modals[m];
+                                            // Check if modal is visible
+                                            var style = window.getComputedStyle(modal);
+                                            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+                                            // Find close button within the modal
+                                            var closeBtns = modal.querySelectorAll('button, [role="button"], a, .close, [class*="close"], [aria-label*="close"], [aria-label*="Close"]');
+                                            for (var c = 0; c < closeBtns.length; c++) {
+                                                var btn = closeBtns[c];
+                                                var btnText = (btn.textContent || btn.getAttribute('aria-label') || '').trim().toLowerCase();
+                                                if (btnText.length < 30 && closeKeywords.some(function(kw) { return btnText.includes(kw); })) {
+                                                    btn.click();
+                                                    console.log('🛡️ Auto-dismissed overlay: ' + btnText + ' in ' + modalSelectors[s]);
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // --- Generic fullscreen overlays blocking the page ---
+                                    var allEls = document.querySelectorAll('div, section, aside');
+                                    for (var f = 0; f < allEls.length; f++) {
+                                        var el2 = allEls[f];
+                                        var cs = window.getComputedStyle(el2);
+                                        if (cs.position === 'fixed' && cs.zIndex && parseInt(cs.zIndex) > 999 &&
+                                            el2.offsetWidth > window.innerWidth * 0.5 && el2.offsetHeight > window.innerHeight * 0.5) {
+                                            var closeBtn = el2.querySelector('button, [role="button"], [class*="close"], [aria-label*="close"]');
+                                            if (closeBtn) {
+                                                closeBtn.click();
+                                                console.log('🛡️ Auto-dismissed fullscreen overlay via close button');
+                                                return;
+                                            }
+                                        }
+                                    }
+                                })();
+                            `, true).catch(() => {});
+                        } catch { /* page may have navigated away */ }
+                    }, 3000);
+                }
             });
             wv.addEventListener('did-fail-load', (e: any) => {
                 // ERR_ABORTED (-3) is common during redirects and not a real error
@@ -128,9 +258,49 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
                 console.warn(`${tag} 🗑️ Destroyed (unmounted)`);
             });
             wv.addEventListener('console-message', (e: any) => {
+                // GenUI prefill bridge: Dashboard action buttons pre-fill the chat input
+                if (e.message?.startsWith('BIAM_PREFILL:')) {
+                    const command = e.message.replace('BIAM_PREFILL:', '').trim();
+                    console.log(`🎯 [GenUI] Prefill command: "${command}"`);
+                    window.dispatchEvent(new CustomEvent('biamos:prefill-command', { detail: { command } }));
+                    return;
+                }
+                // GenUI navigate bridge: links load in the same BiamOS tab
+                if (e.message?.startsWith('BIAM_NAVIGATE:')) {
+                    const url = e.message.replace('BIAM_NAVIGATE:', '').trim();
+                    console.log(`🎯 [GenUI] Navigate to: "${url}"`);
+                    if (wv?.loadURL) {
+                        wv.loadURL(url).catch(() => {});
+                    }
+                    return;
+                }
+                // Legacy intent bridge (deprecated)
+                if (e.message?.startsWith('BIAM_INTENT:')) {
+                    const intent = e.message.replace('BIAM_INTENT:', '').trim();
+                    console.log(`🎯 [GenUI] Intent received: "${intent}"`);
+                    window.dispatchEvent(new CustomEvent('biamos:genui-intent', { detail: { intent } }));
+                    return;
+                }
                 if (e.level === 2) { // errors only
                     debug.log(`${tag} 📟 Page error: ${e.message?.substring(0, 150)}`);
                 }
+            });
+            // Catch navigation failures (fake URLs, network errors)
+            // so the agent doesn't get stuck on chrome-error://
+            wv.addEventListener('did-fail-load', (e: any) => {
+                const url = e.validatedURL || '';
+                // Ignore aborted loads (normal during rapid navigation)
+                if (e.errorCode === -3) return; // ERR_ABORTED
+                // Only handle MAIN FRAME failures — ignore sub-resource errors
+                // (ads, tracking pixels, embedded iframes often fail without impact)
+                if (e.isMainFrame === false) return;
+                console.warn(`${tag} ⚠️ Main frame navigation failed: ${url} (code: ${e.errorCode})`);
+                // Notify the agent system about the failure
+                window.dispatchEvent(new CustomEvent('biamos:agent-feedback', {
+                    detail: { error: `[NAVIGATION FAILED] Could not reach ${url}. Use search_web instead.` },
+                }));
+                // Navigate to a safe fallback
+                try { wv.loadURL('https://www.google.com'); } catch { /* ignore */ }
             });
             wv.addEventListener('page-title-updated', (e: any) => {
                 const newTitle = e.title || '';
@@ -336,6 +506,77 @@ export const IframeBlock = React.memo(function IframeBlock({
         setCurrentUrl,
         setUrlInput,
     }, cardCtx?.cardId);
+
+    // ─── GenUI Intent Bridge ────────────────────────────────
+    // When a GenUI dashboard button is clicked, it sends an intent
+    // via console.log → console-message → custom DOM event → here.
+    // Smart routing: direct navigation for URLs, agent for complex tasks.
+    useEffect(() => {
+        const handler = async (e: Event) => {
+            const intent = (e as CustomEvent).detail?.intent;
+            if (!intent) return;
+
+            console.log(`🎯 [GenUI] Intent received: "${intent}"`);
+
+            // Show agent activity in sidebar
+            ctx.setContextHints(prev => [
+                ...prev.filter(h => !h.query.startsWith('🤖 Agent:')),
+                {
+                    query: `🤖 Agent: ${intent}`,
+                    reason: "GenUI intent",
+                    expanded: true,
+                    loading: true,
+                    timestamp: Date.now(),
+                    data: { summary: "Processing intent..." },
+                },
+            ]);
+
+            const wv = webviewRef.current;
+
+            // Extract URL from intent
+            const urlMatch = intent.match(/(?:navigate(?:\s+directly)?\s+to|open|go\s+to)\s+(https?:\/\/\S+|[\w.-]+\.\w{2,}(?:\/\S*)?)/i);
+            let targetUrl = urlMatch?.[1] || '';
+            if (targetUrl && !targetUrl.startsWith('http')) {
+                targetUrl = 'https://' + targetUrl;
+            }
+
+            // Check if intent is PURE navigation (just "Navigate to X", nothing more)
+            const isPureNav = targetUrl && /^(navigate\s+(directly\s+)?to|open)\s+\S+$/i.test(intent.trim());
+
+            // Check if intent is a search (no navigation needed)
+            const isSearch = /^search\s/i.test(intent.trim());
+
+            if (isPureNav && wv?.loadURL) {
+                // Pure navigation: go directly, no agent needed
+                console.log(`🎯 [GenUI] Direct navigation to ${targetUrl} (no agent needed)`);
+                try {
+                    await wv.loadURL(targetUrl);
+                } catch { /* navigation error handled by did-fail-load */ }
+            } else if (isSearch) {
+                // Search intent: start agent directly (no navigation away needed)
+                console.log(`🎯 [GenUI] Search intent, starting agent directly`);
+                agentTaskRef.current = intent;
+                agent.startAgent(intent);
+            } else if (targetUrl && wv?.loadURL) {
+                // Complex intent with URL: navigate first, then agent does the rest
+                console.log(`🎯 [GenUI] Complex intent: nav to ${targetUrl}, then agent handles the rest`);
+                try {
+                    await wv.loadURL(targetUrl);
+                    await new Promise(r => setTimeout(r, 2500));
+                } catch { /* navigation abort is normal */ }
+                // Strip the navigation part, give agent only the task
+                const taskOnly = intent.replace(/^(navigate\s+(directly\s+)?to|open|go\s+to)\s+\S+\s*(and\s+)?/i, '').trim();
+                agentTaskRef.current = taskOnly || intent;
+                agent.startAgent(taskOnly || intent);
+            } else {
+                // Fallback: just start the agent with the full intent
+                agentTaskRef.current = intent;
+                agent.startAgent(intent);
+            }
+        };
+        window.addEventListener('biamos:genui-intent', handler);
+        return () => window.removeEventListener('biamos:genui-intent', handler);
+    }, [agent, ctx]);
 
     // ─── Derived values ─────────────────────────────────────
     let hostname = currentUrl;
@@ -820,6 +1061,11 @@ export const IframeBlock = React.memo(function IframeBlock({
                         onContinue={() => agent.continueAgent(agentTaskRef.current)}
                         onFeedback={agent.sendFeedback}
                     />
+                    {/* Constellation View — research visualization */}
+                    <ConstellationOverlay
+                        state={agent.agentState}
+                        task={agentTaskRef.current}
+                    />
                     {ctrlHeld && (
                         <Box
                             onMouseDown={() => setCtrlHeld(false)}
@@ -854,6 +1100,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         setWidth={ctx.setSidebarWidth}
                         isAnalyzing={ctx.isAnalyzing}
                         isPrivacyBlocked={ctx.isPrivacyBlocked}
+                        agentStatus={agent.agentState.status}
                         onShowPageContext={async () => {
                             try {
                                 if (!isElectron || !webviewRef.current?.executeJavaScript) return;
@@ -880,6 +1127,19 @@ export const IframeBlock = React.memo(function IframeBlock({
                         }}
                         onTriggerAnalysis={ctx.triggerManualAnalysis}
                         onManualQuery={async (query) => {
+                            // ─── Agent paused (ask_user) → Route feedback to agent ───
+                            if (agent.agentState.status === "paused") {
+                                const feedback = query.trim();
+                                if (!feedback) return;
+                                // Show feedback in chat
+                                ctx.setContextHints(prev => prev.map(h =>
+                                    h.query.startsWith('🤖 Agent:')
+                                        ? { ...h, data: { ...h.data, summary: (h.data?.summary || '') + `\n\n💬 User: ${feedback}\n▶️ Continuing with feedback...` } }
+                                        : h
+                                ));
+                                agent.continueAgent(agentTaskRef.current || feedback, feedback);
+                                return;
+                            }
                             // ─── /act command → Start AI Agent ─────────
                             if (query.trim().toLowerCase().startsWith("/act ") || query.trim().toLowerCase() === "/act") {
                                 const task = query.replace(/^\/act\s*/i, "").trim() || "Analyze this page and tell me what you see";

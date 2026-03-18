@@ -14,9 +14,10 @@ import type { ContextHint } from "./ContextSidebar";
 
 // ─── Constants ──────────────────────────────────────────────
 
-const CONTEXT_DEBOUNCE_MS = 2_000;     // 2s — analyze after last navigation/title event
-const CONTEXT_POLL_INTERVAL = 5000;    // 5s polling fallback
+const CONTEXT_DEBOUNCE_MS = 4_000;     // 4s — gives SPAs time to load data before analysis
+// Polling removed — context analysis is now purely event-based (1x per navigation)
 const CONTEXT_API = "http://localhost:3001/api/context/analyze";
+const CHAT_STORAGE_KEY = "biamos:chat-history";
 
 // ─── Privacy Blocklist ──────────────────────────────────────
 // Domains/patterns where content extraction MUST be skipped
@@ -53,7 +54,19 @@ export function useContextWatcher(
 ) {
     const [contextNotice, setContextNotice] = useState<string | null>(null);
     const [pickerActive, setPickerActive] = useState(false);
-    const [contextHints, setContextHints] = useState<ContextHint[]>([]);
+
+    // Restore chat messages from sessionStorage on mount
+    const [contextHints, setContextHints] = useState<ContextHint[]>(() => {
+        try {
+            const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved) as ContextHint[];
+                // Only restore chat messages (Manual query), not stale auto-hints
+                return parsed.filter(h => h.reason === "Manual query");
+            }
+        } catch { /* ignore parse errors */ }
+        return [];
+    });
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(280);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -62,7 +75,7 @@ export function useContextWatcher(
     const contextCacheRef = useRef<Map<string, ContextHint[]>>(new Map());
     const lastAnalyzedUrlRef = useRef<string>("");
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // pollTimerRef removed — no more polling
     const lastDetectedUrlRef = useRef<string>("");
     const lastDetectedTitleRef = useRef<string>("");
     const triggerRef = useRef<(() => void) | null>(null);
@@ -110,6 +123,23 @@ export function useContextWatcher(
         window.dispatchEvent(new CustomEvent("biamos:context-hints", {
             detail: { hints: contextHints },
         }));
+        // Persist chat messages to sessionStorage (survives HMR + page refresh)
+        try {
+            const chatMessages = contextHints.filter(h => h.reason === "Manual query");
+            if (chatMessages.length > 0) {
+                // Strip non-serializable fields (functions) before saving
+                const serializable = chatMessages.map(h => ({
+                    ...h,
+                    data: h.data ? {
+                        ...h.data,
+                        _sendFeedback: undefined,  // remove function refs
+                    } : undefined,
+                }));
+                sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(serializable));
+            } else {
+                sessionStorage.removeItem(CHAT_STORAGE_KEY);
+            }
+        } catch { /* storage full or unavailable */ }
     }, [contextHints]);
 
     // ─── Main Effect ────────────────────────────────────────
@@ -311,29 +341,8 @@ export function useContextWatcher(
         wv.addEventListener("did-navigate-in-page", onDidNavigate);
         wv.addEventListener("ipc-message", onIpcMessage);
 
-        // Strategy 3: Polling fallback (every 5s) — also syncs URL bar + title
-        pollTimerRef.current = setInterval(async () => {
-            if (!webviewRef.current) return;
-            try {
-                const info = await wv.executeJavaScript(
-                    `({ url: location.href, title: document.title })`
-                );
-                const urlChanged = info.url && info.url !== lastDetectedUrlRef.current;
-                const titleChanged = info.title && info.title !== lastDetectedTitleRef.current;
-                if (urlChanged || titleChanged) {
-                    lastDetectedUrlRef.current = info.url;
-                    lastDetectedTitleRef.current = info.title;
-                    if (info.url) { navSync.setCurrentUrl(info.url); navSync.setUrlInput(info.url); }
-                    if (info.title && info.title !== "about:blank") {
-                        window.dispatchEvent(new CustomEvent("biamos:tab-title-update", {
-                            detail: { url: info.url, title: info.title, cardId },
-                        }));
-                    }
-                    // Only re-analyze on URL change (modals/tooltips only change title)
-                    if (urlChanged) handlePageChange();
-                }
-            } catch { /* webview not ready */ }
-        }, CONTEXT_POLL_INTERVAL);
+        // Polling removed — context analysis is purely event-based now.
+        // did-navigate, did-navigate-in-page, and ipc-message cover all navigation types.
 
         return () => {
             wv.removeEventListener("dom-ready", onDomReady);
@@ -341,7 +350,7 @@ export function useContextWatcher(
             wv.removeEventListener("did-navigate-in-page", onDidNavigate);
             wv.removeEventListener("ipc-message", onIpcMessage);
             if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+
         };
     }, [isElectron]); // eslint-disable-line react-hooks/exhaustive-deps
 

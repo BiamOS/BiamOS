@@ -47,6 +47,7 @@ interface ContextSidebarProps {
     onManualQuery?: (query: string) => void;
     isPrivacyBlocked?: boolean;
     onShowPageContext?: () => void;
+    agentStatus?: "idle" | "running" | "paused" | "done" | "error";
 }
 
 // ─── Main Sidebar Component ─────────────────────────────────
@@ -63,6 +64,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
     onManualQuery,
     isPrivacyBlocked,
     onShowPageContext,
+    agentStatus,
 }: ContextSidebarProps) {
     const [isDragging, setIsDragging] = React.useState(false);
     const [manualInput, setManualInput] = React.useState("");
@@ -78,6 +80,19 @@ export const ContextSidebar = React.memo(function ContextSidebar({
             });
         }
     }, [hints]);
+
+    // ── GenUI Prefill Bridge: dashboard buttons pre-fill chat input ──
+    React.useEffect(() => {
+        const handler = (e: Event) => {
+            const command = (e as CustomEvent).detail?.command;
+            if (command && typeof command === 'string') {
+                setManualInput(command);
+                if (!open) setOpen(true);
+            }
+        };
+        window.addEventListener('biamos:prefill-command', handler);
+        return () => window.removeEventListener('biamos:prefill-command', handler);
+    }, [open, setOpen]);
 
     const handleHintClick = React.useCallback(async (index: number) => {
         const hint = hints[index];
@@ -665,7 +680,11 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                     setManualInput("");
                                 }
                             }}
-                            placeholder="Ask something... (Enter to send)"
+                            placeholder={agentStatus === "paused"
+                                ? "💬 Gib dem Agenten Feedback... (Enter)"
+                                : agentStatus === "running"
+                                    ? "🤖 Agent läuft..."
+                                    : "Ask something... (Enter to send)"}
                             multiline
                             maxRows={3}
                             sx={{
@@ -679,6 +698,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 },
                             }}
                             inputProps={{ spellCheck: false }}
+                            disabled={agentStatus === "running"}
                         />
                         <IconButton
                             type="submit"

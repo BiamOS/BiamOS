@@ -13,6 +13,21 @@ import { logTokenUsage, incrementAgentUsage } from "../server-utils.js";
 import { parseFollowUps, type PageQuestion, type ChatAnswer } from "./context-chat-utils.js";
 import { log } from "../utils/logger.js";
 
+// ─── Privacy Blocklist ──────────────────────────────────────
+// Domains/patterns where page content MUST NOT be sent to LLM
+const PRIVACY_BLOCKLIST = [
+    /\blocalhost\b/, /\b127\.0\.0\.1\b/, /\b192\.168\./, /\b10\./,
+    /\bbanking\b/i, /\bbank\b/i, /\bfinanz/i, /\bsparkasse\b/i, /\bpaypal\b/i,
+    /\bmail\b/i, /\bwebmail\b/i, /\boutlook\b/i, /\bgmail\b/i, /\bproton\b/i,
+    /\bpassword\b/i, /\blogin\b/i, /\bauth\b/i, /\bsso\./, /\baccounts\./,
+    /\bhealthcare\b/i, /\bmedical\b/i, /\bpatient\b/i, /\bkranken/i,
+    /\bintranet\b/i, /\binternal\b/i, /\bcorp\./i,
+];
+
+function isPrivateDomain(url: string): boolean {
+    return PRIVACY_BLOCKLIST.some(rx => rx.test(url));
+}
+
 // ─── Command Definitions ────────────────────────────────────
 
 const PAGE_COMMANDS: Record<string, (ctx: PageQuestion, arg: string) => string> = {
@@ -61,6 +76,15 @@ export async function handlePageCommand(ctx: PageQuestion): Promise<ChatAnswer> 
             answer: `Unknown command: \`${cmdName}\`. Available commands: ${validCmds}`,
             source: "general",
             follow_ups: ["/summarize", "/translate English", "/extract"],
+        };
+    }
+
+    // ── Privacy Check ──
+    if (isPrivateDomain(ctx.page_url)) {
+        log.warn(`  🔒 Page Command: BLOCKED ${cmdName} on private domain: ${ctx.page_url}`);
+        return {
+            answer: `⚠️ **Privacy Protection**: \`${cmdName}\` is blocked on this page. This domain (${new URL(ctx.page_url).hostname}) is classified as sensitive (banking, mail, healthcare, etc.). Page content will NOT be sent to the AI to protect your privacy.`,
+            source: "general",
         };
     }
 

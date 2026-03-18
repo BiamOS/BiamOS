@@ -147,6 +147,7 @@ export function IntegrationManager() {
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [showBuilder, setShowBuilder] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [advancedMode, setAdvancedMode] = useState(false);
 
     const { groups, ungrouped } = useMemo(() => groupIntegrations(integrations), [integrations]);
 
@@ -266,6 +267,13 @@ export function IntegrationManager() {
 
     useEffect(() => {
         fetchIntegrations();
+        // Check if Advanced Mode is enabled
+        fetch("/api/system/settings")
+            .then(r => r.json())
+            .then(json => {
+                if (json.settings?.advanced_mode === "true") setAdvancedMode(true);
+            })
+            .catch(() => {});
     }, [fetchIntegrations]);
 
     return (
@@ -321,38 +329,40 @@ export function IntegrationManager() {
                         </Box>
 
                         <Box sx={{ display: "flex", gap: 1 }}>
-                            <Button
-                                variant={showBuilder ? "outlined" : "contained"}
-                                startIcon={<AddIcon />}
-                                onClick={() => setShowBuilder(!showBuilder)}
-                                size="small"
-                                sx={{
-                                    borderRadius: 2,
-                                    textTransform: "none",
-                                    fontWeight: 700,
-                                    fontSize: "0.8rem",
-                                    px: 2,
-                                    ...(showBuilder
-                                        ? {
-                                            borderColor: "rgba(0, 200, 255, 0.3)",
-                                            color: "rgba(0, 200, 255, 0.9)",
-                                            "&:hover": {
-                                                borderColor: "rgba(0, 200, 255, 0.6)",
-                                                bgcolor: "rgba(0, 200, 255, 0.05)",
-                                            },
-                                        }
-                                        : {
-                                            background:
-                                                "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)",
-                                            "&:hover": {
+                            {advancedMode && (
+                                <Button
+                                    variant={showBuilder ? "outlined" : "contained"}
+                                    startIcon={<AddIcon />}
+                                    onClick={() => setShowBuilder(!showBuilder)}
+                                    size="small"
+                                    sx={{
+                                        borderRadius: 2,
+                                        textTransform: "none",
+                                        fontWeight: 700,
+                                        fontSize: "0.8rem",
+                                        px: 2,
+                                        ...(showBuilder
+                                            ? {
+                                                borderColor: "rgba(0, 200, 255, 0.3)",
+                                                color: "rgba(0, 200, 255, 0.9)",
+                                                "&:hover": {
+                                                    borderColor: "rgba(0, 200, 255, 0.6)",
+                                                    bgcolor: "rgba(0, 200, 255, 0.05)",
+                                                },
+                                            }
+                                            : {
                                                 background:
-                                                    "linear-gradient(135deg, #6b33ff 0%, #33d4ff 100%)",
-                                            },
-                                        }),
-                                }}
-                            >
-                                {showBuilder ? "Close" : "New Integration"}
-                            </Button>
+                                                    "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)",
+                                                "&:hover": {
+                                                    background:
+                                                        "linear-gradient(135deg, #6b33ff 0%, #33d4ff 100%)",
+                                                },
+                                            }),
+                                    }}
+                                >
+                                    {showBuilder ? "Close" : "New Integration"}
+                                </Button>
+                            )}
 
                             <Tooltip title="Refresh">
                                 <IconButton
@@ -526,18 +536,20 @@ export function IntegrationManager() {
                         />
                     )}
 
-                    {/* Inline Builder */}
-                    <Collapse in={showBuilder} timeout={400}>
-                        <Divider
-                            sx={{ my: 3, borderColor: "rgba(255, 255, 255, 0.06)" }}
-                        />
-                        <IntegrationBuilder
-                            onClose={() => {
-                                setShowBuilder(false);
-                                fetchIntegrations();
-                            }}
-                        />
-                    </Collapse>
+                    {/* Inline Builder (Advanced Mode only) */}
+                    {advancedMode && (
+                        <Collapse in={showBuilder} timeout={400}>
+                            <Divider
+                                sx={{ my: 3, borderColor: "rgba(255, 255, 255, 0.06)" }}
+                            />
+                            <IntegrationBuilder
+                                onClose={() => {
+                                    setShowBuilder(false);
+                                    fetchIntegrations();
+                                }}
+                            />
+                        </Collapse>
+                    )}
                 </CardContent>
             </Card>
 

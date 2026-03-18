@@ -23,7 +23,7 @@ import { processSingleIntent, type SingleIntentResult, type DebugStep } from "..
 import { createSSEStream, sseResponse } from "../services/sse-helpers.js";
 
 // Agent Pipeline Imports
-import { translateQuery } from "../agents/intent/1-translator.js";
+import { translateAndClassify } from "../agents/intent/1-translate-classify.js";
 import { triageQuery, type ConciergeResult } from "../agents/intent/0-concierge.js";
 import { getWebSearchFallback } from "./pipeline-helpers.js";
 import { log } from "../utils/logger.js";
@@ -70,11 +70,11 @@ intentRoutes.post("/",
                 }, 400);
             }
 
-            // Agent 1: Translate (with debug timing)
-            step = "translate";
+            // Agent 1: Translate + Classify (merged — 1 LLM call instead of 2)
+            step = "translate_classify";
             const tTranslate = Date.now();
-            const translated = await translateQuery(body.text);
-            const translateDebug: DebugStep = { agent: "Translator", icon: "🌐", duration_ms: Date.now() - tTranslate, input: body.text, output: translated };
+            const { english_query: translated, type: preClassifiedType, entity: preClassifiedEntity } = await translateAndClassify(body.text);
+            const translateDebug: DebugStep = { agent: "Translate+Classify", icon: "🌐🏷️", duration_ms: Date.now() - tTranslate, input: body.text, output: `"${translated}" → type=${preClassifiedType}, entity="${preClassifiedEntity}"` };
 
             // ⚡ SPECULATIVE PARALLEL: Run Concierge + Pipeline in parallel
             step = "parallel_triage_and_process";
@@ -213,23 +213,23 @@ intentRoutes.post("/stream",
                     return;
                 }
 
-                // ⚡ Agent 1 + 0: Translate + Concierge in PARALLEL
-                await sendEvent("step", { step: "translate", label: "🌐 Translating & analyzing...", stepIndex: 2, totalSteps: 6 });
+                // ⚡ Agent 1 + 0: Translate+Classify + Concierge in PARALLEL
+                await sendEvent("step", { step: "translate", label: "🌐 Translating & analyzing...", stepIndex: 2, totalSteps: 5 });
                 const tParallel = Date.now();
 
                 // Start both simultaneously
-                const translatePromise = translateQuery(body.text);
+                const translateClassifyPromise = translateAndClassify(body.text);
                 const conciergePromise = triageQuery(body.text, body.existing_cards, allowedGroups)
                     .catch(() => ({ decision: "EXECUTE", refined_query: body.text } as ConciergeResult));
 
-                const [translated, rawTriage] = await Promise.all([translatePromise, conciergePromise]);
+                const [{ english_query: translated, type: preClassifiedType, entity: preClassifiedEntity }, rawTriage] = await Promise.all([translateClassifyPromise, conciergePromise]);
 
-                const translateDebug: DebugStep = { agent: "Translator", icon: "🌐", duration_ms: Date.now() - tParallel, input: body.text, output: translated };
+                const translateDebug: DebugStep = { agent: "Translate+Classify", icon: "🌐🏷️", duration_ms: Date.now() - tParallel, input: body.text, output: `"${translated}" → type=${preClassifiedType}, entity="${preClassifiedEntity}"` };
 
                 // If translator changed the text significantly, re-triage with translated text
                 let triage: ConciergeResult;
                 if (translated !== body.text && translated.toLowerCase() !== body.text.toLowerCase()) {
-                    await sendEvent("step", { step: "concierge", label: "🎩 Re-analyzing translated query...", stepIndex: 2, totalSteps: 6 });
+                    await sendEvent("step", { step: "concierge", label: "🎩 Re-analyzing translated query...", stepIndex: 2, totalSteps: 5 });
                     const tConcierge = Date.now();
                     try {
                         triage = await triageQuery(translated, body.existing_cards, allowedGroups);
