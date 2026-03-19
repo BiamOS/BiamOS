@@ -8,7 +8,13 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 
 // ─── Mock the LLM fetch so we don't call real APIs ──────────
 
-const MOCK_HTML = `<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"><\/script></head><body class="bg-gray-900 text-white"><h1>Test Dashboard</h1><button onclick="triggerAgent('Contact Andreas')">Contact</button></body></html>`;
+const MOCK_BLOCKS_RESPONSE = JSON.stringify({
+    blocks: [
+        { type: "hero", props: { title: "Test Dashboard", subtitle: "3 Leads" } },
+        { type: "list", items: [{ label: "Andreas K.", value: "Tech Lead" }] },
+        { type: "callout", text: "Contact to follow up" },
+    ],
+});
 
 // Mock the fetch globally for LLM calls
 const originalFetch = globalThis.fetch;
@@ -18,7 +24,7 @@ beforeAll(() => {
         // Mock LLM chat completions
         if (urlStr.includes("/chat/completions")) {
             return new Response(JSON.stringify({
-                choices: [{ message: { content: MOCK_HTML } }],
+                choices: [{ message: { content: MOCK_BLOCKS_RESPONSE } }],
             }), { status: 200, headers: { "Content-Type": "application/json" } });
         }
         // Fallback for DB calls — use original
@@ -74,16 +80,16 @@ describe("POST /api/agents/genui", () => {
         expect(res.status).toBe(400);
     });
 
-    it("returns HTML for valid prompt", async () => {
+    it("returns Block-JSON for valid prompt", async () => {
         const res = await req("POST", "/genui", {
             prompt: "Show me a test dashboard with 3 leads",
         });
         expect(res.status).toBe(200);
         const json = await res.json();
-        expect(json.biam_protocol).toBe("2.0");
-        expect(json.action).toBe("genui_render");
-        expect(json.html).toContain("<!DOCTYPE html>");
-        expect(json.html).toContain("triggerAgent");
+        expect(json.blocks).toBeDefined();
+        expect(Array.isArray(json.blocks)).toBe(true);
+        expect(json.blocks.length).toBeGreaterThan(0);
+        expect(json.blocks[0].type).toBe("hero");
     });
 
     it("accepts optional data parameter", async () => {
@@ -93,6 +99,8 @@ describe("POST /api/agents/genui", () => {
         });
         expect(res.status).toBe(200);
         const json = await res.json();
-        expect(json.html).toBeDefined();
+        expect(json.blocks).toBeDefined();
+        expect(Array.isArray(json.blocks)).toBe(true);
     });
 });
+

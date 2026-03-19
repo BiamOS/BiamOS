@@ -132,3 +132,43 @@ export function checkStuckDetection(steps: AgentStep[]): SafetyResult {
 
     return { action: "continue" };
 }
+
+// ─── Action-Type Repetition Guard ───────────────────────────
+// Catches the LLM trick of using different descriptions for the
+// same action type. Only counts since the last navigate/search_web,
+// because scrolls on different pages are independent.
+
+export function checkActionTypeRepetition(
+    steps: AgentStep[],
+    currentAction: string,
+): SafetyResult {
+    if (steps.length < 3) return { action: "continue" };
+
+    // Find the steps SINCE the last page change (navigate or search_web)
+    // Scrolls on different pages are independent — don't count together
+    const pageChangeActions = new Set(['navigate', 'search_web']);
+    let sinceLastNav: AgentStep[] = [];
+    for (let i = steps.length - 1; i >= 0; i--) {
+        if (pageChangeActions.has(steps[i].action)) break;
+        sinceLastNav.unshift(steps[i]);
+    }
+
+    // Count occurrences of this action TYPE since last page change
+    const count = sinceLastNav.filter((s: AgentStep) => s.action === currentAction).length;
+
+    // Limits per page: scroll 3x, take_notes 2x (should only need 1 per page), others 4x
+    const limit = currentAction === 'scroll' ? 3
+                : currentAction === 'take_notes' ? 2
+                : 4;
+
+    if (count >= limit) {
+        debug.log(`🛑 [ActionType] ${currentAction} called ${count}x since last navigate — forcing progression`);
+        return {
+            action: "stop",
+            reason: `Stopped: "${currentAction}" called ${count} times on this page without progress. Move to the next page (navigate) or finish (genui/done).`,
+            statusMessage: `⚠️ ${currentAction} loop detected (${count}x on this page) — forced progression`,
+        };
+    }
+
+    return { action: "continue" };
+}

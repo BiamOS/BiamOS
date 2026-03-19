@@ -14,7 +14,7 @@ import { changelog } from "../db/schema.js";
 const changelogRoutes = new Hono();
 
 /** Current app version — bump this on releases */
-export const APP_VERSION = "1.1.0-alpha";
+export const APP_VERSION = "1.2.0-alpha";
 
 // ─── GET / — List all changelog entries ─────────────────────
 

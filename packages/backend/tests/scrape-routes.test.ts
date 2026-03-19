@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 BiamOS Contributors
 // ============================================================
-// BiamOS — Scrape Routes Tests
+// BiamOS — Summarize Routes Tests (formerly Scrape Routes)
 // ============================================================
 
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
-import { scrapeRoutes } from "../src/routes/scrape-routes.js";
+import { summarizeRoutes } from "../src/routes/summarize-routes.js";
 
 // ─── Test App ───────────────────────────────────────────────
 
 const app = new Hono();
-app.route("/api/scrape", scrapeRoutes);
+app.route("/api/scrape", summarizeRoutes);
 
 // ─── Helpers ────────────────────────────────────────────────
 

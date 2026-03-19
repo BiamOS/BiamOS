@@ -18,7 +18,7 @@ import {
     HeroBlock, KeyValueBlock, StatBarBlock, TableBlock,
     MetricRowBlock, RatingBlock, TimelineBlock,
 } from "./DataBlocks";
-import { ChipListBlock, ListBlock, GridBlock, setRenderBlock } from "./ListBlocks";
+import { ChipListBlock, ListBlock, GridBlock, RowBlock, setRenderBlock } from "./ListBlocks";
 import {
     ImageGridBlock,
     ProgressRingBlock,
@@ -62,6 +62,7 @@ function resolveBlockComponent(type: string): React.ComponentType<any> | null {
         case "chip_list": return ChipListBlock;
         case "list": return ListBlock;
         case "grid": return GridBlock;
+        case "row": return RowBlock;
         // Media / Rich
         case "image_grid": return ImageGridBlock;
         case "progress_ring": return ProgressRingBlock;

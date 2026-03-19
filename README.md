@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v1.1.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v1.2.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -168,6 +168,17 @@ Type `/act` followed by a task, and the AI Browser Agent takes over — clicking
 | `search_web` | Background web search without leaving the current page |
 | `take_notes` | Save observations that persist across page navigations |
 | `ask_user` | Pause and ask for confirmation before destructive actions |
+| `genui` | Generate a rich newspaper-style dashboard from collected research data |
+
+### 📰 GenUI Dashboard System
+
+The agent can generate **rich, newspaper-style dashboards** with AI-composed content:
+
+- **Newspaper Layout** — `row` blocks place callouts, stats, and insights side-by-side
+- **Content Magazine** — LLM writes real summaries and analysis, not just link lists
+- **32+ Block Types** — titles, text, callouts, feed cards, key-value pairs, timelines, code blocks, and more
+- **Deep Research** — Agent navigates to source pages, reads articles, and extracts real facts before generating
+- **Date-Aware** — Automatically filters search results to the past month for news queries
 
 ### 🧠 Agent Memory (Muscle Memory System)
 
@@ -287,7 +298,7 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v1.1.0-alpha** — Agent Memory System with semantic intent matching, Memory Manager UI, self-healing agent loop, and workflow deduplication.
+See the latest changes: **v1.2.0-alpha** — GenUI Dashboard System with newspaper layouts, deep research flow, and date-aware search.
 
 ---
 
@@ -296,6 +307,10 @@ See the latest changes: **v1.1.0-alpha** — Agent Memory System with semantic i
 - [x] **Autopilot Mode** — Multi-step browser automation (click, fill, submit) ✅ *v1.0.0-alpha*
 - [x] **Agent Memory** — Learns from verified tasks, replays as reflexes ✅ *v1.1.0-alpha*
 - [x] **Self-Healing Agent** — Auto-recovers from stuck loops ✅ *v1.1.0-alpha*
+- [x] **GenUI Dashboard** — AI-generated newspaper-style dashboards ✅ *v1.2.0-alpha*
+- [x] **Deep Research** — Agent reads source articles, not just search snippets ✅ *v1.2.0-alpha*
+- [x] **Date-Aware Search** — Auto time-filters for news queries ✅ *v1.2.0-alpha*
+- [ ] **Research Progress UI** — Live progress panel replaces webview during research
 - [ ] **Plugin Marketplace** — Community-created integrations
 - [ ] **Scheduled Agents** — Cron-based data collection and alerts
 - [ ] **macOS & Linux Builds** — Cross-platform Electron packaging

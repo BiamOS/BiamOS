@@ -62,6 +62,8 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                 border: `1px solid rgba(255,255,255,0.06)`,
                 transition: "all 0.25s ease",
                 cursor: item.url ? "pointer" : "default",
+                display: "flex",
+                flexDirection: "row",
                 "&:hover": {
                     borderColor: accentAlpha(0.2),
                     transform: "translateY(-1px)",
@@ -75,31 +77,32 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                 navigate(item.url, item.title, groupName);
             }}
         >
-            {/* Image — only valid http URLs, auto-hide on error */}
+            {/* Thumbnail — compact square on the left */}
             {validImage && (
-                <Box sx={{ position: "relative" }}>
+                <Box sx={{ position: "relative", flexShrink: 0 }}>
                     <Box
                         component="img"
                         src={item.image}
                         alt={item.title}
                         onError={() => setImgError(true)}
                         sx={{
-                            width: "100%",
-                            maxHeight: 200,
+                            width: 120,
+                            height: 120,
                             objectFit: "cover",
                             display: "block",
+                            borderRadius: "12px 0 0 12px",
                         }}
                     />
                     {item.badge && (
                         <Typography
                             sx={{
                                 position: "absolute",
-                                top: 8,
-                                right: 8,
-                                px: 1,
-                                py: 0.3,
-                                borderRadius: 1.5,
-                                fontSize: "0.6rem",
+                                top: 6,
+                                left: 6,
+                                px: 0.8,
+                                py: 0.2,
+                                borderRadius: 1,
+                                fontSize: "0.55rem",
                                 fontWeight: 700,
                                 textTransform: "uppercase",
                                 letterSpacing: "0.05em",
@@ -113,17 +116,17 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                 </Box>
             )}
 
-            {/* Content */}
-            <Box sx={{ p: 2 }}>
+            {/* Content — right side */}
+            <Box sx={{ p: 1.5, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 {/* Author row */}
                 {item.author && (
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.8 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 0.5 }}>
                         <Avatar
                             src={item.avatar}
                             sx={{
-                                width: 22,
-                                height: 22,
-                                fontSize: "0.6rem",
+                                width: 18,
+                                height: 18,
+                                fontSize: "0.55rem",
                                 bgcolor: accentAlpha(0.3),
                             }}
                         >
@@ -131,7 +134,7 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                         </Avatar>
                         <Typography
                             sx={{
-                                fontSize: "0.7rem",
+                                fontSize: "0.65rem",
                                 fontWeight: 600,
                                 color: COLORS.textSecondary,
                                 flex: 1,
@@ -150,11 +153,11 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                 {/* Title */}
                 <Typography
                     sx={{
-                        fontSize: "0.85rem",
+                        fontSize: "0.82rem",
                         fontWeight: 700,
                         color: COLORS.textPrimary,
                         lineHeight: 1.3,
-                        mb: item.body ? 0.5 : 0,
+                        mb: item.body ? 0.3 : 0,
                         display: "-webkit-box",
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: "vertical",
@@ -168,11 +171,11 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                 {item.body && (
                     <Typography
                         sx={{
-                            fontSize: "0.75rem",
+                            fontSize: "0.7rem",
                             color: COLORS.textMuted,
-                            lineHeight: 1.4,
+                            lineHeight: 1.35,
                             display: "-webkit-box",
-                            WebkitLineClamp: 3,
+                            WebkitLineClamp: 2,
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden",
                         }}
@@ -187,23 +190,23 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
                         sx={{
                             display: "flex",
                             gap: 1.5,
-                            mt: 1,
-                            pt: 0.8,
+                            mt: 0.5,
+                            pt: 0.5,
                             borderTop: `1px solid rgba(255,255,255,0.05)`,
                         }}
                     >
                         {item.stats!.likes != null && (
-                            <Typography sx={{ fontSize: "0.65rem", color: COLORS.textMuted }}>
+                            <Typography sx={{ fontSize: "0.6rem", color: COLORS.textMuted }}>
                                 👍 {formatCount(item.stats!.likes)}
                             </Typography>
                         )}
                         {item.stats!.comments != null && (
-                            <Typography sx={{ fontSize: "0.65rem", color: COLORS.textMuted }}>
+                            <Typography sx={{ fontSize: "0.6rem", color: COLORS.textMuted }}>
                                 💬 {formatCount(item.stats!.comments)}
                             </Typography>
                         )}
                         {item.stats!.shares != null && (
-                            <Typography sx={{ fontSize: "0.65rem", color: COLORS.textMuted }}>
+                            <Typography sx={{ fontSize: "0.6rem", color: COLORS.textMuted }}>
                                 🔄 {formatCount(item.stats!.shares)}
                             </Typography>
                         )}
@@ -219,7 +222,7 @@ const FeedItem = React.memo(function FeedItem({ item }: { item: FeedItemSpec }) 
 export const FeedBlock = React.memo(function FeedBlock({
     label,
     items,
-    columns = 1,
+    columns = 2,
     initialCount = 3,
 }: FeedBlockSpec) {
     const [visibleCount, setVisibleCount] = useState(initialCount);

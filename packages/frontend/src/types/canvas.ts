@@ -54,6 +54,8 @@ export interface CanvasItem {
     _pinnedId?: number;              // backend DB id for the pin
     // Context-augmented browsing
     _autoContext?: boolean;           // true = auto-triggered by context watcher
+    // GenUI: when dashboard replaces the webview, store original iframe payload
+    _originalIframePayload?: BiamPayload;
 }
 
 export interface GridLayoutItem {

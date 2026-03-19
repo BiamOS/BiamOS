@@ -11,7 +11,7 @@ import { COLORS, SectionLabel, accentAlpha } from "../ui/SharedUI";
 import { dispatchLinkOpen } from "../LinkPrompt";
 import { useCardGroup } from "../../contexts/CardGroupContext";
 import { GLASS } from "../../theme/theme";
-import type { ChipListBlockSpec, ListBlockSpec, GridBlockSpec, BlockSpec } from "./types";
+import type { ChipListBlockSpec, ListBlockSpec, GridBlockSpec, RowBlockSpec, BlockSpec } from "./types";
 
 // ─── CHIP LIST ──────────────────────────────────────────────
 
@@ -179,6 +179,32 @@ export const GridBlock = React.memo(function GridBlock({
         >
             {blocks.map((block, i) => (
                 RB ? <RB key={i} block={block} /> : null
+            ))}
+        </Box>
+    );
+});
+
+// ─── ROW (horizontal flex layout) ───────────────────────────
+
+export const RowBlock = React.memo(function RowBlock({
+    gap = 2,
+    blocks = [],
+}: RowBlockSpec) {
+    const RB = _RenderBlock;
+    return (
+        <Box
+            sx={{
+                display: "flex",
+                flexDirection: "row",
+                gap,
+                alignItems: "stretch",
+                flexWrap: "wrap",
+            }}
+        >
+            {blocks.map((block, i) => (
+                <Box key={i} sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                    {RB ? <RB block={block} /> : null}
+                </Box>
             ))}
         </Box>
     );

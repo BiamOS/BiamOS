@@ -100,6 +100,9 @@ async function createTables() {
             last_layout TEXT,
             last_refreshed TEXT,
             sort_order INTEGER NOT NULL DEFAULT 0,
+            related_queries TEXT,
+            pin_type TEXT NOT NULL DEFAULT 'intent',
+            url TEXT,
             created_at TEXT NOT NULL
         );
     `);

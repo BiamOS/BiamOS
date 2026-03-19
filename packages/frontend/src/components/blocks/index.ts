@@ -22,6 +22,7 @@ export type {
     TableBlockSpec,
     ListBlockSpec,
     GridBlockSpec,
+    RowBlockSpec,
     ImageGridBlockSpec,
     ProgressRingBlockSpec,
     BadgeRowBlockSpec,
@@ -37,7 +38,7 @@ export { COLORS, GRADIENTS, sectionLabelSx, SectionLabel } from "../ui/SharedUI"
 // Block Components
 export { TitleBlock, TextBlock, ImageBlock, DividerBlock, SpacerBlock } from "./ContentBlocks";
 export { HeroBlock, KeyValueBlock, StatBarBlock, TableBlock } from "./DataBlocks";
-export { ChipListBlock, ListBlock, GridBlock } from "./ListBlocks";
+export { ChipListBlock, ListBlock, GridBlock, RowBlock } from "./ListBlocks";
 export {
     ImageGridBlock,
     ProgressRingBlock,

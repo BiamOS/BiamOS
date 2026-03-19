@@ -157,6 +157,14 @@ export const BLOCK_CATALOG: BlockCatalogEntry[] = [
         schema: { type: "grid", columns: 2, blocks: ["(nested blocks)"] },
         intentRelevance: ["IMAGES", "SEARCH", "ARTICLE"],
     },
+    {
+        type: "row",
+        category: "list",
+        when: "Horizontal flex row — place 2-3 blocks SIDE-BY-SIDE. Use for newspaper layouts: callout+callout, badges+chips, stats next to insights. Each child gets equal width.",
+        schema: { type: "row", gap: 2, blocks: ["(nested blocks — callout, badge_row, metric_row, etc.)"] },
+        notes: "Children render flex: 1. Use for layout composition, NOT for galleries (use 'grid' for galleries).",
+        intentRelevance: ["ARTICLE", "SEARCH", "DATA", "ACTION"],
+    },
 
     // ═══════════════ MEDIA (9) ═══════════════
 

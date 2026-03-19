@@ -693,7 +693,16 @@ export const Whitebox = React.memo(function Whitebox({
 
     // ─── render_layout (Block System) ─────────────────────────
     if (payload.action === "render_layout" && payload.layout) {
-        const isIframe = payload.layout.blocks?.some((b: any) => b.type === "iframe");
+        // Check if ANY tab (not just the active one) has an iframe block.
+        // This ensures the Chrome-model (keep-alive) rendering is used even when
+        // a non-iframe tab (like a GenUI dashboard) is active, preventing the
+        // webview tree from being destroyed and rebuilt on tab switch.
+        const isIframe = tabs && tabs.length > 0
+            ? tabs.some((tab) => {
+                const bl = tab.payload?.layout?.blocks;
+                return Array.isArray(bl) && bl.some((b: any) => b.type === "iframe");
+            })
+            : payload.layout.blocks?.some((b: any) => b.type === "iframe");
         // Auto-generate pinnable for webview cards — use ACTIVE tab's URL
         const activePayload = (tabs && tabs.length > 0 && activeTabIndex != null)
             ? tabs[activeTabIndex]?.payload

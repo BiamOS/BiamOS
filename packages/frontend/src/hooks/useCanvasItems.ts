@@ -258,6 +258,53 @@ export function useCanvasItems() {
         return () => window.removeEventListener("biamos:pin-card", handlePinCard);
     }, []);
 
+    // ─── GenUI blocks → Tab in existing card ────────────────
+    // When the agent generates a Block-JSON dashboard, add it as
+    // a new tab in the webview card where the agent is running.
+    useEffect(() => {
+        const handleGenUIBlocks = (e: Event) => {
+            const { blocks, prompt, skeleton } = (e as CustomEvent).detail ?? {};
+            if (!Array.isArray(blocks) || blocks.length === 0) return;
+
+            // Find the webview card and add _genuiBlocks to its iframe block spec.
+            // This keeps IframeBlock as renderer (preserving ContextSidebar),
+            // while the dashboard blocks are passed as a prop.
+            const webviewIdx = itemsRef.current.findIndex((item) => {
+                if (item._loading) return false;
+                const bl = item.payload?.layout?.blocks;
+                return Array.isArray(bl) && bl.some((b: any) => b.type === "iframe");
+            });
+
+            if (webviewIdx >= 0) {
+                safeSetItems((prev) => prev.map((item, idx) => {
+                    if (idx !== webviewIdx) return item;
+                    // Add _genuiBlocks to the iframe block spec
+                    const updatedBlocks = (item.payload?.layout?.blocks ?? []).map((b: any) =>
+                        b.type === "iframe" ? { ...b, _genuiBlocks: blocks } : b
+                    );
+                    // Skeleton gets "🔍" research title, final gets "📊" dashboard title
+                    const tabTitle = skeleton
+                        ? `🔍 ${prompt || "Researching..."}`
+                        : `📊 ${prompt || "Dashboard"}`;
+                    return {
+                        ...item,
+                        _query: tabTitle,
+                        payload: {
+                            ...item.payload,
+                            layout: { ...item.payload.layout, blocks: updatedBlocks },
+                        },
+                    };
+                }));
+                debug.log(`🎨 [GenUI] ${skeleton ? 'Skeleton' : 'Final'} dashboard (${blocks.length} blocks)`);
+            } else {
+                debug.log(`🎨 [GenUI] No webview card found — ignoring`);
+            }
+        };
+
+        window.addEventListener("biamos:genui-blocks", handleGenUIBlocks);
+        return () => window.removeEventListener("biamos:genui-blocks", handleGenUIBlocks);
+    }, []);
+
     // ─── Auto-save pinned state (webview URLs + tab queries) ─
     useEffect(() => {
         const savePinnedState = () => {
@@ -553,12 +600,23 @@ export function useCanvasItems() {
         let hostname = url;
         try { hostname = new URL(url).hostname.replace("www.", ""); } catch { /* keep raw */ }
 
+        // Base payload — agent-enabled (for standalone webview cards)
         const iframePayload: BiamPayload = {
             action: "render_layout",
             integration_id: "web-view",
             _query: title || hostname,
             layout: {
                 blocks: [{ type: "iframe", url, title: title || hostname }],
+            },
+        } as BiamPayload;
+
+        // Tab payload — agent-disabled (for link-opened passive tabs)
+        const tabPayload: BiamPayload = {
+            action: "render_layout",
+            integration_id: "web-view",
+            _query: title || hostname,
+            layout: {
+                blocks: [{ type: "iframe", url, title: title || hostname, agentDisabled: true }],
             },
         } as BiamPayload;
 
@@ -581,7 +639,27 @@ export function useCanvasItems() {
             }) ?? null;
         }
 
+        // 3) Fallback: find any card with an iframe block (the webview card)
+        //    Also matches dashboard-replaced cards via _originalIframePayload
+        if (!sourceCard) {
+            sourceCard = [...itemsRef.current].reverse().find((item) => {
+                if (item._loading) return false;
+                // Check main payload
+                const bl = item.payload?.layout?.blocks;
+                if (Array.isArray(bl) && bl.some((b: any) => b.type === "iframe")) return true;
+                // Check tabs
+                if (item.tabs) {
+                    return item.tabs.some((t) => {
+                        const tbl = t.payload?.layout?.blocks;
+                        return Array.isArray(tbl) && tbl.some((b: any) => b.type === "iframe");
+                    });
+                }
+                return false;
+            }) ?? null;
+        }
+
         if (sourceCard) {
+            // Adding as tab → use tabPayload (agent disabled)
             const tabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
             safeSetItems((prev) => prev.map((item) => {
                 if (item._id !== sourceCard._id) return item;
@@ -590,14 +668,14 @@ export function useCanvasItems() {
                     label: item._query || "Original",
                     payload: item.payload,
                 }];
-                const newTab = { id: tabId, label: title || hostname, payload: iframePayload };
+                const newTab = { id: tabId, label: title || hostname, payload: tabPayload };
                 const newTabs = [...existingTabs, newTab];
                 return {
                     ...item,
                     tabs: newTabs,
                     activeTabIndex: newTabs.length - 1,
-                    payload: iframePayload,
-                    _query: title || hostname,
+                    // DON'T overwrite item.payload — it should stay as-is
+                    // (could be dashboard blocks). Tab content comes from tab.payload.
                     layout: { ...item.layout, h: Math.max(item.layout.h, 18) },
                 };
             }));
@@ -605,6 +683,7 @@ export function useCanvasItems() {
         }
 
         // ─── No existing card → create standalone web-view card ─
+        // Uses iframePayload (agent ENABLED — this is a primary webview)
         const id = `card-${Date.now()}-nav-${Math.random().toString(36).slice(2, 6)}`;
         const slot = findSlotForWebview(itemsRef.current, 4, 18);
         const card: CanvasItem = {

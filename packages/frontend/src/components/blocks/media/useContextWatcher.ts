@@ -51,6 +51,8 @@ export function useContextWatcher(
     isElectron: boolean,
     navSync: NavigationSync,
     cardId?: string,
+    /** When false, all event listeners and context analysis are disabled (read-only webview) */
+    enabled: boolean = true,
 ) {
     const [contextNotice, setContextNotice] = useState<string | null>(null);
     const [pickerActive, setPickerActive] = useState(false);
@@ -147,7 +149,7 @@ export function useContextWatcher(
         // Context extraction requires executeJavaScript() on the webview,
         // which is only available in Electron. In browser mode, same-origin
         // policy prevents reading iframe content from other domains.
-        if (!isElectron) return;
+        if (!isElectron || !enabled) return;
         const wv = webviewRef.current;
         if (!wv) return;
 
@@ -352,7 +354,7 @@ export function useContextWatcher(
             if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
         };
-    }, [isElectron]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isElectron, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── Manual Trigger (bypasses cache) ─────────────────────
     const triggerManualAnalysis = useCallback(() => {

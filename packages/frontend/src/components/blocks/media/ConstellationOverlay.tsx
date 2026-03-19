@@ -6,106 +6,29 @@
 // Renders a spatial "mind map" overlay during agent research.
 // Multi-tentacle layout with glassmorphism cards, step counters,
 // type badges, and rich preview content.
+// Can be minimized by the user to see the page underneath.
 // ============================================================
 
 import React, { useMemo, useState, useEffect } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, IconButton, Tooltip } from "@mui/material";
+import { Visibility as ShowIcon, VisibilityOff as HideIcon } from "@mui/icons-material";
 import type { AgentState } from "./useAgentActions";
+import { NODE_THEME, generateTentaclePosition } from "./constellation-theme";
+import { COLORS, cyanAlpha, accentAlpha } from "../../../theme/theme";
 
 // ─── Types ──────────────────────────────────────────────────
 
 interface ConstellationNode {
     id: string;
     type: "nucleus" | "search" | "note" | "navigate" | "genui";
-    label: string;        // Short type label (e.g., "Web Search")
-    text: string;         // Main content
-    preview?: string;     // Extended preview for search/notes
+    label: string;
+    text: string;
+    preview?: string;
     x: number;
     y: number;
     delay: number;
-    stepNumber: number;   // Global step number for badge
+    stepNumber: number;
 }
-
-// ─── Multi-Tentacle Position Generator ──────────────────────
-
-const ARM_ANGLES: Record<string, number> = {
-    search:   -60,   // upper-left
-    note:     150,   // bottom-left
-    navigate: 30,    // upper-right
-    genui:    -30,   // top-right
-};
-
-function generateTentaclePosition(
-    type: string,
-    indexInArm: number,
-): { x: number; y: number } {
-    const baseAngle = (ARM_ANGLES[type] ?? 0) * (Math.PI / 180);
-    const spreadAngle = (indexInArm - 0.5) * 0.3;
-    const angle = baseAngle + spreadAngle;
-    const radius = 18 + indexInArm * 11;
-    return {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-    };
-}
-
-// ─── Node Theme Config ──────────────────────────────────────
-
-const NODE_THEME: Record<string, {
-    icon: string;
-    label: string;
-    borderColor: string;
-    glowColor: string;
-    bgGradient: string;
-    accentColor: string;
-    badgeBg: string;
-}> = {
-    nucleus: {
-        icon: "🎯",
-        label: "Task",
-        borderColor: "rgba(0, 212, 255, 0.7)",
-        glowColor: "0 0 30px rgba(0, 212, 255, 0.35), 0 0 60px rgba(0, 212, 255, 0.12)",
-        bgGradient: "linear-gradient(135deg, rgba(0, 20, 40, 0.97), rgba(0, 30, 50, 0.95))",
-        accentColor: "#00d4ff",
-        badgeBg: "rgba(0, 212, 255, 0.15)",
-    },
-    search: {
-        icon: "🔍",
-        label: "Web Search",
-        borderColor: "rgba(100, 180, 255, 0.5)",
-        glowColor: "0 0 20px rgba(100, 180, 255, 0.18)",
-        bgGradient: "linear-gradient(135deg, rgba(8, 14, 35, 0.96), rgba(12, 22, 45, 0.94))",
-        accentColor: "#64b4ff",
-        badgeBg: "rgba(100, 180, 255, 0.12)",
-    },
-    note: {
-        icon: "📝",
-        label: "Extracted Data",
-        borderColor: "rgba(0, 230, 140, 0.5)",
-        glowColor: "0 0 18px rgba(0, 230, 140, 0.15)",
-        bgGradient: "linear-gradient(135deg, rgba(4, 22, 14, 0.96), rgba(6, 30, 20, 0.94))",
-        accentColor: "#00e68c",
-        badgeBg: "rgba(0, 230, 140, 0.12)",
-    },
-    navigate: {
-        icon: "🌐",
-        label: "Navigation",
-        borderColor: "rgba(255, 190, 60, 0.5)",
-        glowColor: "0 0 18px rgba(255, 190, 60, 0.15)",
-        bgGradient: "linear-gradient(135deg, rgba(25, 18, 5, 0.96), rgba(30, 22, 8, 0.94))",
-        accentColor: "#ffbe3c",
-        badgeBg: "rgba(255, 190, 60, 0.12)",
-    },
-    genui: {
-        icon: "✨",
-        label: "Dashboard",
-        borderColor: "rgba(180, 100, 255, 0.6)",
-        glowColor: "0 0 25px rgba(180, 100, 255, 0.25), 0 0 50px rgba(180, 100, 255, 0.08)",
-        bgGradient: "linear-gradient(135deg, rgba(18, 5, 30, 0.97), rgba(25, 8, 40, 0.95))",
-        accentColor: "#b464ff",
-        badgeBg: "rgba(180, 100, 255, 0.15)",
-    },
-};
 
 // ─── Component ──────────────────────────────────────────────
 
@@ -160,7 +83,6 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
             if (step.action === "search_web") {
                 const queryMatch = step.result?.match(/results for "([^"]+)"/);
                 text = queryMatch ? queryMatch[1] : (step.description || "Web Search");
-                // Richer preview — show top 3 results
                 const resultLines = step.result?.split('\n').filter(l => /^\d+\./.test(l.trim()));
                 if (resultLines && resultLines.length > 0) {
                     preview = resultLines.slice(0, 3).map(l => l.trim()).join('\n');
@@ -168,15 +90,13 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                 }
             } else if (step.action === "take_notes") {
                 const notesText = step.result?.replace('📝 Notes saved: ', '') || step.description;
-                // Show more of the notes content
                 text = notesText ? (notesText.length > 60 ? notesText.substring(0, 57) + "..." : notesText) : "Notes";
-                // Rest as preview
                 if (notesText && notesText.length > 60) {
                     preview = notesText.substring(57, 300);
                     if (notesText.length > 300) preview += "...";
                 }
             } else if (step.action === "genui") {
-                text = "Dashboard wird generiert...";
+                text = "Generating Dashboard...";
             } else {
                 text = step.description || step.action;
                 if (text.length > 60) text = text.substring(0, 57) + "...";
@@ -199,26 +119,91 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
     }, [state.steps, task]);
 
     const hasResearchNodes = nodes.length > 1;
-    // Hide overlay when agent pauses (ask_user) so user can see the page
     const isAgentActive = state.status === "running";
     const isCollapsing = state.steps.some(s => s.action === "genui");
 
+    // ─── Visibility + minimize toggle ───────────────────────
     const [visible, setVisible] = useState(false);
+    const [minimized, setMinimized] = useState(false);
+
     useEffect(() => {
         if (isAgentActive && hasResearchNodes) {
             setVisible(true);
+            // Auto-restore from minimized when GenUI starts
+            if (isCollapsing) setMinimized(false);
         } else if (!isAgentActive && visible) {
             const timer = setTimeout(() => setVisible(false), 2000);
             return () => clearTimeout(timer);
         }
-    }, [isAgentActive, hasResearchNodes, visible]);
+    }, [isAgentActive, hasResearchNodes, visible, isCollapsing]);
 
     useEffect(() => {
-        if (state.status === "idle") setVisible(false);
+        if (state.status === "idle") {
+            setVisible(false);
+            setMinimized(false);
+        }
     }, [state.status]);
 
     if (!visible) return null;
 
+    // ─── Minimized: floating badge only ─────────────────────
+    if (minimized) {
+        return (
+            <Box
+                sx={{
+                    position: "absolute",
+                    bottom: 16,
+                    right: 16,
+                    zIndex: 47,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 2,
+                    py: 0.8,
+                    borderRadius: "20px",
+                    background: "linear-gradient(135deg, rgba(0, 12, 24, 0.95), rgba(0, 18, 35, 0.92))",
+                    border: `1px solid ${cyanAlpha(0.25)}`,
+                    backdropFilter: "blur(16px)",
+                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+                    cursor: "pointer",
+                    transition: "all 0.3s ease",
+                    "&:hover": {
+                        borderColor: cyanAlpha(0.5),
+                        boxShadow: `0 4px 24px ${cyanAlpha(0.2)}`,
+                    },
+                }}
+                onClick={() => setMinimized(false)}
+            >
+                <Box
+                    sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        bgcolor: COLORS.cyan,
+                        animation: "pulseGlow 1.5s ease-in-out infinite",
+                        "@keyframes pulseGlow": {
+                            "0%, 100%": { opacity: 1, boxShadow: `0 0 4px ${COLORS.cyan}` },
+                            "50%": { opacity: 0.5, boxShadow: `0 0 12px ${COLORS.cyan}` },
+                        },
+                    }}
+                />
+                <Typography
+                    sx={{
+                        color: COLORS.textSecondary,
+                        fontSize: "0.72rem",
+                        fontWeight: 600,
+                    }}
+                >
+                    🔍 {nodes.length - 1} {nodes.length - 1 === 1 ? 'Source' : 'Sources'}
+                </Typography>
+                <Tooltip title="Show Research">
+                    <ShowIcon sx={{ fontSize: 16, color: COLORS.textMuted }} />
+                </Tooltip>
+            </Box>
+        );
+    }
+
+    // ─── Full overlay ───────────────────────────────────────
     return (
         <>
             {/* ─── Backdrop ─── */}
@@ -231,7 +216,7 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                     backdropFilter: isCollapsing ? "blur(0px)" : "blur(10px) brightness(0.35)",
                     background: isCollapsing
                         ? "transparent"
-                        : "radial-gradient(ellipse at center, rgba(0,10,20,0.25) 0%, rgba(0,4,12,0.75) 100%)",
+                        : `radial-gradient(ellipse at center, rgba(0,10,20,0.25) 0%, rgba(0,4,12,0.75) 100%)`,
                     opacity: isAgentActive ? 1 : 0,
                     transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
                 }}
@@ -268,7 +253,7 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                 y1="50%"
                                 x2={`${50 + node.x}%`}
                                 y2={`${50 + node.y}%`}
-                                stroke={theme?.borderColor || "rgba(0,212,255,0.3)"}
+                                stroke={theme?.borderColor || cyanAlpha(0.3)}
                                 strokeWidth="1.5"
                                 strokeDasharray="6 4"
                                 opacity={0.35}
@@ -312,8 +297,8 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                 ...(isCenter && isCollapsing ? {
                                     animation: "nucleusPulse 1.2s ease-in-out infinite",
                                     "@keyframes nucleusPulse": {
-                                        "0%, 100%": { boxShadow: "0 0 30px rgba(0, 212, 255, 0.4)" },
-                                        "50%": { boxShadow: "0 0 60px rgba(0, 212, 255, 0.7)" },
+                                        "0%, 100%": { boxShadow: `0 0 30px ${cyanAlpha(0.4)}` },
+                                        "50%": { boxShadow: `0 0 60px ${cyanAlpha(0.7)}` },
                                     },
                                 } : {}),
                                 "@keyframes nodePopIn": {
@@ -326,7 +311,7 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                 },
                             }}
                         >
-                            {/* Card Header — type badge + step number */}
+                            {/* Card Header */}
                             <Box
                                 sx={{
                                     display: "flex",
@@ -347,7 +332,6 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                             color: theme.accentColor,
                                             fontSize: "0.65rem",
                                             fontWeight: 700,
-                                            fontFamily: "'Inter', system-ui, sans-serif",
                                             letterSpacing: "0.03em",
                                             textTransform: "uppercase",
                                         }}
@@ -373,7 +357,6 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                                 color: theme.accentColor,
                                                 fontSize: "0.55rem",
                                                 fontWeight: 700,
-                                                fontFamily: "'Inter', system-ui, sans-serif",
                                             }}
                                         >
                                             {node.stepNumber}
@@ -386,32 +369,29 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                             <Box sx={{ px: 1.5, py: 1 }}>
                                 <Typography
                                     sx={{
-                                        color: "rgba(255, 255, 255, 0.92)",
+                                        color: COLORS.textPrimary,
                                         fontSize: isCenter ? "0.85rem" : "0.78rem",
                                         fontWeight: isCenter ? 600 : 500,
                                         lineHeight: 1.45,
-                                        fontFamily: "'Inter', system-ui, sans-serif",
                                     }}
                                 >
                                     {node.text}
                                 </Typography>
 
-                                {/* Preview content */}
                                 {hasPreview && (
                                     <Box
                                         sx={{
                                             mt: 0.8,
                                             pt: 0.8,
-                                            borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+                                            borderTop: `1px solid ${COLORS.border}`,
                                         }}
                                     >
                                         <Typography
                                             sx={{
-                                                color: "rgba(255, 255, 255, 0.45)",
+                                                color: COLORS.textMuted,
                                                 fontSize: "0.68rem",
                                                 fontWeight: 400,
                                                 lineHeight: 1.45,
-                                                fontFamily: "'Inter', system-ui, sans-serif",
                                                 whiteSpace: "pre-line",
                                             }}
                                         >
@@ -438,7 +418,7 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                         py: 0.8,
                         borderRadius: "20px",
                         background: "linear-gradient(135deg, rgba(0, 12, 24, 0.95), rgba(0, 18, 35, 0.92))",
-                        border: "1px solid rgba(0, 212, 255, 0.25)",
+                        border: `1px solid ${cyanAlpha(0.25)}`,
                         backdropFilter: "blur(16px)",
                         boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
                         animation: "nodePopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both",
@@ -450,25 +430,24 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                             width: 8,
                             height: 8,
                             borderRadius: "50%",
-                            bgcolor: isCollapsing ? "#b464ff" : "#00d4ff",
+                            bgcolor: isCollapsing ? COLORS.accent : COLORS.cyan,
                             animation: "pulseGlow 1.5s ease-in-out infinite",
                             "@keyframes pulseGlow": {
-                                "0%, 100%": { opacity: 1, boxShadow: `0 0 4px ${isCollapsing ? "#b464ff" : "#00d4ff"}` },
-                                "50%": { opacity: 0.5, boxShadow: `0 0 12px ${isCollapsing ? "#b464ff" : "#00d4ff"}` },
+                                "0%, 100%": { opacity: 1, boxShadow: `0 0 4px ${isCollapsing ? COLORS.accent : COLORS.cyan}` },
+                                "50%": { opacity: 0.5, boxShadow: `0 0 12px ${isCollapsing ? COLORS.accent : COLORS.cyan}` },
                             },
                         }}
                     />
                     <Typography
                         sx={{
-                            color: "rgba(255, 255, 255, 0.85)",
+                            color: COLORS.textPrimary,
                             fontSize: "0.75rem",
                             fontWeight: 600,
-                            fontFamily: "'Inter', system-ui, sans-serif",
                         }}
                     >
                         {isCollapsing
                             ? "✨ Generating Dashboard..."
-                            : `Deep Research — ${nodes.length - 1} ${nodes.length - 1 === 1 ? 'Quelle' : 'Quellen'}`}
+                            : `Deep Research — ${nodes.length - 1} ${nodes.length - 1 === 1 ? 'Source' : 'Sources'}`}
                     </Typography>
                     {/* Step counter badges */}
                     {!isCollapsing && (
@@ -490,8 +469,8 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                             px: 0.8,
                                             py: 0.2,
                                             borderRadius: "8px",
-                                            bgcolor: t?.badgeBg || "rgba(255,255,255,0.05)",
-                                            border: `1px solid ${(t?.borderColor || "rgba(255,255,255,0.1)").replace(/[\d.]+\)$/, '0.2)')}`,
+                                            bgcolor: t?.badgeBg || COLORS.surface,
+                                            border: `1px solid ${(t?.borderColor || COLORS.border).replace(/[\d.]+\)$/, '0.2)')}`,
                                         }}
                                     >
                                         <Typography sx={{ fontSize: "0.6rem", lineHeight: 1 }}>
@@ -499,10 +478,9 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                                         </Typography>
                                         <Typography
                                             sx={{
-                                                color: t?.accentColor || "#fff",
+                                                color: t?.accentColor || COLORS.textPrimary,
                                                 fontSize: "0.55rem",
                                                 fontWeight: 700,
-                                                fontFamily: "'Inter', system-ui, sans-serif",
                                             }}
                                         >
                                             {count}
@@ -512,8 +490,26 @@ export const ConstellationOverlay = React.memo(function ConstellationOverlay({
                             })}
                         </Box>
                     )}
+
+                    {/* Toggle: minimize overlay to see page */}
+                    <Tooltip title="Show Page">
+                        <IconButton
+                            onClick={() => setMinimized(true)}
+                            size="small"
+                            sx={{
+                                pointerEvents: "auto",
+                                color: COLORS.textMuted,
+                                ml: 0.5,
+                                p: 0.4,
+                                "&:hover": { color: COLORS.textPrimary, bgcolor: cyanAlpha(0.1) },
+                            }}
+                        >
+                            <HideIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                    </Tooltip>
                 </Box>
             </Box>
         </>
     );
 });
+

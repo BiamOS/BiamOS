@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { eq } from "drizzle-orm";
 import { db } from "../db/db.js";
+import { safeParseJSON } from "../utils/safe-json.js";
 import { agents } from "../db/schema.js";
 import { zValidator } from "@hono/zod-validator";
 import { updateAgentSchema } from "../validators/schemas.js";
@@ -478,18 +479,23 @@ agentRoutes.post("/search", async (c) => {
     }
 
     // Parse DDG HTML with multiple fallback strategies
-    function parseDdgResults(html: string): { title: string; snippet: string; url: string }[] {
-        const results: { title: string; snippet: string; url: string }[] = [];
+    function parseDdgResults(html: string): { title: string; snippet: string; url: string; favicon: string; domain: string }[] {
+        const results: { title: string; snippet: string; url: string; favicon: string; domain: string }[] = [];
         const stripTags = (s: string) => s.replace(/<[^>]*>/g, '').trim();
+        const getDomain = (u: string) => { try { return new URL(u).hostname.replace('www.', ''); } catch { return ''; } };
+        const getFavicon = (u: string) => { try { return `https://www.google.com/s2/favicons?domain=${new URL(u).hostname}&sz=64`; } catch { return ''; } };
 
         // Strategy 1: Full match (title + snippet + URL)
         const fullRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
         let match;
         while ((match = fullRegex.exec(html)) !== null && results.length < MAX_RESULTS) {
+            const url = extractRealUrl(match[1]);
             results.push({
-                url: extractRealUrl(match[1]),
+                url,
                 title: stripTags(match[2]),
                 snippet: stripTags(match[3]),
+                favicon: getFavicon(url),
+                domain: getDomain(url),
             });
         }
         if (results.length > 0) return results;
@@ -510,6 +516,8 @@ agentRoutes.post("/search", async (c) => {
             return links.map((l, i) => ({
                 ...l,
                 snippet: snippets[i] || '',
+                favicon: getFavicon(l.url),
+                domain: getDomain(l.url),
             }));
         }
 
@@ -518,15 +526,76 @@ agentRoutes.post("/search", async (c) => {
         while ((match = bareRegex.exec(html)) !== null && results.length < MAX_RESULTS) {
             const title = stripTags(match[2]);
             if (title.length > 3) {
-                results.push({ url: extractRealUrl(match[1]), title, snippet: '' });
+                const cleanUrl = extractRealUrl(match[1]);
+                results.push({ url: cleanUrl, title, snippet: '', favicon: getFavicon(cleanUrl), domain: getDomain(cleanUrl) });
             }
         }
 
         return results;
     }
 
+    // ─── OG Metadata Fetcher ─────────────────────────────────
+    // Fetch og:image, og:description, og:title from each result URL in parallel.
+    // 3s timeout per URL — slow sites are gracefully skipped.
+    async function enrichWithOgMetadata(
+        results: { title: string; snippet: string; url: string; favicon: string; domain: string }[]
+    ): Promise<{ title: string; snippet: string; url: string; favicon: string; domain: string; ogImage: string; ogDescription: string; ogTitle: string }[]> {
+        const OG_TIMEOUT = 3000;
+
+        const fetches = results.map(async (r) => {
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), OG_TIMEOUT);
+                const resp = await fetch(r.url, {
+                    signal: controller.signal,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (compatible; BiamBot/1.0)',
+                        'Accept': 'text/html',
+                    },
+                });
+                clearTimeout(timer);
+
+                // Only read first 20KB to find OG tags (they're in <head>)
+                const reader = resp.body?.getReader();
+                let html = '';
+                if (reader) {
+                    const decoder = new TextDecoder();
+                    let bytesRead = 0;
+                    while (bytesRead < 20000) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        html += decoder.decode(value, { stream: true });
+                        bytesRead += value.length;
+                    }
+                    reader.cancel();
+                }
+
+                // Parse OG tags
+                const getOg = (prop: string): string => {
+                    const m = html.match(new RegExp(`<meta[^>]*property=["']og:${prop}["'][^>]*content=["']([^"']*)["']`, 'i'))
+                        || html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*property=["']og:${prop}["']`, 'i'));
+                    return m?.[1] || '';
+                };
+
+                return {
+                    ...r,
+                    ogImage: getOg('image'),
+                    ogDescription: getOg('description') || r.snippet,
+                    ogTitle: getOg('title') || r.title,
+                };
+            } catch {
+                return { ...r, ogImage: '', ogDescription: r.snippet, ogTitle: r.title };
+            }
+        });
+
+        const settled = await Promise.allSettled(fetches);
+        return settled.map((s, i) =>
+            s.status === 'fulfilled' ? s.value : { ...results[i], ogImage: '', ogDescription: results[i].snippet, ogTitle: results[i].title }
+        );
+    }
+
     try {
-        let results: { title: string; snippet: string; url: string }[] = [];
+        let results: { title: string; snippet: string; url: string; favicon: string; domain: string }[] = [];
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             if (attempt > 0) {
@@ -534,7 +603,10 @@ agentRoutes.post("/search", async (c) => {
                 await new Promise(r => setTimeout(r, 1000 * attempt)); // Backoff
             }
 
-            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            // Auto-detect news queries and add time filter (past month)
+            const newsKeywords = /\b(news|neuigkeiten|aktuell|latest|trends|recent|neue|today|heute|this week|diese woche|2026)\b/i;
+            const timeFilter = newsKeywords.test(query) ? '&df=m' : '';
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}${timeFilter}`;
             const resp = await fetch(searchUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -548,20 +620,26 @@ agentRoutes.post("/search", async (c) => {
             if (results.length > 0) break;
         }
 
-        // Format as text for the agent (backward compatible)
-        const text = results.length > 0
-            ? results.map((r, i) => `${i + 1}. ${r.title}${r.snippet ? ' — ' + r.snippet : ''}${r.url ? ' (' + r.url + ')' : ''}`).join('\n')
+        // Enrich with OG metadata (parallel, 3s timeout per URL)
+        log.debug(`  🔍 Enriching ${results.length} results with OG metadata...`);
+        const enriched = await enrichWithOgMetadata(results);
+        const ogCount = enriched.filter(r => r.ogImage).length;
+        log.debug(`  🔍 OG enrichment: ${ogCount}/${enriched.length} have og:image`);
+
+        // Format as text for the agent — include OG images for richer dashboards
+        const text = enriched.length > 0
+            ? enriched.map((r, i) => `${i + 1}. ${r.ogTitle || r.title}${r.ogDescription ? ' — ' + r.ogDescription.substring(0, 150) : ''}${r.ogImage ? ' [image: ' + r.ogImage + ']' : ''} (${r.url})`).join('\n')
             : 'No results found for: ' + query;
 
-        log.debug(`  🔍 Agent search: ${results.length} results found`);
+        log.debug(`  🔍 Agent search: ${enriched.length} results found`);
 
         return c.json({
             biam_protocol: "2.0",
             action: "search_results",
             query,
             results: text,
-            structured: results, // Structured JSON for future use
-            count: results.length,
+            structured: enriched, // Structured JSON with OG metadata
+            count: enriched.length,
         });
     } catch (err) {
         log.error(`  🔍 Agent search error: ${err}`);
@@ -575,10 +653,9 @@ agentRoutes.post("/search", async (c) => {
     }
 });
 
-// ─── POST /agents/genui — Generate interactive HTML dashboard ─
-// The LLM generates a full Tailwind-styled HTML page that gets
-// loaded into the webview as a Data-URI sandbox. Buttons call
-// triggerAgent() which posts back to BiamOS via console-message.
+// ─── POST /agents/genui — Generate Block-JSON dashboard ─────
+// The LLM generates an array of BiamOS blocks (from the block catalog).
+// The frontend renders them using the existing BlockRenderer.
 
 agentRoutes.post("/genui", async (c) => {
     const body = await c.req.json().catch(() => null);
@@ -596,52 +673,8 @@ agentRoutes.post("/genui", async (c) => {
         const chatUrl = await getChatUrl();
         const headers = await getHeaders("GenUI");
 
-        const systemPrompt = `You are an expert dashboard designer for BiamOS. Transform provided data into stunning, information-rich HTML dashboards.
-
-YOUR PHILOSOPHY: Be CREATIVE with layout, design, icons, badges, and visual hierarchy. Be STRICT about data accuracy — never invent facts, URLs, or content. If data is missing, skip that field — don't fake it.
-
-DATA FORMAT:
-- Data arrives as structured JSON with an "items" array. Each item has: title, url, source, date, category, priority, summary, details.
-- Iterate the items array to build cards. Use every field that exists — skip missing fields gracefully.
-- Additional context may be in "search_context" (text from web searches).
-
-DATA RULES:
-1. All text, URLs, and numbers MUST come from the provided data. NEVER invent URLs or use placeholders (example.com, etc.).
-2. You CAN and SHOULD add: emoji indicators (🔴 urgent, 🟡 medium, 🟢 low), status badges, priority tags, category labels, and visual cues derived from the tone/content of the data.
-3. If an item has priority "urgent" or "high" — highlight it prominently with red accents, badges, or icons.
-4. Filter out navigation aids: search engine results (Gmail, Proton Mail links, login pages) are NOT dashboard content. Only show real user data.
-
-SUMMARY HEADER:
-- Start with a contextual emoji + summary line: "📬 6 Emails — 2 urgent, 1 action required" or "📰 5 Articles from today's AI news".
-- Below the summary, add a quick-glance stats bar if applicable (e.g., urgent count, categories, date range).
-
-INTERACTIVITY:
-- Items WITH URLs: use <a href="URL" target="_blank"> styled as cyan links or buttons.
-- Items WITHOUT URLs: make cards EXPANDABLE with onclick="this.querySelector('.detail').classList.toggle('hidden')". Show a "▼ Details" indicator so users know they can click.
-- ACTION BUTTONS: For items where follow-up actions make sense (reply to email, visit profile, etc.), add a button that calls:
-  onclick="biam.prefillCommand('/act <describe the action with full context>')"
-  Example: onclick="biam.prefillCommand('/act Reply to John\\'s email about the Q2 deadline')"
-  This pre-fills the user's command input — they press Enter to execute. Do NOT auto-trigger anything.
-- ALWAYS show core info at a glance (title, from/source, date, priority) — full detail only on expand.
-
-DESIGN LANGUAGE:
-- <!DOCTYPE html> with Tailwind CDN + Inter font.
-- Dark theme: bg-gray-950 body, bg-gray-800/bg-gray-850 cards, text-white headings.
-- Color-coded left borders: border-l-4 border-red-500 (urgent), border-yellow-500 (important), border-cyan-500 (normal), border-gray-600 (low priority).
-- Cards in "grid grid-cols-1 md:grid-cols-2 gap-4" (2 columns on desktop, 1 on mobile).
-- Each card: rounded-xl p-5, subtle hover effect (hover:bg-gray-750 transition-colors), cursor-pointer for expandable cards.
-- Card inner structure: 
-  * Top row: title (font-semibold text-lg) + date badge (text-xs bg-gray-700 rounded-full px-2 py-0.5)
-  * Meta row: from/source in text-sm text-gray-400 + any priority badges
-  * Snippets: 2-3 lines of preview text in text-sm text-gray-300 (visible by default)
-  * Expandable detail: hidden div with full content, rich text, metadata
-  * Action button (if applicable): small cyan button calling biam.prefillCommand()
-- If items have actionable deadlines, show a "⏰ Due: Today" or "📅 Deadline: Tomorrow" tag.
-- Use smooth transitions: transition-all duration-200.
-- Body padding: p-6 max-w-6xl mx-auto.
-4. Output ONLY valid HTML. No markdown, no explanations, no code fences.`;
-
-
+        const { buildGenUIPrompt, GenUIResponseSchema, buildErrorFallbackBlocks } = await import("../prompts/genui-prompt.js");
+        const systemPrompt = buildGenUIPrompt(data);
 
         const userMessage = data
             ? `${prompt}\n\nHere is the data to display:\n${JSON.stringify(data, null, 2)}`
@@ -656,8 +689,9 @@ DESIGN LANGUAGE:
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userMessage },
                 ],
-                temperature: 0.3,
-                max_tokens: 8000,
+                temperature: 0.5,
+                max_tokens: 6000,
+                response_format: { type: "json_object" },
             }),
         });
 
@@ -668,21 +702,40 @@ DESIGN LANGUAGE:
         }
 
         const result = await response.json();
-        let html = result.choices?.[0]?.message?.content || "";
+        let raw = result.choices?.[0]?.message?.content || "";
+        log.debug(`  🎨 GenUI raw (first 300): ${raw.substring(0, 300)}`);
 
-        // Strip markdown fences if the LLM wrapped it anyway
-        html = html.replace(/^```html?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-
-        if (!html || !html.includes("<")) {
-            return c.json({ error: "LLM did not return valid HTML" }, 502);
+        // Use safeParseJSON — handles markdown fences, prose wrapping, embedded JSON
+        const parsed = safeParseJSON(raw);
+        if (!parsed) {
+            log.error(`  🎨 GenUI: LLM returned invalid JSON — raw content: ${raw.substring(0, 500)}`);
+            const fallback = buildErrorFallbackBlocks("LLM returned invalid JSON — could not parse response.");
+            return c.json({ biam_protocol: "2.0", action: "genui_render", ...fallback });
         }
 
-        log.debug(`  🎨 GenUI: generated ${html.length} chars of HTML`);
+        const validation = GenUIResponseSchema.safeParse(parsed);
+        if (!validation.success) {
+            log.error(`  🎨 GenUI: Block validation failed:`, validation.error.issues);
+            // Try to salvage: if parsed has a blocks array, filter to valid blocks only
+            const anyParsed = parsed as Record<string, unknown>;
+            if (Array.isArray(anyParsed?.blocks) && anyParsed.blocks.length > 0) {
+                log.debug(`  🎨 GenUI: Salvaging ${anyParsed.blocks.length} blocks (some may have invalid types)`);
+                return c.json({
+                    biam_protocol: "2.0",
+                    action: "genui_render",
+                    blocks: anyParsed.blocks,
+                });
+            }
+            const fallback = buildErrorFallbackBlocks("LLM returned blocks with invalid structure.");
+            return c.json({ biam_protocol: "2.0", action: "genui_render", ...fallback });
+        }
+
+        log.debug(`  🎨 GenUI: generated ${validation.data.blocks.length} blocks`);
 
         return c.json({
             biam_protocol: "2.0",
             action: "genui_render",
-            html,
+            blocks: validation.data.blocks,
         });
     } catch (err) {
         log.error(`  🎨 GenUI error: ${err}`);

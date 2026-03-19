@@ -28,6 +28,7 @@ import { useCardContext } from "../CardContext";
 import { useAgentActions } from "./useAgentActions";
 import { AgentOverlay } from "./AgentOverlay";
 import { ConstellationOverlay } from "./ConstellationOverlay";
+import { LayoutRenderer } from "../BlockRenderer";
 
 // ─── Blocklist ──────────────────────────────────────────────
 
@@ -79,6 +80,9 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
     function WebviewWithLogging({ src }, ref) {
         const localRef = useRef<any>(null);
         const listenersAttachedRef = useRef(false);
+        // Track which URL we already attempted cookie dismissal on
+        // to prevent infinite reload loops (cookie click → reload → cookie click → ...)
+        const cookieDismissedUrlRef = useRef<string>('');
 
         // Merge refs
         const setRef = useCallback((el: any) => {
@@ -109,6 +113,14 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
                 //                 paywalls, ad overlays, generic close buttons
                 const currentUrl = wv.getURL?.() || '';
                 if (currentUrl && !currentUrl.startsWith('data:') && !currentUrl.startsWith('about:')) {
+                    // Guard: only attempt cookie dismissal ONCE per URL origin+path
+                    // to prevent reload loops when accepting cookies causes a page refresh
+                    let urlKey = currentUrl;
+                    try { const u = new URL(currentUrl); urlKey = u.origin + u.pathname; } catch { /* use raw */ }
+                    if (cookieDismissedUrlRef.current === urlKey) {
+                        debug.log(`${tag} 🍪 Skipping auto-dismiss — already attempted for ${urlKey}`);
+                    } else {
+                    cookieDismissedUrlRef.current = urlKey;
                     // ── Pass 1: Cookie Consent ──
                     setTimeout(() => {
                         try {
@@ -227,6 +239,47 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
                             `, true).catch(() => {});
                         } catch { /* page may have navigated away */ }
                     }, 3000);
+
+                    // ── Pass 3: Retry Cookie Consent (late-loading GDPR frameworks) ──
+                    setTimeout(() => {
+                        try {
+                            wv.executeJavaScript(`
+                                (function() {
+                                    var keywords = [
+                                        'einverstanden', 'akzeptieren', 'accept all', 'accept cookies',
+                                        'alle akzeptieren', 'accept', 'agree', 'zustimmen',
+                                        'i agree', 'got it', 'ok', 'allow all', 'allow cookies',
+                                        'alle cookies akzeptieren', 'consent', 'continue',
+                                        'accept & close', 'ich stimme zu', 'alles klar',
+                                        'alle zulassen', "j'accepte", 'tout accepter'
+                                    ];
+                                    var clickable = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+                                    for (var i = 0; i < clickable.length; i++) {
+                                        var el = clickable[i];
+                                        var text = (el.textContent || el.value || '').trim().toLowerCase();
+                                        if (text.length < 50 && keywords.some(function(kw) { return text.includes(kw); })) {
+                                            el.click();
+                                            console.log('🍪 [Pass 3] Auto-accepted cookie: ' + text);
+                                            return;
+                                        }
+                                    }
+                                    var overlays = document.querySelectorAll('[class*="consent"], [class*="cookie"], [id*="consent"], [id*="cookie"], [class*="gdpr"], [id*="gdpr"], [class*="qc-cmp"], [id*="qc-cmp"]');
+                                    for (var j = 0; j < overlays.length; j++) {
+                                        var btns = overlays[j].querySelectorAll('button, a, [role="button"]');
+                                        for (var k = 0; k < btns.length; k++) {
+                                            var t = (btns[k].textContent || '').trim().toLowerCase();
+                                            if (t.length < 50 && keywords.some(function(kw) { return t.includes(kw); })) {
+                                                btns[k].click();
+                                                console.log('🍪 [Pass 3] Auto-accepted cookie (overlay): ' + t);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                })();
+                            `, true).catch(() => {});
+                        } catch { /* page may have navigated away */ }
+                    }, 5000);
+                    } // end else (cookie guard)
                 }
             });
             wv.addEventListener('did-fail-load', (e: any) => {
@@ -307,9 +360,8 @@ const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string }>(
                 const currentUrl = wv.getURL?.() || '';
                 if (newTitle && newTitle !== 'about:blank') {
                     debug.log(`${tag} 📝 Title updated: "${newTitle}" (${currentUrl})`);
-                    window.dispatchEvent(new CustomEvent('biamos:webview-title-updated', {
-                        detail: { title: newTitle, url: currentUrl },
-                    }));
+                    // NOTE: Tab label sync is handled by IframeBlock's useEffect
+                    // (which dispatches biamos:webview-title-updated with initialUrl for matching)
                     // Update history entry with title
                     if (currentUrl) {
                         fetch('http://localhost:3001/api/history', {
@@ -344,7 +396,11 @@ export const IframeBlock = React.memo(function IframeBlock({
     title,
     icon,
     height,
+    agentDisabled,
+    _genuiBlocks,
 }: IframeBlockSpec) {
+    const hasDashboard = !!_genuiBlocks;
+    const agentEnabled = !agentDisabled;
     const isElectron = !!window.electronAPI?.isElectron;
     const [ctrlHeld, setCtrlHeld] = useState(false);
     const [faviconError, setFaviconError] = useState(false);
@@ -378,7 +434,7 @@ export const IframeBlock = React.memo(function IframeBlock({
         if (status === "idle") {
             ctx.setContextHints(prev => prev.map(h =>
                 h.query === queryKey && h.loading
-                    ? { ...h, loading: false, data: { ...h.data, summary: (h.data?.summary || "") + "\n\n⏹️ Gestoppt" } }
+                    ? { ...h, loading: false, data: { ...h.data, summary: (h.data?.summary || "") + "\n\n⏹️ Stopped" } }
                     : h
             ));
             return;
@@ -505,7 +561,43 @@ export const IframeBlock = React.memo(function IframeBlock({
     const ctx = useContextWatcher(webviewRef, initialUrl, isElectron, {
         setCurrentUrl,
         setUrlInput,
-    }, cardCtx?.cardId);
+    }, cardCtx?.cardId, agentEnabled);
+
+    // ─── Tab Title Sync (Chrome-like) ────────────────────────
+    // Listen to this webview's title changes and re-dispatch
+    // with the INITIAL URL so useCanvasItems can match the tab.
+    useEffect(() => {
+        const wv = webviewRef.current;
+        if (!wv || !isElectron) return;
+
+        const handleTitle = (e: any) => {
+            const newTitle = e.title || '';
+            if (!newTitle || newTitle === 'about:blank') return;
+            // Dispatch with initialUrl as lookup key (matches tab block URL)
+            window.dispatchEvent(new CustomEvent('biamos:webview-title-updated', {
+                detail: { title: newTitle, url: initialUrl, currentUrl: wv.getURL?.() || '' },
+            }));
+        };
+
+        // Electron webview may not be ready immediately
+        const attachListener = () => {
+            try {
+                wv.addEventListener('page-title-updated', handleTitle);
+            } catch { /* webview not ready */ }
+        };
+
+        // Try immediately, then again on dom-ready in case it's not ready
+        attachListener();
+        const onReady = () => attachListener();
+        try { wv.addEventListener('dom-ready', onReady); } catch { /* */ }
+
+        return () => {
+            try {
+                wv.removeEventListener('page-title-updated', handleTitle);
+                wv.removeEventListener('dom-ready', onReady);
+            } catch { /* */ }
+        };
+    }, [webviewRef.current, isElectron, initialUrl]);
 
     // ─── GenUI Intent Bridge ────────────────────────────────
     // When a GenUI dashboard button is clicked, it sends an intent
@@ -577,6 +669,7 @@ export const IframeBlock = React.memo(function IframeBlock({
         window.addEventListener('biamos:genui-intent', handler);
         return () => window.removeEventListener('biamos:genui-intent', handler);
     }, [agent, ctx]);
+
 
     // ─── Derived values ─────────────────────────────────────
     let hostname = currentUrl;
@@ -1053,43 +1146,68 @@ export const IframeBlock = React.memo(function IframeBlock({
             <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
                 {/* Main webview/iframe area */}
                 <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    {/* AI Agent Overlay */}
-                    <AgentOverlay
-                        state={agent.agentState}
-                        task={agentTaskRef.current}
-                        onStop={agent.stopAgent}
-                        onContinue={() => agent.continueAgent(agentTaskRef.current)}
-                        onFeedback={agent.sendFeedback}
-                    />
+                    {/* AI Agent Overlay — only for agent-enabled webviews */}
+                    {agentEnabled && (
+                        <AgentOverlay
+                            state={agent.agentState}
+                            task={agentTaskRef.current}
+                            onStop={agent.stopAgent}
+                            onContinue={() => agent.continueAgent(agentTaskRef.current)}
+                            onFeedback={agent.sendFeedback}
+                        />
+                    )}
                     {/* Constellation View — research visualization */}
-                    <ConstellationOverlay
-                        state={agent.agentState}
-                        task={agentTaskRef.current}
-                    />
+                    {agentEnabled && (
+                        <ConstellationOverlay
+                            state={agent.agentState}
+                            task={agentTaskRef.current}
+                        />
+                    )}
                     {ctrlHeld && (
                         <Box
                             onMouseDown={() => setCtrlHeld(false)}
                             sx={{ position: "absolute", inset: 0, zIndex: 10, cursor: "zoom-in" }}
                         />
                     )}
-                    {isElectron ? (
-                        <WebviewWithLogging ref={webviewRef} src={initialUrl} />
-                    ) : (
-                        <iframe
-                            ref={iframeRef}
-                            src={currentUrl}
-                            title={title || hostname}
-                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                            style={{
-                                flex: 1,
-                                width: "100%", height: "100%",
-                                border: "none", backgroundColor: "#fff", display: "block",
+                    {/* Dashboard mode: render GenUI blocks with link interceptor */}
+                    {hasDashboard && (
+                        <Box
+                            sx={{ flex: 1, minHeight: 0, overflowY: "auto", bgcolor: "#0a0e14" }}
+                            onClick={(e) => {
+                                const link = (e.target as HTMLElement).closest('a');
+                                if (link?.href) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    window.dispatchEvent(new CustomEvent('biamos:open-as-card', {
+                                        detail: { url: link.href, title: link.textContent || link.href },
+                                    }));
+                                }
                             }}
-                        />
+                        >
+                            <LayoutRenderer layout={{ blocks: _genuiBlocks! }} stagger />
+                        </Box>
                     )}
+                    {/* Webview — hidden when dashboard is active */}
+                    <Box sx={{ display: hasDashboard ? 'none' : 'contents' }}>
+                        {isElectron ? (
+                            <WebviewWithLogging ref={webviewRef} src={initialUrl} />
+                        ) : (
+                            <iframe
+                                ref={iframeRef}
+                                src={currentUrl}
+                                title={title || hostname}
+                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                                style={{
+                                    flex: 1,
+                                    width: "100%", height: "100%",
+                                    border: "none", backgroundColor: "#fff", display: "block",
+                                }}
+                            />
+                        )}
+                    </Box>
                 </Box>
 
-                {/* Context Sidebar */}
+                {/* Context Sidebar — available on all webview tabs (like Chrome DevTools) */}
                 {isElectron && (
                     <ContextSidebar
                         hints={ctx.contextHints}

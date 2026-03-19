@@ -15,6 +15,7 @@ import { MODEL_FAST } from "../config/models.js";
 import { logTokenUsage } from "../server-utils.js";
 import { safeParseJSON } from "../utils/safe-json.js";
 import { log } from "../utils/logger.js";
+import { buildBlockCatalogPrompt } from "../prompts/block-catalog.js";
 
 export const summarizeRoutes = new Hono();
 
@@ -69,11 +70,18 @@ async function summarizeScrapedContent(
     rawText: string,
     instruction?: string
 ): Promise<ScrapeResult> {
+    // Use only summary-appropriate block types from the catalog
+    const summaryBlocks = ["hero", "text", "list", "key_value", "callout", "table"];
+    const catalog = buildBlockCatalogPrompt(summaryBlocks, "DATA");
+
     const systemPrompt = `You are a web content analyzer for BiamOS, an intelligent dashboard.
 The user has scraped a webpage using their authenticated session (Ghost-Auth).
 Analyze the raw DOM text and create a structured summary.
 
 ${instruction ? `USER INSTRUCTION: "${instruction}"` : "Summarize the key information on this page."}
+
+AVAILABLE BLOCKS:
+${catalog}
 
 RULES:
 1. Extract the most important information from the raw text
@@ -91,9 +99,8 @@ RULES:
         ]
     }
 }
-5. Use appropriate BiamOS block types: hero, text, list, key_value, callout, table
-6. Maximum 5 blocks in the layout
-7. Keep it concise — dashboard cards, not full articles`;
+5. Maximum 5 blocks in the layout
+6. Keep it concise — dashboard cards, not full articles`;
 
     const userMessage = `URL: ${url}\n\nRaw page content (first 5000 chars):\n${rawText.substring(0, 5000)}`;
 

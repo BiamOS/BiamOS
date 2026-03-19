@@ -38,7 +38,8 @@ export type BlockSpec =
     | SliderBlockSpec
     | FormGroupBlockSpec
     | IframeBlockSpec
-    | CalculatorBlockSpec;
+    | CalculatorBlockSpec
+    | RowBlockSpec;
 
 interface BaseBlock {
     type: string;
@@ -53,6 +54,11 @@ export interface IframeBlockSpec extends BaseBlock {
     title?: string;
     icon?: string;
     height?: number;
+    /** When true, agent hooks (useAgentActions, useContextWatcher) are disabled.
+     *  Used for link-opened tabs that should be read-only webviews. */
+    agentDisabled?: boolean;
+    /** GenUI dashboard blocks — when set, renders these blocks instead of webview */
+    _genuiBlocks?: any[];
 }
 
 // ─── Content Blocks ─────────────────────────────────────────
@@ -140,6 +146,12 @@ export interface ListBlockSpec extends BaseBlock {
 export interface GridBlockSpec extends BaseBlock {
     type: "grid";
     columns?: 2 | 3;
+    blocks: BlockSpec[];
+}
+
+export interface RowBlockSpec extends BaseBlock {
+    type: "row";
+    gap?: number;
     blocks: BlockSpec[];
 }
 

@@ -11,7 +11,7 @@
 
 import { debug } from "../../../../utils/debug";
 import type { AgentStep } from "./types";
-import { buildClickAtScript, buildFocusScript, buildScrollScript, buildGenUIDataUri } from "./scripts";
+import { buildClickAtScript, buildFocusScript, buildScrollScript } from "./scripts";
 
 // ─── Action Context ─────────────────────────────────────────
 // Passed by the hook — provides controlled access to React deps.
@@ -23,6 +23,10 @@ export interface ActionContext {
     waitForPageReady: (label: string) => Promise<boolean>;
     /** Read current step history (for search limits, genui data collection) */
     getSteps: () => AgentStep[];
+    /** Read structured search data (OG metadata etc.) — separate from step history */
+    getStructuredData: () => any[];
+    /** Add structured search data (called by search_web) */
+    addStructuredData: (data: any[]) => void;
     /** Update steps + state (ONLY for terminal actions like genui) */
     setTerminalState: (step: AgentStep, status: string) => void;
 }
@@ -242,6 +246,30 @@ export async function executeAction(
 
                     await new Promise(r => setTimeout(r, 300));
 
+                    // ── Duplicate detection: skip if text is already in the field ──
+                    // Prevents the LLM from re-typing content across multiple steps
+                    if (!clearFirst) {
+                        try {
+                            const currentContent = await wv.executeJavaScript(`(function(){
+                                var el = document.activeElement;
+                                if (!el) return '';
+                                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return el.value || '';
+                                if (el.isContentEditable) return el.innerText || el.textContent || '';
+                                return '';
+                            })()`, true);
+                            if (currentContent && typeof currentContent === 'string' && currentContent.length > 10) {
+                                // Check if the text we want to type is already present
+                                const normalCurrent = currentContent.replace(/\s+/g, ' ').trim();
+                                const normalNew = typingText.replace(/\s+/g, ' ').trim();
+                                if (normalCurrent.includes(normalNew) || normalNew.length > 20 && normalCurrent.includes(normalNew.substring(0, Math.floor(normalNew.length * 0.7)))) {
+                                    debug.log(`⏭️ [type_text] Skipping — text already present in field (${currentContent.length} chars)`);
+                                    return `✓ Text already present in field — skipped duplicate typing`;
+                                }
+                            }
+                        } catch { /* continue to type */ }
+                    }
+
+
                     // For long texts: JS-based insertion (instant, no lag)
                     // For short texts: char-by-char input (reliable for search bars)
                     if (typingText.length > 80) {
@@ -401,7 +429,15 @@ export async function executeAction(
                         });
                         const data = await resp.json();
                         const results = data.results || 'No results';
+                        const structured = data.structured || [];
                         console.log(`🔍 Search results: ${data.count} found`);
+
+                        // Store structured OG metadata in separate ref (NOT in step history)
+                        if (structured.length > 0) {
+                            ctx.addStructuredData(structured);
+                        }
+
+                        // Return clean text results only — no __STRUCTURED__ blob
                         return `✓ Search results for "${query}":\n${results}`;
                     } catch (e) {
                         return `Search failed: ${e}`;
@@ -437,9 +473,12 @@ export async function executeAction(
                             searchResults.push(s.result);
                         }
                     }
+                    // OG metadata from separate structured data store (not from step history)
+                    const structuredSources = ctx.getStructuredData();
                     const data = {
                         items: allItems,
                         search_context: searchResults.length > 0 ? searchResults.join('\n\n') : undefined,
+                        sources: structuredSources.length > 0 ? structuredSources : undefined,
                         ...(args.data || {}),
                     };
 
@@ -452,23 +491,24 @@ export async function executeAction(
                             body: JSON.stringify({ prompt, data }),
                         });
                         const result = await resp.json();
-                        if (!result.html) {
-                            return `GenUI failed: ${result.error || 'No HTML returned'}`;
+                        if (!result.blocks || !Array.isArray(result.blocks)) {
+                            return `GenUI failed: ${result.error || 'No blocks returned'}`;
                         }
 
-                        const dataUri = buildGenUIDataUri(result.html);
-                        wv.loadURL(dataUri).catch(() => {});
-                        await new Promise(r => setTimeout(r, 1500));
-
-                        // Terminal action — notify the hook via context callback
+                        // Terminal action — set "done" FIRST (before tab switch unmounts this IframeBlock)
                         ctx.setTerminalState(
                             {
                                 action: "genui",
                                 description: prompt || "Dashboard generated",
-                                result: `✓ GenUI dashboard loaded (${result.html.length} chars)`,
+                                result: `✓ GenUI dashboard loaded (${result.blocks.length} blocks)`,
                             },
                             `✅ Dashboard rendered`,
                         );
+
+                        // Dispatch blocks to Canvas for rendering (triggers tab switch)
+                        window.dispatchEvent(new CustomEvent('biamos:genui-blocks', {
+                            detail: { blocks: result.blocks, prompt },
+                        }));
                         return '__GENUI_DONE__';
                     } catch (e) {
                         return `GenUI error: ${e}`;

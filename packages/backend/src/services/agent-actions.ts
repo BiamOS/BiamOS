@@ -120,17 +120,17 @@ const AGENT_TOOLS = [
         type: "function" as const,
         function: {
             name: "genui",
-            description: "[PRESENT · Phase Bridge · Cost: 1 LLM call] Ends research and renders an interactive HTML dashboard. TERMINAL action — call ONCE after gathering data. Pass ONLY valuable user data in 'data' field (emails, articles, leads). NEVER pass search results used for navigation.",
+            description: "[PRESENT · Phase Bridge · Cost: 1 LLM call] Renders a dashboard from collected research. TERMINAL — call ONCE after gathering data via search_web and optionally take_notes.\\n\\nBEST RESULTS: search_web first, optionally navigate 1-2 top URLs + take_notes for deeper content, then genui.\\nONLY for DASHBOARD/RESEARCH tasks. NEVER for action tasks (open, click, send, compose).",
             parameters: {
                 type: "object",
                 properties: {
                     prompt: {
                         type: "string",
-                        description: "Describe the dashboard purpose and summarize the data (e.g., '6 emails from inbox, 2 urgent with deadlines'). Be specific about content types.",
+                        description: "Describe the dashboard purpose and summarize the data (e.g., 'Diablo 4 news: 3 articles read, key updates: Season 12, new class, patch notes'). Be specific about what content you extracted.",
                     },
                     data: {
                         type: "object",
-                        description: "Pass as structured JSON with an 'items' array. Each item should have: {title, from, date, urgency, snippet, url?, category?, deadline?}. The richer the structure, the better the dashboard.",
+                        description: "Pass as structured JSON with an 'items' array. Each item should have: {title, source, url, summary (real content, not just snippet), category, priority}. The richer and more detailed your data, the better the dashboard.",
                     },
                     description: {
                         type: "string",
@@ -358,12 +358,18 @@ export function compressHistory(history: AgentStep[]): string {
 
         if (i < cutoff) {
             // Older steps: compact summary, heavily truncated result
-            const shortResult = s.result ? ` → ${s.result.substring(0, RESULT_CAP_SUMMARY)}` : '';
+            let rawResult = s.result || '';
+            const markerIdx = rawResult.indexOf('__STRUCTURED__');
+            if (markerIdx >= 0) rawResult = rawResult.substring(0, markerIdx).trim();
+            const shortResult = rawResult ? ` → ${rawResult.substring(0, RESULT_CAP_SUMMARY)}` : '';
             lines.push(`${num}. ${s.action} — ${s.description}${shortResult}`);
         } else {
             // Recent steps: full detail, moderately capped result
+            let rawResult = s.result || '';
+            const markerIdx = rawResult.indexOf('__STRUCTURED__');
+            if (markerIdx >= 0) rawResult = rawResult.substring(0, markerIdx).trim();
             const val = s.value ? `("${s.value.substring(0, 50)}")` : '';
-            const result = s.result ? ` → ${s.result.substring(0, RESULT_CAP_FULL)}` : '';
+            const result = rawResult ? ` → ${rawResult.substring(0, RESULT_CAP_FULL)}` : '';
             lines.push(`${num}. ${s.action}${val} — ${s.description}${result}`);
         }
     }
@@ -383,8 +389,14 @@ export function buildCollectedDataSection(history: AgentStep[]): string {
 
     for (const s of history) {
         if (s.action === 'search_web' && s.result) {
-            // Strip the "✓ Search results for..." prefix if present
-            searchResults.push(s.result);
+            // Strip the __STRUCTURED__ JSON blob — it's for the frontend genui action only,
+            // NOT for the LLM prompt (it would add thousands of chars of JSON)
+            let cleanResult = s.result;
+            const structMarker = cleanResult.indexOf('__STRUCTURED__');
+            if (structMarker >= 0) {
+                cleanResult = cleanResult.substring(0, structMarker).trim();
+            }
+            searchResults.push(cleanResult);
         }
         if (s.action === 'take_notes' && s.result) {
             notes.push(s.result);
@@ -422,15 +434,17 @@ You can see a screenshot of the current page and a snapshot of the interactive D
 
 CURRENT PAGE: ${pageUrl} (${pageTitle})
 USER TASK: "${task}"
+📅 TODAY: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 📊 STEP ${step} of ${limit} (${stepsRemaining} remaining)${urgency}
 ${historyBlock}
 ═══════════════════════════════════════════════════
 CORE RULES:
 ═══════════════════════════════════════════════════
-0. **TASK TYPE DETECTION**: Read the FULL user task carefully.
-   - **RESEARCH-ONLY** tasks ("check", "show", "what is", "find out", "zusammenfassen"): NAVIGATE → READ → TAKE NOTES → GENUI.
-   - **ACTION tasks** ("write", "send", "compose", "post", "open", "click", "fill", "create", "email", "tweet"): DO the actions in the browser. Do NOT call genui. Use search_web for data gathering, then continue with the action steps.
-   - **MULTI-STEP tasks** (e.g., "search X then email Y then post Z"): Complete ALL parts in order. search_web for data → navigate to email → compose → navigate to X → post. NEVER call genui or done until EVERY part is finished.
+0. **TASK TYPE DETECTION**: Read the FULL user task carefully. This DETERMINES your entire workflow.
+   - **QUICK ACTION** tasks ("open", "go to", "check emails", "click", "navigate"): FAST path. Navigate directly → interact → done. 2-4 steps max. Do NOT call search_web unless you don't know the URL. Do NOT call genui. Do NOT take_notes unless navigating away.
+   - **DASHBOARD / RESEARCH** tasks ("dashboard", "news", "zusammenfassen", "show me about", "find out", "research"): search_web → navigate to TOP 2-3 URLs → scroll + take_notes on EACH page → genui. You MUST visit pages to get REAL content. Search snippets alone produce shallow dashboards.
+   - **COMPOSE / WRITE** tasks ("write", "send", "compose", "post", "email", "tweet"): search_web for data → navigate to the app → compose → ask_user before sending. Do NOT call genui.
+   - **MULTI-STEP** tasks: Complete ALL parts in order. NEVER call done until EVERY part is finished.
 1. You are an EXECUTOR, not a chatbot. The user's task is a COMMAND to perform in the browser. NEVER respond with text — ALWAYS take browser actions.
 2. Analyze the screenshot AND DOM snapshot together to understand the current state.
 3. Call exactly ONE tool per step. Never chain multiple actions.
@@ -443,18 +457,26 @@ CORE RULES:
   Tools: search_web, take_notes
 ═══════════════════════════════════════════════════
 7. **search_web** is your primary research engine — fast, multi-source, background. Use it for ALL information gathering. Max 3-4 calls per task — plan your queries wisely.
-8. **CONFIRM BEFORE RESEARCHING**: For open-ended research tasks (e.g. "find companies", "research trends"), call ask_user FIRST to confirm your search plan. Summarize what you'll search for. Skip this for direct tasks like "go to YouTube" or "compose an email".
+8. **CONFIRM BEFORE RESEARCHING**: For open-ended research tasks (e.g. "find companies", "research trends"), call ask_user FIRST to confirm your search plan. Skip this for direct tasks like "go to YouTube" or "compose an email".
 9. **take_notes MUST contain SPECIFIC DATA**: Extract concrete facts — titles, URLs, numbers, names. NEVER write vague descriptions. Write the actual data.
-10. **TAKE NOTES BEFORE NAVIGATING**: Before navigating away from a page, ALWAYS call take_notes. You LOSE all info about the previous page when you navigate. Notes in action history are the ONLY way to carry data across pages.
-11. **READ EFFICIENTLY**: Scroll 2-3 times and take ONE comprehensive set of notes. LIMIT: 4-5 steps max per page. After take_notes, check: is the ENTIRE user task a research-only question? If YES and ALL parts done → call genui. If the task includes ANY action verbs (write, send, post, compose) → do NOT call genui, proceed with the action steps instead.
+10. **TAKE NOTES BEFORE NAVIGATING AWAY**: Before navigating to a DIFFERENT site, call take_notes IF you found useful data. Notes are the ONLY way to carry data across pages.
+11. **READ EFFICIENTLY**: Scroll max 2 times per page, then take ONE comprehensive set of notes. LIMIT: 3-4 steps per page. After notes, IMMEDIATELY proceed to the next phase.
 12. **NEVER GUESS URLs**: If not 100% certain of a URL, use search_web first. Do NOT guess spellings.
+13. **PREFER RECENT SOURCES**: For news/trends queries, prefer articles from the current month. Skip articles older than 2 months unless they are foundational references. Check dates in search results and on pages.
 
 ═══════════════════════════════════════════════════
-  PHASE 2: PRESENT (Phase Bridge)
+  PHASE 2: PRESENT (Dashboard Generation)
   Tool: genui
 ═══════════════════════════════════════════════════
-13. **genui = RESEARCH-ONLY TERMINAL**: genui renders a dashboard and ENDS the agent. ONLY use genui when the ENTIRE task is pure research ("show me", "find out", "what is"). NEVER call genui when the task includes compose, write, send, post, email, tweet, or any browser action. For action tasks, use search_web to gather data, then proceed directly with navigate/click/type_text.
-14. After genui, the agent is DONE. Do not call search_web or take_notes after genui.
+13. **genui = DASHBOARD ONLY**: genui renders a dashboard and ENDS the agent. ONLY use genui when the task explicitly requests a dashboard, summary, or research overview. NEVER call genui for action tasks (open, click, compose, send).
+14. **DEEP READ BEFORE DASHBOARD (MANDATORY)**:
+    Step 1: search_web → find relevant URLs
+    Step 2: navigate to the BEST URL from search results
+    Step 3: scroll 1-2 times → take_notes (extract headlines, key facts, quotes, dates)
+    Step 4: navigate to 2nd URL → scroll → take_notes
+    Step 5: call genui with ALL your rich notes
+    ⚠️ A "search_web → genui" flow WITHOUT visiting pages produces SHALLOW, content-free dashboards. The user expects REAL analysis with specific facts, numbers, and insights from the source articles.
+15. After genui, the agent is DONE. Do not call search_web or take_notes after genui.
 
 ═══════════════════════════════════════════════════
   PHASE 3: ACTION (DOM Interaction)

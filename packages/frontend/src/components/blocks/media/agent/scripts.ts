@@ -93,6 +93,12 @@ export function buildScrollScript(direction: "up" | "down", amount: number): str
 // onclick="triggerAgent('...')" sends intents back to BiamOS.
 
 export function buildGenUIDataUri(html: string): string {
+    // CSS fallback: guarantee dark theme base styles even if LLM omits them
+    const cssFallback = `<style>
+        body { background: #030712; color: #f9fafb; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 24px; }
+        a { color: #22d3ee; }
+        .hidden { display: none; }
+    </style>`;
     const bridge = `<script>
         window.biam = {
             prefillCommand: function(command) {
@@ -108,8 +114,17 @@ export function buildGenUIDataUri(html: string): string {
             }
         }, true);
     </script>`;
-    const finalHtml = html.includes('</body>')
-        ? html.replace('</body>', bridge + '</body>')
-        : html + bridge;
+    // Inject CSS fallback early (after <head> or at start) and bridge before </body>
+    let finalHtml = html;
+    if (finalHtml.includes('<head>')) {
+        finalHtml = finalHtml.replace('<head>', '<head>' + cssFallback);
+    } else if (finalHtml.includes('<html')) {
+        finalHtml = finalHtml.replace(/<html[^>]*>/, '$&' + cssFallback);
+    } else {
+        finalHtml = cssFallback + finalHtml;
+    }
+    finalHtml = finalHtml.includes('</body>')
+        ? finalHtml.replace('</body>', bridge + '</body>')
+        : finalHtml + bridge;
     return 'data:text/html;charset=utf-8;base64,' + btoa(unescape(encodeURIComponent(finalHtml)));
 }

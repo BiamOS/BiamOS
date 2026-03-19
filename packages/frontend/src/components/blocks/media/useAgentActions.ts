@@ -22,7 +22,7 @@ export type { AgentStep, AgentState, AgentStatus } from "./agent/types";
 import type { AgentStep, AgentState } from "./agent/types";
 import { MAX_STEPS, DOM_SNAPSHOT_SCRIPT } from "./agent/constants";
 import { executeAction, type ActionContext } from "./agent/actions";
-import { checkMaxSteps, checkRepetition, checkSelfHealing, checkStuckDetection } from "./agent/safety";
+import { checkMaxSteps, checkRepetition, checkSelfHealing, checkStuckDetection, checkActionTypeRepetition } from "./agent/safety";
 
 // ─── Hook ───────────────────────────────────────────────────
 
@@ -42,6 +42,7 @@ export function useAgentActions(
     const abortRef = useRef(false);
     const stepsRef = useRef<AgentStep[]>([]);
     const currentTaskRef = useRef<string>('');
+    const structuredSearchDataRef = useRef<any[]>([]);
 
     // ─── Capture DOM snapshot ───────────────────────────────
     const captureDomSnapshot = useCallback(async (): Promise<string> => {
@@ -147,6 +148,10 @@ export function useAgentActions(
         wv: webviewRef.current,
         waitForPageReady,
         getSteps: () => stepsRef.current,
+        getStructuredData: () => structuredSearchDataRef.current,
+        addStructuredData: (data: any[]) => {
+            structuredSearchDataRef.current = [...structuredSearchDataRef.current, ...data];
+        },
         setTerminalState: (step: AgentStep, statusMsg: string) => {
             stepsRef.current = [...stepsRef.current, step];
             setAgentState(prev => ({
@@ -385,6 +390,13 @@ export function useAgentActions(
                                 return false;
                             }
 
+                            // Action-type guard: catches scroll/take_notes loops with varying descriptions
+                            const actionTypeCheck = checkActionTypeRepetition(prevSteps, action);
+                            if (actionTypeCheck.action === "stop") {
+                                applySafetyStop(actionTypeCheck.reason, actionTypeCheck.statusMessage);
+                                return false;
+                            }
+
                             const recoveryCount = prevSteps.filter((s: AgentStep) => s.action === 'system_recovery').length;
                             const healCheck = checkSelfHealing(prevSteps, action, args.description || '', recoveryCount);
                             if (healCheck.action === "stop") {
@@ -420,7 +432,19 @@ export function useAgentActions(
                             const result = await executeAction(action, args, ctx);
                             debug.log(`◀️ [Exec] Result: ${result.substring(0, 120)}`);
 
-                            if (result === '__GENUI_DONE__') return false;
+                            if (result === '__GENUI_DONE__') {
+                                const genUiStep: AgentStep = { action: 'done', description: '📊 Dashboard generated' };
+                                stepsRef.current = [...stepsRef.current, genUiStep];
+                                setAgentState(prev => ({
+                                    ...prev,
+                                    status: 'done',
+                                    steps: stepsRef.current,
+                                    currentAction: '✅ Dashboard ready',
+                                    pauseQuestion: null,
+                                    cursorPos: null,
+                                }));
+                                return false;
+                            }
 
                             // ── DOM diff after action ───────
                             let domDiffSuffix = '';
@@ -440,12 +464,20 @@ export function useAgentActions(
                             }
 
                             // ── Record step ─────────────────
+                            // Strip __STRUCTURED__ JSON blob from search results — it's only
+                            // needed by the genui action handler, not in the step history.
+                            // Keeping it would bloat every API call by thousands of chars.
+                            let cleanResult = result + domDiffSuffix;
+                            const structIdx = cleanResult.indexOf('__STRUCTURED__');
+                            if (structIdx >= 0) {
+                                cleanResult = cleanResult.substring(0, structIdx).trim();
+                            }
                             const step: AgentStep = {
                                 action,
                                 selector: args.selector,
                                 value: args.text,
                                 description: args.description || action,
-                                result: result + domDiffSuffix,
+                                result: cleanResult,
                             };
                             stepsRef.current = [...stepsRef.current, step];
                             debug.log(`📝 [Step ${stepNum}] ${action}: ${(result + domDiffSuffix).substring(0, 100)}`);
@@ -484,6 +516,7 @@ export function useAgentActions(
     const startAgent = useCallback(async (task: string) => {
         abortRef.current = false;
         stepsRef.current = [];
+        structuredSearchDataRef.current = [];
 
         setAgentState({
             status: "running",
