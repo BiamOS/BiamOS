@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Box, Typography, List, ListItemButton, ListItemIcon, ListItemText } from "@mui/material";
-import { Settings as GeneralIcon, Extension as StoreIcon, Widgets as BlocksIcon, SmartToy as AgentsIcon, Psychology as LLMIcon, HistoryEdu as ChangelogIcon, MenuBook as DocsIcon, Memory as MemoryIcon } from "@mui/icons-material";
+import { Settings as GeneralIcon, Extension as StoreIcon, Widgets as BlocksIcon, SmartToy as AgentsIcon, Psychology as LLMIcon, HistoryEdu as ChangelogIcon, MenuBook as DocsIcon, Memory as MemoryIcon, AutoStories as PromptsIcon } from "@mui/icons-material";
 import { COLORS, accentAlpha } from "./ui/SharedUI";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationStore } from "./IntegrationStore";
@@ -20,12 +20,13 @@ import { ChangelogPanel } from "./ChangelogPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { DocumentationPanel } from "./DocumentationPanel";
 import { MemoryManager } from "./MemoryManager";
+import { PromptLibrary } from "./PromptLibrary";
 
 // ============================================================
 // Types
 // ============================================================
 
-type Panel = "general" | "llm" | "integrations" | "blocks" | "agents" | "memory" | "changelog" | "docs";
+type Panel = "general" | "llm" | "integrations" | "blocks" | "agents" | "memory" | "prompts" | "changelog" | "docs";
 
 const NAV_ITEMS: { key: Panel; label: string; icon: React.ReactNode }[] = [
     { key: "general", label: "General", icon: <GeneralIcon /> },
@@ -34,6 +35,7 @@ const NAV_ITEMS: { key: Panel; label: string; icon: React.ReactNode }[] = [
     { key: "integrations", label: "Integrations", icon: <StoreIcon /> },
     { key: "blocks", label: "Blocks", icon: <BlocksIcon /> },
     { key: "memory", label: "Memory", icon: <MemoryIcon /> },
+    { key: "prompts", label: "Prompts", icon: <PromptsIcon /> },
     { key: "changelog", label: "Changelog", icon: <ChangelogIcon /> },
     { key: "docs", label: "Docs", icon: <DocsIcon /> },
 ];
@@ -164,6 +166,7 @@ export const SettingsShell = React.memo(function SettingsShell({ initialPanel = 
                 {activePanel === "blocks" && <ErrorBoundary label="Blocks"><BlockManager /></ErrorBoundary>}
                 {activePanel === "agents" && <ErrorBoundary label="Agents"><AgentPanel /></ErrorBoundary>}
                 {activePanel === "memory" && <ErrorBoundary label="Memory"><MemoryManager /></ErrorBoundary>}
+                {activePanel === "prompts" && <ErrorBoundary label="Prompts"><PromptLibrary /></ErrorBoundary>}
                 {activePanel === "changelog" && <ErrorBoundary label="Changelog"><ChangelogPanel /></ErrorBoundary>}
                 {activePanel === "docs" && <ErrorBoundary label="Docs"><DocumentationPanel /></ErrorBoundary>}
             </Box>

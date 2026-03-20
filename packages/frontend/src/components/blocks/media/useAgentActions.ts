@@ -17,6 +17,13 @@
 import { useState, useRef, useCallback } from "react";
 import { debug } from "../../../utils/debug";
 
+// ─── CRUD Plan (from Manager-Agent classifier) ──────────────
+export interface CrudPlan {
+    method: string;          // GET, POST, PUT, DELETE
+    allowed_tools: string[]; // Tools the agent may use
+    forbidden: string[];     // Tools physically removed
+}
+
 // ─── Module Imports ─────────────────────────────────────────
 export type { AgentStep, AgentState, AgentStatus } from "./agent/types";
 import type { AgentStep, AgentState } from "./agent/types";
@@ -43,6 +50,7 @@ export function useAgentActions(
     const stepsRef = useRef<AgentStep[]>([]);
     const currentTaskRef = useRef<string>('');
     const structuredSearchDataRef = useRef<any[]>([]);
+    const crudPlanRef = useRef<CrudPlan>({ method: 'GET', allowed_tools: [], forbidden: [] });
 
     // ─── Capture DOM snapshot ───────────────────────────────
     const captureDomSnapshot = useCallback(async (): Promise<string> => {
@@ -224,6 +232,9 @@ export function useAgentActions(
                     history: stepsRef.current,
                     step_number: stepsRef.current.length + 1,
                     max_steps: MAX_STEPS,
+                    method: crudPlanRef.current.method,
+                    allowed_tools: crudPlanRef.current.allowed_tools,
+                    forbidden: crudPlanRef.current.forbidden,
                 }),
             });
 
@@ -365,13 +376,16 @@ export function useAgentActions(
                             }));
 
                             // ── DOM hash before action ──────
-                            let domHashBefore = '';
+                            let domStateBefore: { count: number; title: string; url: string; modals: number } | null = null;
                             try {
                                 const wv = webviewRef.current as any;
-                                domHashBefore = await wv?.executeJavaScript?.(
-                                    `document.querySelectorAll('*').length + '|' + document.title + '|' + location.href`,
-                                    true,
-                                ) ?? '';
+                                const raw = await wv?.executeJavaScript?.(`JSON.stringify({
+                                    count: document.querySelectorAll('*').length,
+                                    title: document.title,
+                                    url: location.href,
+                                    modals: document.querySelectorAll('[role=dialog],[role=alertdialog],.modal,.overlay,[class*=popup]').length,
+                                })`, true) ?? 'null';
+                                domStateBefore = JSON.parse(raw);
                             } catch { /* */ }
 
                             // ── Safety checks (pure functions) ──
@@ -448,17 +462,31 @@ export function useAgentActions(
 
                             // ── DOM diff after action ───────
                             let domDiffSuffix = '';
-                            if (domHashBefore && ["click", "click_at"].includes(action)) {
+                            if (domStateBefore && ["click", "click_at", "type_text", "scroll"].includes(action)) {
                                 try {
-                                    await new Promise(r => setTimeout(r, 800));
                                     const wv = webviewRef.current as any;
-                                    const domHashAfter = await wv?.executeJavaScript?.(
-                                        `document.querySelectorAll('*').length + '|' + document.title + '|' + location.href`,
-                                        true,
-                                    ) ?? '';
-                                    if (domHashAfter && domHashAfter === domHashBefore) {
-                                        domDiffSuffix = ' ⚠️ [NO DOM CHANGE] — Your action may have targeted the wrong element. Take a fresh look at the screenshot and try a DIFFERENT element or approach. Do NOT repeat the same action.';
-                                        debug.log('🔍 [Critic] DOM unchanged after action — soft warning with guidance');
+                                    const rawAfter = await wv?.executeJavaScript?.(`JSON.stringify({
+                                        count: document.querySelectorAll('*').length,
+                                        title: document.title,
+                                        url: location.href,
+                                        modals: document.querySelectorAll('[role=dialog],[role=alertdialog],.modal,.overlay,[class*=popup]').length,
+                                        newModal: (function(){ var m = document.querySelector('[role=dialog],[role=alertdialog],.modal:not(.hidden)'); return m ? (m.getAttribute('aria-label') || m.textContent?.trim().substring(0,50) || 'unnamed') : ''; })(),
+                                    })`, true) ?? 'null';
+                                    const after = JSON.parse(rawAfter);
+                                    if (after) {
+                                        const changes: string[] = [];
+                                        if (after.url !== domStateBefore.url) changes.push('URL changed to ' + after.url);
+                                        if (after.title !== domStateBefore.title) changes.push('Title: "' + after.title + '"');
+                                        if (after.modals > domStateBefore.modals && after.newModal) changes.push('New modal: "' + after.newModal + '"');
+                                        if (Math.abs(after.count - domStateBefore.count) > 5) changes.push((after.count - domStateBefore.count > 0 ? '+' : '') + (after.count - domStateBefore.count) + ' DOM elements changed');
+                                        
+                                        if (changes.length > 0) {
+                                            domDiffSuffix = ' ✓ [DOM CHANGED] ' + changes.join('. ') + '.';
+                                            debug.log('🔍 [Critic] DOM changes detected: ' + changes.join(', '));
+                                        } else {
+                                            domDiffSuffix = ' ⚠️ [NO DOM CHANGE] — Your action may have targeted the wrong element. Take a fresh look at the screenshot and try a DIFFERENT element or approach. Do NOT repeat the same action.';
+                                            debug.log('🔍 [Critic] DOM unchanged after action — soft warning with guidance');
+                                        }
                                     }
                                 } catch { /* */ }
                             }
@@ -513,10 +541,15 @@ export function useAgentActions(
     }, [webviewRef, captureDomSnapshot, captureScreenshot, waitForPageReady, buildActionContext, applySafetyStop]);
 
     // ─── Start the agent ────────────────────────────────────
-    const startAgent = useCallback(async (task: string) => {
+    const startAgent = useCallback(async (task: string, crudPlan?: CrudPlan) => {
         abortRef.current = false;
         stepsRef.current = [];
         structuredSearchDataRef.current = [];
+        crudPlanRef.current = crudPlan || { method: 'GET', allowed_tools: [], forbidden: [] };
+
+        // Detect task type from keywords (mirrors backend prompt Rule 0)
+        const researchKeywords = /\b(dashboard|news|neuigkeiten|zusammenfassen|summary|show me about|find out|research|zeig|überblick|trends|aktuell)\b/i;
+        const detectedType = researchKeywords.test(task) ? 'research' as const : 'action' as const;
 
         setAgentState({
             status: "running",
@@ -525,6 +558,7 @@ export function useAgentActions(
             pauseQuestion: null,
             cursorPos: null,
             lastWorkflowId: null,
+            taskType: detectedType,
         });
 
         currentTaskRef.current = task;

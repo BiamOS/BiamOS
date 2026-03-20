@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v1.2.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v2.1.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -201,6 +201,47 @@ When the agent gets stuck repeating a failing action, it **heals itself**:
 
 > No more infinite loops. No wasted API calls. The agent adapts and completes the task.
 
+---
+
+## 🔬 Deep Research Engine
+
+> **A 4-phase pipeline that turns natural queries into rich dashboards.**
+
+When BiamOS classifies a query as research (e.g. *"What's happening with OpenClaw?"*), it bypasses the browser agent entirely and runs a dedicated research pipeline:
+
+```
+User query → Intent Classifier → "RESEARCH"
+    │
+    ├── Phase 1: SEARCH — LLM generates 2-3 focused queries → DuckDuckGo (parallel)
+    ├── Phase 2: FETCH  — Downloads top 3 article pages (15,000 chars each)
+    ├── Phase 3: SYNTHESIZE — MODEL_THINKING (gemini-2.5-flash) generates GenUI dashboard
+    └── Phase 4: DELIVER — SSE streams progress + final dashboard to frontend
+```
+
+### Key Features
+
+| Feature | Detail |
+|---------|--------|
+| **MODEL_THINKING** | Dashboard synthesis uses `gemini-2.5-flash` with reasoning for accurate, hallucination-free output |
+| **Parallel Search** | All DuckDuckGo queries execute simultaneously via `Promise.all` (3x faster) |
+| **Smart Fallback** | Auto-retries without time filter, then with raw query, when niche topics return 0 results |
+| **Ad Filtering** | DDG sponsored results filtered at DOM level (`result--ad` class + `ad_provider` URLs) |
+| **Intent Splitter** | Combined queries like *"check news and post on X"* → RESEARCH first, then ACTION_WITH_CONTEXT |
+| **15K Context Window** | Each page gets 15,000 chars (up from 2,000) — full articles, not just headers |
+| **Abort on Action** | Research streams auto-cancel when user starts a browser agent action |
+| **Dashboard Minimize** | Dashboard auto-collapses when agent starts, revealing the webview |
+
+### Intent Classification (CRUD-Aware)
+
+The classifier maps intents to **CRUD tool permissions**:
+
+| Mode | Method | Tools Allowed |
+|------|--------|---------------|
+| `RESEARCH` | GET | Research engine only |
+| `ACTION` | GET/POST/PUT/DELETE | Browser agent (method-scoped tools) |
+| `ACTION_WITH_CONTEXT` | POST | Agent with dashboard data injected |
+| `CONTEXT_QUESTION` | GET | RAG chat over current page |
+
 
 ## ✨ Core Features
 
@@ -261,9 +302,10 @@ A full tabbed browsing experience with back/forward/refresh, persistent login se
 | Layer | Stack | Role |
 |-------|-------|------|
 | **Frontend** | React 19, TypeScript, MUI | Canvas workspace, dynamic UI blocks, browser tabs |
-| **Backend** | Hono, Drizzle ORM, SQLite | AI pipeline, intent classification, agent routing |
+| **Backend** | Hono, Drizzle ORM, SQLite | AI pipeline, intent classification, research engine, agent routing |
 | **Desktop** | Electron 34 | Native webview, Ghost-Auth, TTS, session persistence |
-| **AI** | OpenRouter (GPT-4o, Claude, etc.) | Multi-model intent routing and content generation |
+| **AI** | OpenRouter (Gemini 2.5 Flash, GPT-4o, Claude) | Multi-model: MODEL_FAST for classification, MODEL_THINKING for synthesis |
+| **Research** | DuckDuckGo + page-fetcher + Jina Reader | 4-phase pipeline: Search → Fetch → Synthesize → Deliver |
 
 ---
 
@@ -298,7 +340,7 @@ On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
 
 BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
 
-See the latest changes: **v1.2.0-alpha** — GenUI Dashboard System with newspaper layouts, deep research flow, and date-aware search.
+See the latest changes: **v2.1.0-alpha** — Deep Research Engine with MODEL_THINKING, parallel DuckDuckGo search, CRUD intent classification, and smart search fallbacks.
 
 ---
 
@@ -308,9 +350,11 @@ See the latest changes: **v1.2.0-alpha** — GenUI Dashboard System with newspap
 - [x] **Agent Memory** — Learns from verified tasks, replays as reflexes ✅ *v1.1.0-alpha*
 - [x] **Self-Healing Agent** — Auto-recovers from stuck loops ✅ *v1.1.0-alpha*
 - [x] **GenUI Dashboard** — AI-generated newspaper-style dashboards ✅ *v1.2.0-alpha*
-- [x] **Deep Research** — Agent reads source articles, not just search snippets ✅ *v1.2.0-alpha*
-- [x] **Date-Aware Search** — Auto time-filters for news queries ✅ *v1.2.0-alpha*
-- [ ] **Research Progress UI** — Live progress panel replaces webview during research
+- [x] **Deep Research Engine** — 4-phase pipeline with MODEL_THINKING ✅ *v2.1.0-alpha*
+- [x] **Parallel DuckDuckGo Search** — Promise.all + smart fallback for niche topics ✅ *v2.1.0-alpha*
+- [x] **CRUD Intent Classification** — Least-privilege tool scoping per HTTP method ✅ *v2.1.0-alpha*
+- [x] **Research ↔ Action Decoupling** — Auto-abort, dashboard minimize, intent splitter ✅ *v2.1.0-alpha*
+- [ ] **DuckDuckGo Service Centralization** — Single `duckduckgo.ts` replacing 3 duplicate parsers
 - [ ] **Plugin Marketplace** — Community-created integrations
 - [ ] **Scheduled Agents** — Cron-based data collection and alerts
 - [ ] **macOS & Linux Builds** — Cross-platform Electron packaging

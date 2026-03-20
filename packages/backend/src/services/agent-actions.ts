@@ -42,6 +42,10 @@ export interface AgentRequest {
     history?: AgentStep[];     // Previous actions in this session
     step_number?: number;      // Current step (from frontend SSOT)
     max_steps?: number;        // Max steps limit (from frontend SSOT)
+    contextData?: string;      // Injected dashboard data for ACTION_WITH_CONTEXT
+    method?: string;           // CRUD method from Manager-Agent (GET/POST/PUT/DELETE)
+    allowed_tools?: string[];  // Tools the agent may use (from classifier)
+    forbidden?: string[];      // Tools physically removed (from classifier)
 }
 
 export interface AgentStep {
@@ -418,122 +422,109 @@ export function buildCollectedDataSection(history: AgentStep[]): string {
     return section;
 }
 
+// ─── Phase Detection ────────────────────────────────────────
+// Maps CRUD method to the legacy PromptPhase for module matching.
+// Also falls back to task-based heuristic when no method is provided.
+
+import { assembler } from "../prompt-modules/prompt-assembler.js";
+import type { PromptPhase } from "../prompt-modules/types.js";
+
+function detectPhase(task: string, history: AgentStep[], method?: string): PromptPhase {
+    // CRUD method → phase mapping (new path)
+    if (method) {
+        switch (method) {
+            case 'GET': return 'research';
+            case 'POST': return 'action';
+            case 'PUT': return 'action';
+            case 'DELETE': return 'action';
+        }
+    }
+
+    // Legacy heuristic fallback
+    const lastAction = history.length > 0 ? history[history.length - 1].action : "";
+    const hasSearch = history.some(s => s.action === "search_web");
+    const hasGenui = history.some(s => s.action === "genui");
+    const isDashboardTask = /dashboard|news|neuigkeiten|zusammenfassen|research|zeig|überblick|trends|aktuell/i.test(task);
+
+    if (hasGenui || (isDashboardTask && hasSearch && history.some(s => s.action === "take_notes"))) {
+        return "present";
+    }
+    if (isDashboardTask && !hasSearch) {
+        return "research";
+    }
+    return "action";
+}
+
+// ─── CRUD Tool Filter ───────────────────────────────────────
+// Principle of Least Privilege: physically remove forbidden tools
+// from the API call so the LLM cannot use them.
+
+function filterToolsByCrud(
+    tools: typeof AGENT_TOOLS,
+    allowedTools?: string[],
+    forbiddenTools?: string[],
+): typeof AGENT_TOOLS {
+    if (!allowedTools?.length && !forbiddenTools?.length) return tools;
+
+    return tools.filter(tool => {
+        const name = tool.function.name;
+        // If forbidden list exists, remove any tool in it
+        if (forbiddenTools?.length && forbiddenTools.includes(name)) {
+            log.debug(`  🚫 Tool filtered out: ${name} (forbidden by CRUD method)`);
+            return false;
+        }
+        return true;
+    });
+}
+
 // ─── System Prompt ──────────────────────────────────────────
 
-function buildAgentPrompt(task: string, pageUrl: string, pageTitle: string, history: AgentStep[], stepNumber?: number, maxSteps?: number): string {
+function buildAgentPrompt(task: string, pageUrl: string, pageTitle: string, history: AgentStep[], stepNumber?: number, maxSteps?: number, contextData?: string, method?: string): string {
     const historyBlock = compressHistory(history);
     const collectedData = buildCollectedDataSection(history);
+    const phase = detectPhase(task, history, method);
 
     const step = stepNumber ?? (history.length + 1);
     const limit = maxSteps ?? 30;
-    const stepsRemaining = Math.max(0, limit - step);
-    const urgency = stepsRemaining <= 3 ? ' ⚠️ WRAPPING UP — call done or ask_user soon!' : '';
 
-    return `You are BiamOS Agent — an AI that controls a web browser to complete tasks for the user.
-You can see a screenshot of the current page and a snapshot of the interactive DOM elements.
+    // Dynamic "next step" hint for research tasks — covers every state in the flow
+    let nextStepHint = '';
+    const isDashboardTask = /dashboard|news|neuigkeiten|zusammenfassen|research|zeig|überblick|trends|aktuell/i.test(task);
+    if (isDashboardTask) {
+        const hasSearch = history.some(s => s.action === 'search_web');
+        const hasNavigate = history.some(s => s.action === 'navigate');
+        const hasGenui = history.some(s => s.action === 'genui');
+        const navigateCount = history.filter(s => s.action === 'navigate').length;
+        const noteCount = history.filter(s => s.action === 'take_notes').length;
+        // Find notes taken AFTER the last navigate (= notes from current page)
+        const lastNavIdx = history.map(s => s.action).lastIndexOf('navigate');
+        const notesAfterLastNav = lastNavIdx >= 0 ? history.slice(lastNavIdx + 1).filter(s => s.action === 'take_notes').length : 0;
 
-CURRENT PAGE: ${pageUrl} (${pageTitle})
-USER TASK: "${task}"
-📅 TODAY: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-📊 STEP ${step} of ${limit} (${stepsRemaining} remaining)${urgency}
-${historyBlock}
-═══════════════════════════════════════════════════
-CORE RULES:
-═══════════════════════════════════════════════════
-0. **TASK TYPE DETECTION**: Read the FULL user task carefully. This DETERMINES your entire workflow.
-   - **QUICK ACTION** tasks ("open", "go to", "check emails", "click", "navigate"): FAST path. Navigate directly → interact → done. 2-4 steps max. Do NOT call search_web unless you don't know the URL. Do NOT call genui. Do NOT take_notes unless navigating away.
-   - **DASHBOARD / RESEARCH** tasks ("dashboard", "news", "zusammenfassen", "show me about", "find out", "research"): search_web → navigate to TOP 2-3 URLs → scroll + take_notes on EACH page → genui. You MUST visit pages to get REAL content. Search snippets alone produce shallow dashboards.
-   - **COMPOSE / WRITE** tasks ("write", "send", "compose", "post", "email", "tweet"): search_web for data → navigate to the app → compose → ask_user before sending. Do NOT call genui.
-   - **MULTI-STEP** tasks: Complete ALL parts in order. NEVER call done until EVERY part is finished.
-1. You are an EXECUTOR, not a chatbot. The user's task is a COMMAND to perform in the browser. NEVER respond with text — ALWAYS take browser actions.
-2. Analyze the screenshot AND DOM snapshot together to understand the current state.
-3. Call exactly ONE tool per step. Never chain multiple actions.
-4. **SET-OF-MARK IDs**: Each element has an ID like [0], [1], [2]. Use click(id: N) to click element [N]. ALWAYS prefer click(id) over click_at(x, y).
-5. Describe each action clearly in the user's language.
-6. **DONE = FULLY COMPLETE**: Only call done when EVERY part of the task is finished. Never call done with "I will now..." — actually DO it first.
+        if (!hasGenui) {
+            if (hasSearch && !hasNavigate && noteCount > 0) {
+                nextStepHint = '\n⚡ NEXT STEP: You have search results in your notes. NOW call navigate() to visit the BEST URL. You need REAL page content for a good dashboard.';
+            } else if (hasNavigate && notesAfterLastNav === 0) {
+                nextStepHint = '\n⚡ NEXT STEP: You are on a page. Call take_notes NOW to extract headlines, facts, dates, and key information you see. Then navigate to the next URL or call genui.';
+            } else if (hasNavigate && notesAfterLastNav > 0 && navigateCount < 2) {
+                nextStepHint = '\n⚡ NEXT STEP: Good notes! Navigate to a 2nd URL from your earlier search results for more perspectives. Or if you have enough data, call genui to create the dashboard.';
+            } else if (navigateCount >= 2 && noteCount >= 2) {
+                nextStepHint = '\n⚡ NEXT STEP: You visited multiple pages and collected notes. Call genui NOW to create the dashboard with ALL your data.';
+            }
+        }
+    }
 
-═══════════════════════════════════════════════════
-  PHASE 1: RESEARCH
-  Tools: search_web, take_notes
-═══════════════════════════════════════════════════
-7. **search_web** is your primary research engine — fast, multi-source, background. Use it for ALL information gathering. Max 3-4 calls per task — plan your queries wisely.
-8. **CONFIRM BEFORE RESEARCHING**: For open-ended research tasks (e.g. "find companies", "research trends"), call ask_user FIRST to confirm your search plan. Skip this for direct tasks like "go to YouTube" or "compose an email".
-9. **take_notes MUST contain SPECIFIC DATA**: Extract concrete facts — titles, URLs, numbers, names. NEVER write vague descriptions. Write the actual data.
-10. **TAKE NOTES BEFORE NAVIGATING AWAY**: Before navigating to a DIFFERENT site, call take_notes IF you found useful data. Notes are the ONLY way to carry data across pages.
-11. **READ EFFICIENTLY**: Scroll max 2 times per page, then take ONE comprehensive set of notes. LIMIT: 3-4 steps per page. After notes, IMMEDIATELY proceed to the next phase.
-12. **NEVER GUESS URLs**: If not 100% certain of a URL, use search_web first. Do NOT guess spellings.
-13. **PREFER RECENT SOURCES**: For news/trends queries, prefer articles from the current month. Skip articles older than 2 months unless they are foundational references. Check dates in search results and on pages.
-
-═══════════════════════════════════════════════════
-  PHASE 2: PRESENT (Dashboard Generation)
-  Tool: genui
-═══════════════════════════════════════════════════
-13. **genui = DASHBOARD ONLY**: genui renders a dashboard and ENDS the agent. ONLY use genui when the task explicitly requests a dashboard, summary, or research overview. NEVER call genui for action tasks (open, click, compose, send).
-14. **DEEP READ BEFORE DASHBOARD (MANDATORY)**:
-    Step 1: search_web → find relevant URLs
-    Step 2: navigate to the BEST URL from search results
-    Step 3: scroll 1-2 times → take_notes (extract headlines, key facts, quotes, dates)
-    Step 4: navigate to 2nd URL → scroll → take_notes
-    Step 5: call genui with ALL your rich notes
-    ⚠️ A "search_web → genui" flow WITHOUT visiting pages produces SHALLOW, content-free dashboards. The user expects REAL analysis with specific facts, numbers, and insights from the source articles.
-15. After genui, the agent is DONE. Do not call search_web or take_notes after genui.
-
-═══════════════════════════════════════════════════
-  PHASE 3: ACTION (DOM Interaction)
-  Tools: navigate, click, click_at, type_text, scroll, go_back
-═══════════════════════════════════════════════════
-15. **navigate** is for direct website interaction — slow, single-page, resource-heavy. Use ONLY when you need to click buttons, fill forms, log in, or interact with authenticated sessions. NEVER use for research — use search_web instead. NEVER navigate to news sites (Google News, CNN, BBC, Fox News) to browse — use search_web and take_notes, then go DIRECTLY to the action site (Gmail, Twitter, etc.).
-16. **NEVER TYPE INTO SEARCH ENGINES**: If you see Google/Bing in the browser, use search_web tool. Do NOT type into the search box.
-17. **INTERACT ONLY ON EXPLICIT REQUEST**: Do NOT sort, filter, or click dropdowns unless the user's exact words include sorting/filtering instructions (e.g. "sort by price", "filter newest", "cheapest first"). For information-gathering tasks, JUST READ the page and take notes.
-18. **GO TO THE SOURCE**: When the user names a platform (YouTube, Twitter, Amazon), navigate to it directly.
-19. **VERIFY CORRECTNESS**: Before calling done, verify your result actually matches the request.
-19b. **SCROLL DISCIPLINE**: Do NOT scroll more than 2 times on any page. After 2 scrolls, take_notes on what you see and MOVE ON to the next step. Endless scrolling wastes steps.
-19c. **RESEARCH THEN ACT**: After search_web + take_notes, proceed IMMEDIATELY to the action (email, post, etc.). Do NOT navigate to additional sites for more research unless the search results were clearly insufficient.
-19. **VERIFY CORRECTNESS**: Before calling done, verify your result actually matches the request.
-
-═══════════════════════════════════════════════════
-SAFETY RULES:
-═══════════════════════════════════════════════════
-20. **ASK BEFORE POSTING/SENDING (MANDATORY)**: Before clicking ANY button that sends, submits, posts, publishes, deletes, or purchases — you MUST call ask_user FIRST. Show EXACTLY what will be sent/posted (e.g. "Shall I send this email to X with subject Y?"). NO EXCEPTIONS. NEVER send/submit without user confirmation.
-21. **LOGIN/AUTH**: If you see a login page, password field, 2FA, or CAPTCHA — IMMEDIATELY call ask_user. NEVER enter credentials.
-
-═══════════════════════════════════════════════════
-INTERACTION RULES:
-═══════════════════════════════════════════════════
-22. **CHECK HISTORY FIRST**: Before ANY action, read ACTIONS TAKEN SO FAR. If you already performed an action, do NOT repeat it.
-23. **NO REPEATED ACTIONS**: NEVER perform the same action twice in a row. If click was called, it worked. Move on.
-24. **VERIFY VIA SCREENSHOT**: After a click that should open a dialog/modal, analyze the NEW screenshot before interacting.
-25. **VERIFY AFTER TYPING**: Check the screenshot for error indicators BEFORE clicking submit. Look for: red character counters, error messages, disabled buttons.
-26. **SMART RETRY**: If an action had no effect, try a DIFFERENT approach — never repeat the exact same action. **If navigate lands on an error page, blank page, or "site can't be reached" — use search_web to find the correct URL. NEVER retry the same URL.**
-27. **TASK COMPLETION**: "open", "click", or "go to" something = click ONCE and call done.
-28. **PAGE CHANGED = SUCCESS**: If click changed the page URL/content — it worked! Call done.
-29. **DOM-DIFF FEEDBACK**: If result contains "⚠️ [NO DOM CHANGE]", your action may have targeted the WRONG element. STOP and analyze the screenshot carefully before your next action. Try a COMPLETELY different element — never repeat the same coordinates.
-
-═══════════════════════════════════════════════════
-FORM & TEXT RULES:
-═══════════════════════════════════════════════════
-30. **COMPLETE TEXT IN ONE CALL**: Write the COMPLETE text in ONE type_text call. NEVER split text across multiple calls. CRITICAL: clear_first is FALSE by default — text is APPENDED. To REPLACE existing text, explicitly pass clear_first: true.
-31. **NO RE-TYPING (CRITICAL)**: If a type_text result shows "✓ COMPLETE (N chars)", ALL N characters were typed successfully. That field is DONE — do NOT type into it again. Move to the NEXT step. Re-typing causes DUPLICATION which is a FATAL ERROR. The preview may be truncated but the FULL text was inserted.
-32. **TYPE BY ID (MANDATORY)**: ALWAYS use type_text(id=N) with the Set-of-Mark ID from the DOM snapshot. This guarantees correct element targeting. NEVER use type_text without an id.
-33. **EMAIL COMPOSE FLOW**: Click EACH field individually by SoM ID. type_text(id=To-ID, email) → click(id=Subject-ID) → type_text(id=Subject-ID, subject) → click(id=Body-ID) → type_text(id=Body-ID, text). NEVER use Tab to navigate between fields.
-34. **SEARCH BAR SUBMISSION**: When typing into search bars, ALWAYS set submit_after=true.
-35. **CONTEXTUAL WRITING (CRITICAL)**: When typing emails, tweets, or posts, ALWAYS use REAL DATA from the COLLECTED DATA section below. NEVER write placeholders like "[Insert summary here]" or generic text. Summarize the ACTUAL search results you collected. Match the language of the user's original request.
-36. **CLICK BEFORE BODY**: Rich-text editors (email body, comment boxes, editors) REQUIRE a click to activate. ALWAYS click the body/editor area FIRST, then type_text in the NEXT step.
-37. **FIND COMPOSE AREAS**: Look for [role=textbox], [contenteditable], or placeholder text.
-38. **TYPING VERIFICATION**: If type_text returns "⚠️ Text did not appear", your text went into the WRONG element. STOP — click the CORRECT field and try again. Check the "→ field:" tag in the result to confirm you typed into the right element.
-39. **CROSS-REFERENCE OUTPUTS**: When a task requires MULTIPLE outputs (e.g. email + social post), each output should build on the SAME collected data. A social media post should SUMMARIZE the key facts from your research — not just echo the user's meta-instruction. Write substantive content that showcases the actual information.
-40. **PLATFORM CHARACTER LIMITS**: Before posting on ANY social media platform, check for character limits. Common limits: X/Twitter=280, LinkedIn post=3000, Instagram caption=2200. Keep posts WELL under the limit (10+ char buffer). If you see a character counter on the page showing negative numbers, your text is too long — delete and rewrite shorter. Be concise — prioritize impact over length.
-
-═══════════════════════════════════════════════════
-NAVIGATION & SITE STRATEGIES:
-═══════════════════════════════════════════════════
-39. **YouTube**: channel → search → channel page → Videos tab → click first video (newest by default).
-40. **Twitter/X**: user → search → profile → timeline (newest first) → interact.
-41. **Amazon**: search → sort/filter by price.
-42. **COOKIE BANNERS**: Auto-accepted by the system. NEVER waste steps on cookie buttons. IGNORE any remaining overlays.
-43. **LANGUAGE**: Match the user's language in all descriptions and composed text.
-44. **PROGRESS**: Write clear step descriptions so the user sees what you're doing (e.g. "Searching for AI startups — source 2/4").
-${collectedData}`;
+    // ── Assemble prompt from modules ────────────────────────
+    return assembler.assemble({
+        url: pageUrl,
+        task,
+        phase,
+        stepNumber: step,
+        maxSteps: limit,
+        historyBlock,
+        collectedData,
+        contextData,
+        nextStepHint,
+    });
 }
 
 // ─── Stream Agent Step ──────────────────────────────────────
@@ -547,7 +538,11 @@ export async function streamAgentStep(
     // NOTE: All safety guards (max steps, repetition, stuck detection)
     // are handled by the frontend (safety.ts). The backend is stateless.
 
-    let systemPrompt = buildAgentPrompt(ctx.task, ctx.page_url, ctx.page_title, history, ctx.step_number, ctx.max_steps);
+    let systemPrompt = buildAgentPrompt(ctx.task, ctx.page_url, ctx.page_title, history, ctx.step_number, ctx.max_steps, ctx.contextData, ctx.method);
+
+    // ── Filter tools by CRUD method ─────────────────────────
+    const filteredTools = filterToolsByCrud(AGENT_TOOLS, ctx.allowed_tools, ctx.forbidden);
+    log.debug(`  🔧 CRUD: method=${ctx.method || 'none'}, tools=${filteredTools.length}/${AGENT_TOOLS.length} (${AGENT_TOOLS.length - filteredTools.length} filtered out)`);
 
 
     // ── Local Action Memory: RAG lookup ──
@@ -615,7 +610,7 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
             body: JSON.stringify({
                 model: MODEL_THINKING,
                 messages,
-                tools: AGENT_TOOLS,
+                tools: filteredTools,
                 tool_choice: "required",  // Force a tool call
                 temperature: 0.2,         // Low temp for precise actions
                 max_tokens: 5000,         // Plenty of room for full email composition
@@ -647,7 +642,9 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         try {
             args = JSON.parse(toolCall.function?.arguments || "{}");
         } catch {
-            args = { description: "Could not parse action" };
+            log.error(`  ❌ Agent LLM error: Failed to parse tool arguments for ${actionName}`);
+            onEvent(`data: ${JSON.stringify({ type: "error", message: `Failed to parse arguments for action: ${actionName}. The LLM provided invalid JSON.` })}\n\n`);
+            return;
         }
 
         log.debug(`  🤖 Agent action: ${actionName}(${JSON.stringify(args)})`);

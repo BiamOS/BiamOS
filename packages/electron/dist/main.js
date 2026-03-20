@@ -84,6 +84,12 @@ electron_1.app.on("web-contents-created", (_event, contents) => {
             currentHost = new URL(contents.getURL()).hostname.replace("www.", "");
         }
         catch { /* invalid URL */ }
+        // Guard: if either host is empty/unparseable, deny the popup
+        // (prevents about:blank loop where "" === "" matches as same-origin)
+        if (!popupHost || !currentHost) {
+            console.log(`🚫 [Popup] Denied — unparseable URL: ${url}`);
+            return { action: "deny" };
+        }
         // Same-origin or Google-internal → navigate within the same webview
         const isGoogleInternal = popupHost.endsWith("google.com") && currentHost.endsWith("google.com");
         const isSameOrigin = popupHost === currentHost;
@@ -108,7 +114,12 @@ const BACKEND_PORT = 3001;
 // ─── Backend auto-start ─────────────────────────────────────
 async function killPortProcess(port) {
     return new Promise((resolve) => {
-        const killer = (0, child_process_1.spawn)("powershell", ["-Command", `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`], { shell: false, stdio: "ignore" });
+        const isWin = process.platform === "win32";
+        const cmd = isWin ? "powershell" : "sh";
+        const args = isWin
+            ? ["-Command", `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`]
+            : ["-c", `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`];
+        const killer = (0, child_process_1.spawn)(cmd, args, { shell: false, stdio: "ignore" });
         killer.on("close", () => resolve());
         killer.on("error", () => resolve());
     });
@@ -117,7 +128,7 @@ async function waitForBackend(port, maxWaitMs = 15000) {
     const start = Date.now();
     while (Date.now() - start < maxWaitMs) {
         try {
-            const res = await fetch(`http://localhost:${port}/api/health`);
+            const res = await fetch(`http://localhost:${port}/api/system/provider`);
             if (res.ok)
                 return true;
         }
@@ -324,15 +335,15 @@ function setupScrapeIPC() {
 const autopilotWindows = new Map();
 function setupAutopilotIPC() {
     // Get DOM snapshot for planning
-    electron_1.ipcMain.handle("page-snapshot", async (_event, url) => {
-        console.log(`  🤖 Autopilot: Getting snapshot of ${url}`);
-        let win = autopilotWindows.get(url);
+    electron_1.ipcMain.handle("page-snapshot", async (_event, taskId, url) => {
+        console.log(`  🤖 Autopilot: Getting snapshot for task ${taskId} (${url})`);
+        let win = autopilotWindows.get(taskId);
         if (!win || win.isDestroyed()) {
             win = new electron_1.BrowserWindow({
                 show: false, width: 1280, height: 900,
                 webPreferences: { contextIsolation: true, nodeIntegration: false },
             });
-            autopilotWindows.set(url, win);
+            autopilotWindows.set(taskId, win);
             await win.loadURL(url);
             await new Promise((r) => setTimeout(r, 3000)); // Wait for SPA render
         }
@@ -361,15 +372,15 @@ function setupAutopilotIPC() {
         return result;
     });
     // Execute a single autopilot step
-    electron_1.ipcMain.handle("autopilot-step", async (_event, url, script) => {
-        console.log(`  🤖 Autopilot: Executing step on ${url}`);
-        let win = autopilotWindows.get(url);
+    electron_1.ipcMain.handle("autopilot-step", async (_event, taskId, url, script) => {
+        console.log(`  🤖 Autopilot: Executing step for task ${taskId}`);
+        let win = autopilotWindows.get(taskId);
         if (!win || win.isDestroyed()) {
             win = new electron_1.BrowserWindow({
                 show: false, width: 1280, height: 900,
                 webPreferences: { contextIsolation: true, nodeIntegration: false },
             });
-            autopilotWindows.set(url, win);
+            autopilotWindows.set(taskId, win);
             await win.loadURL(url);
             await new Promise((r) => setTimeout(r, 3000));
         }
@@ -399,7 +410,8 @@ electron_1.app.whenReady().then(async () => {
     setupWebviewPermissions();
     setupScrapeIPC();
     setupAutopilotIPC();
-    await startBackend();
+    // Start backend FIRST, wait for it, THEN show window (splash runs during wait)
+    await startBackend().catch((err) => console.error("⚠️ Backend start failed:", err));
     createWindow();
     electron_1.app.on("activate", () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {
@@ -417,7 +429,12 @@ electron_1.app.on("window-all-closed", () => {
         electron_1.app.quit();
     }
 });
-electron_1.app.on("before-quit", () => {
+electron_1.app.on("before-quit", async () => {
+    // Graceful HTTP shutdown first (kills the actual Node process, not just the shell)
+    try {
+        await fetch(`http://localhost:${BACKEND_PORT}/api/shutdown`, { method: "POST" }).catch(() => { });
+    }
+    catch { /* backend may already be down */ }
     if (backendProcess) {
         backendProcess.kill();
         backendProcess = null;

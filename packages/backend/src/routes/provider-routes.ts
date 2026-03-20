@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db/db.js";
 import { getProviderConfig, type LLMProvider } from "../services/llm-provider.js";
 import { log } from "../utils/logger.js";
+import { MODEL_TRANSCRIBE, MODEL_TTS } from "../config/models.js";
 
 const providerRoutes = new Hono();
 
@@ -177,7 +178,7 @@ providerRoutes.post("/transcribe", async (c) => {
                 "X-Title": "BiamOS Voice Transcription",
             },
             body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
+                model: MODEL_TRANSCRIBE,
                 messages: [
                     {
                         role: "user",
@@ -232,7 +233,7 @@ providerRoutes.post("/speak", async (c) => {
                 "X-Title": "BiamOS Voice Output",
             },
             body: JSON.stringify({
-                model: "openai/tts-1",
+                model: MODEL_TTS,
                 input: body.text.slice(0, 4096),
                 voice: body.voice || "nova",
                 response_format: "mp3",

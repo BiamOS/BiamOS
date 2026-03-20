@@ -15,6 +15,7 @@ import { INTEGRATION_TEMPLATES } from "../db/integration-templates.js";
 import { invalidateConciergeCache } from "../agents/intent/0-concierge.js";
 import { clearRoutingCache } from "../services/routing-cache.js";
 import { log } from "../utils/logger.js";
+import { MODEL_BLOCK_SUGGEST } from "../config/models.js";
 
 const templateRoutes = new Hono();
 
@@ -251,7 +252,7 @@ Respond ONLY with a JSON array of block type strings. Example: ["title", "hero",
             method: "POST",
             headers,
             body: JSON.stringify({
-                model: "google/gemini-2.0-flash-001",
+                model: MODEL_BLOCK_SUGGEST,
                 messages: [{ role: "user", content: prompt }],
                 temperature: 0.3,
                 max_tokens: 500,

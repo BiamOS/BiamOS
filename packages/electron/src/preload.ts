@@ -18,11 +18,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     scrapeUrl: (url: string): Promise<{ url: string; title: string; text: string }> =>
         ipcRenderer.invoke("scrape-url", url),
     /** Autopilot: Execute a single step script in a hidden webview */
-    executeAutopilotStep: (url: string, script: string): Promise<{ success: boolean; error?: string; text?: string }> =>
-        ipcRenderer.invoke("autopilot-step", url, script),
+    executeAutopilotStep: (taskId: string, url: string, script: string): Promise<{ success: boolean; error?: string; text?: string }> =>
+        ipcRenderer.invoke("autopilot-step", taskId, url, script),
     /** Autopilot: Get DOM snapshot from a URL for planning */
-    getPageSnapshot: (url: string): Promise<{ url: string; text: string; title: string }> =>
-        ipcRenderer.invoke("page-snapshot", url),
+    getPageSnapshot: (taskId: string, url: string): Promise<{ url: string; text: string; title: string }> =>
+        ipcRenderer.invoke("page-snapshot", taskId, url),
 });
 
 // ─── Lock main window zoom ──────────────────────────────────

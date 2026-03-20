@@ -414,4 +414,23 @@ export async function bootstrapDatabase(): Promise<void> {
 
     // Agent memory V2: semantic embedding column
     try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN intent_embedding TEXT DEFAULT ''`)); } catch { }
+
+    // User prompt modules table (Prompt Library — Phase 3)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS user_prompt_modules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        module_id TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 50,
+        url_patterns TEXT NOT NULL,
+        task_patterns TEXT,
+        phases TEXT,
+        rules TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        source TEXT NOT NULL DEFAULT 'manual',
+        source_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 }

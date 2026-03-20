@@ -473,7 +473,7 @@ agentRoutes.post("/search", async (c) => {
             const u = rawUrl.replace(/&amp;/g, '&');
             const parsed = new URL(u, "https://duckduckgo.com");
             const uddg = parsed.searchParams.get("uddg");
-            if (uddg) return decodeURIComponent(uddg);
+            if (uddg) return uddg;
         } catch { /* use raw */ }
         return rawUrl.replace(/&amp;/g, '&');
     }
@@ -485,18 +485,31 @@ agentRoutes.post("/search", async (c) => {
         const getDomain = (u: string) => { try { return new URL(u).hostname.replace('www.', ''); } catch { return ''; } };
         const getFavicon = (u: string) => { try { return `https://www.google.com/s2/favicons?domain=${new URL(u).hostname}&sz=64`; } catch { return ''; } };
 
-        // Strategy 1: Full match (title + snippet + URL)
-        const fullRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gs;
-        let match;
-        while ((match = fullRegex.exec(html)) !== null && results.length < MAX_RESULTS) {
-            const url = extractRealUrl(match[1]);
-            results.push({
-                url,
-                title: stripTags(match[2]),
-                snippet: stripTags(match[3]),
-                favicon: getFavicon(url),
-                domain: getDomain(url),
-            });
+        // Strategy 1: Block-by-block parsing (avoids catastrophic regex backtracking)
+        const blocks = html.split(/class="result__title"/i);
+        for (let i = 1; i < blocks.length && results.length < MAX_RESULTS; i++) {
+            const block = blocks[i];
+
+            // Skip ad results
+            if (i > 0 && blocks[i - 1].includes("result--ad")) continue;
+
+            const linkMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"/i);
+            if (!linkMatch) continue;
+
+            const titleMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+            const title = titleMatch ? stripTags(titleMatch[1]) : "";
+
+            const snippetMatch = block.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+            const snippet = snippetMatch ? stripTags(snippetMatch[1]) : "";
+
+            const rawUrl = linkMatch[1];
+            // Skip ad results
+            if (rawUrl.includes("ad_provider") || rawUrl.includes("ad_domain")) continue;
+
+            const url = extractRealUrl(rawUrl);
+            if (title) {
+                results.push({ url, title, snippet, favicon: getFavicon(url), domain: getDomain(url) });
+            }
         }
         if (results.length > 0) return results;
 
@@ -505,6 +518,7 @@ agentRoutes.post("/search", async (c) => {
         const snippetRegex = /<[^>]*class="result__snippet"[^>]*>(.*?)<\/(?:a|div|span)>/gs;
         const links: { url: string; title: string }[] = [];
         const snippets: string[] = [];
+        let match;
 
         while ((match = linkRegex.exec(html)) !== null && links.length < MAX_RESULTS) {
             links.push({ url: extractRealUrl(match[1]), title: stripTags(match[2]) });
@@ -605,7 +619,7 @@ agentRoutes.post("/search", async (c) => {
 
             // Auto-detect news queries and add time filter (past month)
             const newsKeywords = /\b(news|neuigkeiten|aktuell|latest|trends|recent|neue|today|heute|this week|diese woche|2026)\b/i;
-            const timeFilter = newsKeywords.test(query) ? '&df=m' : '';
+            const timeFilter = (newsKeywords.test(query) && attempt === 0) ? '&df=m' : '';
             const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}${timeFilter}`;
             const resp = await fetch(searchUrl, {
                 headers: {

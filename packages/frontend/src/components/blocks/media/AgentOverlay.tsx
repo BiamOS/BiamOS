@@ -404,10 +404,12 @@ export const AgentOverlay = React.memo(function AgentOverlay({
                                     : "rgba(0, 212, 255, 0.9)",
                         fontSize: "0.72rem",
                         fontWeight: 600,
-                        whiteSpace: "nowrap",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: "vertical",
                         overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: 350,
+                        maxWidth: 600,
+                        lineHeight: 1.4,
                     }}
                 >
                     {state.currentAction || "🤖 AI Agent"}

@@ -60,7 +60,7 @@ export async function executeAction(
                     const parsed = JSON.parse(result);
                     if (!parsed.success) return parsed.error;
 
-                    await new Promise(r => setTimeout(r, 1500));
+                    await waitForPageReady('post-click');
                     let urlAfter = '';
                     try { urlAfter = await wv.executeJavaScript('location.href', true); } catch { urlAfter = ''; }
                     if (urlAfter && urlBefore && urlAfter !== urlBefore) {
@@ -125,7 +125,7 @@ export async function executeAction(
                     const somParsed = JSON.parse(somResult);
                     if (!somParsed.success) return somParsed.error;
 
-                    await new Promise(r => setTimeout(r, 1500));
+                    await waitForPageReady('post-som-click');
                     let somUrlAfter = '';
                     try { somUrlAfter = await wv.executeJavaScript('location.href', true); } catch { somUrlAfter = ''; }
                     if (somUrlAfter && somUrlBefore && somUrlAfter !== somUrlBefore) {

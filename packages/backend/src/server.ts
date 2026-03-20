@@ -95,6 +95,18 @@ app.route("/api/changelog", changelogRoutes);
 import { historyRoutes } from "./routes/history-routes.js";
 app.route("/api/history", historyRoutes);
 
+// Research Engine (API-based, no browser)
+import { researchRoutes } from "./routes/research-routes.js";
+app.route("/api/research", researchRoutes);
+
+// Intent Classifier (LLM Router)
+import { classifyRoutes } from "./routes/classify-routes.js";
+app.route("/api/intent/classify", classifyRoutes);
+
+// Prompt Library (User-created prompt modules)
+import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
+app.route("/api/prompt-modules", promptModuleRoutes);
+
 // ─── Start Server ───────────────────────────────────────────
 
 const PORT = 3001;
@@ -109,6 +121,11 @@ log.info(`
 bootstrapDatabase()
   .then(() => runSelfHealing())
   .then(() => ensureRequiredAgents())
+  .then(async () => {
+    // Load user-created prompt modules from DB into the assembler
+    const { loadUserModules } = await import("./prompt-modules/prompt-assembler.js");
+    await loadUserModules();
+  })
   .then(() => {
     serve(
       { fetch: app.fetch, port: PORT },

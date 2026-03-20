@@ -11,6 +11,7 @@ import React from "react";
 import { Box, Typography, IconButton, InputBase } from "@mui/material";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import { TOOL_REGISTRY } from "../../../tools/registry";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SendIcon from "@mui/icons-material/Send";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -635,12 +636,9 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 backdropFilter: "blur(8px)",
                                 py: 0.5,
                             }}>
-                                {[
-                                    { cmd: "/act", emoji: "🤖", desc: "AI Agent — click, type, navigate" },
-                                    { cmd: "/summarize", emoji: "📝", desc: "Summarize this page" },
-                                    { cmd: "/translate", emoji: "🌍", desc: "Translate (e.g. /translate German)" },
-                                    { cmd: "/extract", emoji: "📊", desc: "Extract structured data" },
-                                ].filter(c => c.cmd.startsWith(manualInput.trim().split(" ")[0].toLowerCase()))
+                                {TOOL_REGISTRY
+                                    .map(t => ({ cmd: t.slashCommand, emoji: t.emoji, desc: `${t.name} — ${t.description}` }))
+                                    .filter(c => c.cmd.startsWith(manualInput.trim().split(" ")[0].toLowerCase()))
                                     .map(c => (
                                         <Box
                                             key={c.cmd}

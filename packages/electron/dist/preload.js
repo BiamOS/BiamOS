@@ -17,9 +17,9 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
     /** Ghost-Auth: Scrape a URL using the app's session cookies */
     scrapeUrl: (url) => electron_1.ipcRenderer.invoke("scrape-url", url),
     /** Autopilot: Execute a single step script in a hidden webview */
-    executeAutopilotStep: (url, script) => electron_1.ipcRenderer.invoke("autopilot-step", url, script),
+    executeAutopilotStep: (taskId, url, script) => electron_1.ipcRenderer.invoke("autopilot-step", taskId, url, script),
     /** Autopilot: Get DOM snapshot from a URL for planning */
-    getPageSnapshot: (url) => electron_1.ipcRenderer.invoke("page-snapshot", url),
+    getPageSnapshot: (taskId, url) => electron_1.ipcRenderer.invoke("page-snapshot", taskId, url),
 });
 // ─── Lock main window zoom ──────────────────────────────────
 // The <webview> tags manage their own zoom independently.

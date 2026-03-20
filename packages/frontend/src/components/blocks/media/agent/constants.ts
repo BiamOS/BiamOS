@@ -71,6 +71,8 @@ export const DOM_SNAPSHOT_SCRIPT = `
             var rect = el.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) continue;
             if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+            var style = window.getComputedStyle(el);
+            if (style.opacity === '0' || style.visibility === 'hidden' || style.pointerEvents === 'none') continue;
             
             // Generate stable ID from element fingerprint
             var fp = fingerprint(el);

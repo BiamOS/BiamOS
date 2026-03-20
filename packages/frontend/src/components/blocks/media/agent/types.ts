@@ -19,4 +19,5 @@ export interface AgentState {
     pauseQuestion: string | null;
     cursorPos: { x: number; y: number } | null;
     lastWorkflowId: number | null;
+    taskType?: 'action' | 'research';
 }

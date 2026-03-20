@@ -19,8 +19,12 @@ export function buildClickAtScript(x: number, y: number): string {
         el.scrollIntoView({ block: 'nearest' });
         const topEl = document.elementFromPoint(x, y);
         if (topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el)) {
-            const blocker = topEl.tagName.toLowerCase() + (topEl.className ? '.' + String(topEl.className).split(' ')[0] : '');
-            return JSON.stringify({ success: false, error: 'Element blocked by overlay: ' + blocker + ' at (' + x + ', ' + y + ')' });
+            var tag = topEl.tagName.toLowerCase();
+            var cls = topEl.className ? '.' + String(topEl.className).split(' ')[0] : '';
+            var txt = (topEl.textContent || '').trim().substring(0, 40);
+            var role = topEl.getAttribute('role') || '';
+            var blockerDesc = tag + cls + (role ? '[role=' + role + ']' : '') + (txt ? ' "' + txt + '"' : '');
+            return JSON.stringify({ success: false, error: '⚠️ [BLOCKED] Tried to click (' + x + ',' + y + ') but it is covered by ' + blockerDesc + '. Close or dismiss this element first, then retry.' });
         }
         const clickTarget = topEl || el;
 

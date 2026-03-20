@@ -16,3 +16,12 @@ export const MODEL_THINKING = "google/gemini-2.5-flash";
 
 /** Default model for new agents */
 export const MODEL_DEFAULT = MODEL_FAST;
+
+/** Model for voice-to-text transcription */
+export const MODEL_TRANSCRIBE = "google/gemini-2.5-flash";
+
+/** Model for text-to-speech */
+export const MODEL_TTS = "openai/tts-1";
+
+/** Model for block suggestion (integration templates) */
+export const MODEL_BLOCK_SUGGEST = "google/gemini-2.0-flash-001";

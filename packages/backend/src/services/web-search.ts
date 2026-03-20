@@ -42,21 +42,33 @@ export async function searchWeb(query: string, maxResults = 5): Promise<SearchRe
 
         const html = await response.text();
 
-        // Parse results from DuckDuckGo HTML
+        // Parse results from DuckDuckGo HTML (block-by-block to avoid regex backtracking)
         const results: SearchResult[] = [];
-        const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-        let match;
-        while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
-            const rawUrl = match[1];
-            const title = match[2].replace(/<[^>]*>/g, "").trim();
-            const snippet = match[3].replace(/<[^>]*>/g, "").trim();
+        const blocks = html.split(/class="result__title"/i);
+        for (let i = 1; i < blocks.length && results.length < maxResults; i++) {
+            const block = blocks[i];
 
-            // DuckDuckGo wraps URLs in a redirect — extract real URL
+            // Skip ad results
+            if (i > 0 && blocks[i - 1].includes("result--ad")) continue;
+
+            const linkMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"/i);
+            if (!linkMatch) continue;
+
+            const titleMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+            const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+
+            const snippetMatch = block.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+            const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+
+            const rawUrl = linkMatch[1];
+            // Skip ad results
+            if (rawUrl.includes("ad_provider") || rawUrl.includes("ad_domain")) continue;
+
             let url = rawUrl;
             try {
                 const parsed = new URL(rawUrl, "https://duckduckgo.com");
                 const uddg = parsed.searchParams.get("uddg");
-                if (uddg) url = decodeURIComponent(uddg);
+                if (uddg) url = uddg;
             } catch { /* use raw */ }
 
             if (title && snippet) {

@@ -27,9 +27,9 @@ export const COLORS = {
     textFaint: "rgba(255, 255, 255, 0.2)",
 
     // ─── Surfaces ──────────────────────────────
-    bg: "#0a0a0f",
-    bgPaper: "#12121a",
-    surface: "rgba(255, 255, 255, 0.03)",
+    bg: "#09090B",             // Zinc 950
+    bgPaper: "#18181B",        // Zinc 900
+    surface: "#18181B",        // Surface-Grau (solid)
     surfaceSubtle: "rgba(255, 255, 255, 0.02)",
     surfaceFaint: "rgba(255, 255, 255, 0.01)",
     surfaceDark: "rgba(0, 0, 0, 0.2)",
@@ -37,7 +37,7 @@ export const COLORS = {
     surfaceElevated: "rgba(255, 255, 255, 0.05)",
 
     // ─── Borders ───────────────────────────────
-    border: "rgba(255, 255, 255, 0.06)",
+    border: "rgba(255, 255, 255, 0.1)",        // 1px subtle
     borderFaint: "rgba(255, 255, 255, 0.06)",
     borderSubtle: "rgba(255, 255, 255, 0.04)",
     borderHover: "rgba(88, 28, 255, 0.3)",
@@ -275,9 +275,10 @@ export const topBarSx = {
     position: "sticky" as const,
     top: 0,
     zIndex: 10,
-    backdropFilter: "blur(20px)",
-    bgcolor: "rgba(10, 10, 15, 0.7)",
-    borderBottom: `1px solid ${COLORS.border}`,
+    backdropFilter: "blur(24px) saturate(1.8)",
+    WebkitBackdropFilter: "blur(24px) saturate(1.8)",
+    bgcolor: "rgba(9, 9, 11, 0.75)",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
 };
 
 export const errorAlertSx = {
@@ -292,15 +293,20 @@ export const errorAlertSx = {
 };
 
 export const floatingSearchSx = {
-    position: "fixed" as const,
-    bottom: 20,
-    left: "50%",
-    zIndex: 100,
+    position: "relative" as const,
+    zIndex: 50,
     display: "flex",
     flexDirection: "column" as const,
     alignItems: "center",
-    maxWidth: 640,
-    width: "90%",
+    width: "100%",
+    backdropFilter: "blur(24px) saturate(1.8)",
+    WebkitBackdropFilter: "blur(24px) saturate(1.8)",
+    bgcolor: "rgba(9, 9, 11, 0.85)",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+    px: 3,
+    py: 1.5,
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    overflow: "hidden",
 };
 
 export const resizeHandleSx = {

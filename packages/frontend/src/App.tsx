@@ -165,16 +165,33 @@ export default function App() {
 
     // Check if user has API key configured (re-check when leaving settings)
     useEffect(() => {
-        fetch("/api/system/provider")
-            .then(r => r.json())
-            .then(d => {
-                setNeedsSetup(!d.hasApiKey);
-                setLlmMissing(!d.hasApiKey);
-            })
-            .catch(() => {
+        let cancelled = false;
+        const checkProvider = async (retries = 3, delayMs = 1000) => {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                if (cancelled) return;
+                try {
+                    const r = await fetch("/api/system/provider");
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const d = await r.json();
+                    if (cancelled) return;
+                    setNeedsSetup(!d.hasApiKey);
+                    setLlmMissing(!d.hasApiKey);
+                    return; // Success — stop retrying
+                } catch {
+                    if (attempt < retries) {
+                        // Backend not ready yet — wait and retry
+                        await new Promise(res => setTimeout(res, delayMs * (attempt + 1)));
+                    }
+                }
+            }
+            // All retries failed — show setup
+            if (!cancelled) {
                 setNeedsSetup(true);
                 setLlmMissing(true);
-            });
+            }
+        };
+        checkProvider();
+        return () => { cancelled = true; };
     }, [showManager]);
 
     const toggleManager = () => setShowManager((s) => !s);
@@ -267,6 +284,99 @@ export default function App() {
                         </Box>
                     </Box>
 
+                    {/* ═══ Smart Bar (top overlay below brand bar) ═══ */}
+                    {!showManager && (
+                        <Box
+                            sx={{
+                                ...floatingSearchSx,
+                                maxHeight: bottomBarOpen ? 400 : 0,
+                                py: bottomBarOpen ? 1.5 : 0,
+                                opacity: bottomBarOpen ? 1 : 0,
+                            }}
+                        >
+                            <Box sx={{ width: "100%", maxWidth: 680, mx: "auto" }}>
+                                <ChatThread
+                                    messages={chatMessages}
+                                    isOpen={chatOpen}
+                                    onSuggestionClick={handleSuggestionClick}
+                                    onToggle={toggleChat}
+                                />
+                                {llmMissing && (
+                                    <Box
+                                        onClick={() => { setSettingsPanel("llm"); setShowManager(true); }}
+                                        sx={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            gap: 1,
+                                            mb: 1,
+                                            py: 0.8,
+                                            px: 2,
+                                            borderRadius: 2,
+                                            bgcolor: "rgba(239, 68, 68, 0.08)",
+                                            border: "1px solid rgba(239, 68, 68, 0.2)",
+                                            cursor: "pointer",
+                                            transition: "all 0.2s ease",
+                                            "&:hover": {
+                                                bgcolor: "rgba(239, 68, 68, 0.12)",
+                                                borderColor: "rgba(239, 68, 68, 0.35)",
+                                            },
+                                        }}
+                                    >
+                                        <WarningIcon sx={{ fontSize: 16, color: "#ef4444" }} />
+                                        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#ef4444" }}>
+                                            No AI provider configured — Set up LLM
+                                        </Typography>
+                                    </Box>
+                                )}
+                                <IntentInput onSubmit={onIntent} isLoading={isLoading} activeGroups={activeGroups} pipelineStep={pipelineStep} />
+                            </Box>
+                            {/* Smart Bar minimize chevron */}
+                            <Box sx={{ display: "flex", justifyContent: "center", mt: 0.5 }}>
+                                <Tooltip title="Minimize Assistant">
+                                    <IconButton
+                                        onClick={() => setBottomBarOpen(false)}
+                                        size="small"
+                                        sx={{
+                                            width: 28,
+                                            height: 14,
+                                            borderRadius: "0 0 8px 8px",
+                                            color: "rgba(255,255,255,0.2)",
+                                            "&:hover": { color: "rgba(255,255,255,0.5)", bgcolor: "rgba(255,255,255,0.04)" },
+                                        }}
+                                    >
+                                        <HideBottomIcon sx={{ fontSize: 16, transform: "rotate(180deg)" }} />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
+                        </Box>
+                    )}
+
+                    {/* Smart Bar expand tab (when minimized) */}
+                    {!showManager && !bottomBarOpen && (
+                        <Box sx={{ display: "flex", justifyContent: "center", position: "relative", zIndex: 50 }}>
+                            <Tooltip title="Show Assistant">
+                                <IconButton
+                                    onClick={() => setBottomBarOpen(true)}
+                                    size="small"
+                                    sx={{
+                                        bgcolor: "rgba(9, 9, 11, 0.9)",
+                                        border: "1px solid rgba(255,255,255,0.08)",
+                                        borderTop: "none",
+                                        color: "rgba(255,255,255,0.35)",
+                                        borderRadius: "0 0 8px 8px",
+                                        width: 40,
+                                        height: 22,
+                                        "&:hover": { color: "rgba(255,255,255,0.7)", bgcolor: "rgba(9,9,11,1)", borderColor: "rgba(255,255,255,0.15)" },
+                                        transition: "all 0.2s ease",
+                                    }}
+                                >
+                                    <ShowBottomIcon sx={{ fontSize: 18 }} />
+                                </IconButton>
+                            </Tooltip>
+                        </Box>
+                    )}
+
                     {/* ═══ Content with Sidebar ═══ */}
                     <Box sx={{ flex: 1, display: "flex", overflow: "hidden" }}>
                         {/* Sidebar — with integrated toggle */}
@@ -315,7 +425,7 @@ export default function App() {
 
                         {/* Canvas scroll wrapper */}
                         <Box sx={{ flex: 1, overflowY: "auto", overflowX: "hidden", display: showManager ? "none" : "block" }}>
-                            <Box ref={containerRef} sx={{ px: 2, py: 2, pb: 80, minHeight: "100%" }}>
+                            <Box ref={containerRef} sx={{ px: 2, py: 2, pb: 4, minHeight: "100%" }}>
                                 {error && (
                                     <Alert severity="error" onClose={clearError} sx={errorAlertSx}>
                                         {error}
@@ -399,100 +509,7 @@ export default function App() {
                                 )}
                             </Box>
                         </Box>  {/* /canvas scroll wrapper */}
-                    </Box>  {/* /canvas inner */}
-
-                    {/* ═══ Bottom Bar Toggle Tab ═══ */}
-                    {!showManager && !bottomBarOpen && (
-                        <Tooltip title="Show Assistant">
-                            <IconButton
-                                onClick={() => setBottomBarOpen(true)}
-                                size="small"
-                                sx={{
-                                    position: "fixed",
-                                    bottom: 12,
-                                    left: "50%",
-                                    transform: "translateX(-50%)",
-                                    zIndex: 1200,
-                                    bgcolor: "rgba(16,20,30,0.9)",
-                                    border: "1px solid rgba(255,255,255,0.08)",
-                                    color: "rgba(255,255,255,0.35)",
-                                    borderRadius: "8px 8px 0 0",
-                                    width: 40,
-                                    height: 22,
-                                    "&:hover": { color: "rgba(255,255,255,0.7)", bgcolor: "rgba(16,20,30,1)", borderColor: "rgba(255,255,255,0.15)" },
-                                    transition: "all 0.2s ease",
-                                }}
-                            >
-                                <ShowBottomIcon sx={{ fontSize: 18 }} />
-                            </IconButton>
-                        </Tooltip>
-                    )}
-
-                    {/* ═══ Floating Bottom Search + Chat Thread ═══ */}
-                    <Box
-                        sx={{
-                            ...floatingSearchSx,
-                            display: showManager ? "none" : undefined,
-                            transform: bottomBarOpen
-                                ? "translateX(-50%) translateY(0)"
-                                : "translateX(-50%) translateY(calc(100% + 20px))",
-                            transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                        }}
-                    >
-                        {/* Hide button inside chat area */}
-                        <Box sx={{ display: "flex", justifyContent: "center", mb: 0.5 }}>
-                            <Tooltip title="Hide Assistant">
-                                <IconButton
-                                    onClick={() => setBottomBarOpen(false)}
-                                    size="small"
-                                    sx={{
-                                        width: 28,
-                                        height: 14,
-                                        borderRadius: "8px 8px 0 0",
-                                        color: "rgba(255,255,255,0.2)",
-                                        "&:hover": { color: "rgba(255,255,255,0.5)", bgcolor: "rgba(255,255,255,0.04)" },
-                                    }}
-                                >
-                                    <HideBottomIcon sx={{ fontSize: 16 }} />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                        <ChatThread
-                            messages={chatMessages}
-                            isOpen={chatOpen}
-                            onSuggestionClick={handleSuggestionClick}
-                            onToggle={toggleChat}
-                        />
-                        {llmMissing && (
-                            <Box
-                                onClick={() => { setSettingsPanel("llm"); setShowManager(true); }}
-                                sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    gap: 1,
-                                    mb: 1,
-                                    py: 0.8,
-                                    px: 2,
-                                    borderRadius: 2,
-                                    bgcolor: "rgba(239, 68, 68, 0.08)",
-                                    border: "1px solid rgba(239, 68, 68, 0.2)",
-                                    cursor: "pointer",
-                                    transition: "all 0.2s ease",
-                                    "&:hover": {
-                                        bgcolor: "rgba(239, 68, 68, 0.12)",
-                                        borderColor: "rgba(239, 68, 68, 0.35)",
-                                    },
-                                }}
-                            >
-                                <WarningIcon sx={{ fontSize: 16, color: "#ef4444" }} />
-                                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#ef4444" }}>
-                                    No AI provider configured — Set up LLM
-                                </Typography>
-                            </Box>
-                        )}
-                        <IntentInput onSubmit={onIntent} isLoading={isLoading} activeGroups={activeGroups} pipelineStep={pipelineStep} />
-                    </Box>
+                    </Box>  {/* /content with sidebar */}
                 </Box>
             </NavigationProvider>
             {/* ═══ Smart Link Prompt ═══ */}

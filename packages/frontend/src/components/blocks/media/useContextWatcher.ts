@@ -45,6 +45,14 @@ interface NavigationSync {
 
 // ─── Hook ───────────────────────────────────────────────────
 
+/** Helper: test if a hint should survive auto-analysis clearing */
+function isProtectedHint(h: ContextHint): boolean {
+    return h.reason === "Manual query"
+        || h.query.startsWith("🤖")
+        || h.query.startsWith("📊")
+        || h.reason === "Research Engine";
+}
+
 export function useContextWatcher(
     webviewRef: React.RefObject<any>,
     initialUrl: string,
@@ -53,18 +61,31 @@ export function useContextWatcher(
     cardId?: string,
     /** When false, all event listeners and context analysis are disabled (read-only webview) */
     enabled: boolean = true,
+    /** Current agent status — suppresses auto-analysis when not idle */
+    agentStatus: "idle" | "running" | "paused" | "done" | "error" = "idle",
 ) {
     const [contextNotice, setContextNotice] = useState<string | null>(null);
     const [pickerActive, setPickerActive] = useState(false);
 
+    // Track agentStatus in a ref so triggerContextAnalysis can read it
+    const agentStatusRef = useRef(agentStatus);
+    agentStatusRef.current = agentStatus;
+    // Race condition guard: increments when user starts a task mid-analysis
+    const requestIdRef = useRef(0);
+
     // Restore chat messages from sessionStorage on mount
+    // Bug 4 fix: force loading:false on restored 🤖/📊 hints (React state is lost on refresh)
     const [contextHints, setContextHints] = useState<ContextHint[]>(() => {
         try {
             const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved) as ContextHint[];
-                // Only restore chat messages (Manual query), not stale auto-hints
-                return parsed.filter(h => h.reason === "Manual query");
+                return parsed
+                    .filter(h => isProtectedHint(h))
+                    .map(h => (h.query.startsWith("🤖") || h.query.startsWith("📊"))
+                        ? { ...h, loading: false }
+                        : h
+                    );
             }
         } catch { /* ignore parse errors */ }
         return [];
@@ -105,17 +126,17 @@ export function useContextWatcher(
             const cacheKey = u.hostname.replace("www.", "") + u.pathname;
             const cached = contextCacheRef.current?.get(cacheKey);
             if (cached && cached.length > 0) {
-                // Merge cached hints with existing chat history
+                // Merge cached hints with existing chat/agent/research history
                 setContextHints(prev => {
-                    const chatHistory = prev.filter(h => h.reason === "Manual query");
-                    return [...cached, ...chatHistory];
+                    const keepHints = prev.filter(isProtectedHint);
+                    return [...cached, ...keepHints];
                 });
             } else {
-                // Keep agent hints AND chat history — don't clear conversation on navigate
-                setContextHints(prev => prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query"));
+                // Keep agent + research + chat history — don't clear conversation on navigate
+                setContextHints(prev => prev.filter(isProtectedHint));
             }
         } catch {
-            setContextHints(prev => prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query"));
+            setContextHints(prev => prev.filter(isProtectedHint));
         }
         lastAnalyzedUrlRef.current = "";
     }, [saveCurrentContext]);
@@ -164,7 +185,14 @@ export function useContextWatcher(
         // ─── Trigger Context Analysis
         let retryCount = 0;
         const triggerContextAnalysis = async () => {
-            debug.log("🧠 [Trigger] START — webviewRef:", !!webviewRef.current, "force:", forceAnalysisRef.current);
+            // Bug 2 fix: suppress auto-analysis when agent or research is active
+            if (agentStatusRef.current !== "idle") {
+                debug.log("🧠 [Trigger] SKIP — agent active:", agentStatusRef.current);
+                return;
+            }
+            // Bug 5 fix: race condition guard — capture request ID at start
+            const myRequestId = ++requestIdRef.current;
+            debug.log("🧠 [Trigger] START — webviewRef:", !!webviewRef.current, "force:", forceAnalysisRef.current, "reqId:", myRequestId);
             if (!webviewRef.current) { debug.log("🧠 [Trigger] ABORT — no webview ref"); return; }
 
             let pageData: { url: string; title: string; text: string } | null;
@@ -207,9 +235,9 @@ export function useContextWatcher(
             if (!isForced) {
                 const cached = contextCacheRef.current.get(cacheKey);
                 if (cached) {
-                    // Merge cached hints with existing agent + chat hints
+                    // Merge cached hints with existing agent + research + chat hints
                     setContextHints(prev => {
-                        const keepHints = prev.filter(h => h.query.startsWith("🤖") || h.reason === "Manual query");
+                        const keepHints = prev.filter(isProtectedHint);
                         return [...cached.map(h => ({ ...h })), ...keepHints];
                     });
                     if (cached.length > 0 && !sidebarOpen) setSidebarOpen(true);
@@ -220,8 +248,8 @@ export function useContextWatcher(
             }
 
             // Clear auto-detected hints while loading new ones,
-            // but KEEP manual chat queries AND agent progress hints
-            setContextHints(prev => prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖")));
+            // but KEEP manual chat queries, agent progress, AND research hints
+            setContextHints(prev => prev.filter(isProtectedHint));
             setIsAnalyzing(true);
 
             // Call context analysis API
@@ -246,11 +274,17 @@ export function useContextWatcher(
                 // Cache the full hints (with data intact)
                 contextCacheRef.current.set(cacheKey, suggestions);
 
+                // Bug 5 fix: abort if a new task started while we were fetching
+                if (requestIdRef.current !== myRequestId) {
+                    debug.log("🧠 [Trigger] ABORT — stale response (reqId", myRequestId, "vs current", requestIdRef.current, ")");
+                    return;
+                }
+
                 if (suggestions.length === 0) {
                     // Only show "no context" hint if user has no active chat
                     // If they already have a conversation, just keep it clean
                     setContextHints(prev => {
-                        const keepHints = prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖"));
+                        const keepHints = prev.filter(isProtectedHint);
                         if (keepHints.length > 0) return keepHints;
                         return [{
                             query: "💬 No specific context detected",
@@ -265,9 +299,9 @@ export function useContextWatcher(
                     return;
                 }
 
-                // Merge new suggestions with existing manual chat queries
+                // Merge new suggestions with existing protected hints
                 setContextHints(prev => {
-                    const keepHints = prev.filter(h => h.reason === "Manual query" || h.query.startsWith("🤖"));
+                    const keepHints = prev.filter(isProtectedHint);
                     return [...suggestions, ...keepHints];
                 });
                 if (!sidebarOpen) setSidebarOpen(true);
