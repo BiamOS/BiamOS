@@ -384,7 +384,7 @@ export const IntegrationReviewPanel = React.memo(function IntegrationReviewPanel
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     sx={{
-                                        color: COLORS.cyan,
+                                        color: COLORS.accentLight,
                                         fontSize: "0.7rem",
                                         textDecoration: "none",
                                         "&:hover": { textDecoration: "underline", color: "#fff" },

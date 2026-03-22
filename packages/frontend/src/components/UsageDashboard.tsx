@@ -112,12 +112,12 @@ export function UsageDashboard() {
                 </Box>
 
                 <Box sx={statCardSx}>
-                    <ApiIcon sx={{ fontSize: 28, color: "rgba(0, 200, 255, 0.7)", mb: 0.5 }} />
+                    <ApiIcon sx={{ fontSize: 28, color: accentAlpha(0.7), mb: 0.5 }} />
                     <Typography
                         variant="h5"
                         sx={{
                             fontWeight: 800,
-                            background: "linear-gradient(135deg, #fff, rgba(0, 200, 255, 0.8))",
+                            background: `linear-gradient(135deg, #fff, ${accentAlpha(0.8)})`,
                             WebkitBackgroundClip: "text",
                             WebkitTextFillColor: "transparent",
                         }}
@@ -225,7 +225,7 @@ export function UsageDashboard() {
                             px: 3,
                             minWidth: "auto",
                             background: newKey.trim()
-                                ? "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)"
+                                ? `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`
                                 : undefined,
                             "&.Mui-disabled": {
                                 bgcolor: "rgba(255, 255, 255, 0.05)",

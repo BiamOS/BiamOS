@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v2.1.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v2.2.0--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
@@ -12,267 +12,108 @@
 <h1 align="center">🧬 BiamOS</h1>
 
 <h3 align="center">
-  <em>Base for Intent & AI Middleware</em><br/>
-  The AI-Native Workspace OS — Windows, macOS & Linux
+  <em>The Spatial AI OS — Powered by Lura Core</em><br/>
+  Native Desktop Workspace for Windows, macOS & Linux
 </h3>
 
 <p align="center">
   <a href="#-getting-started">Quick Start</a> •
+  <a href="#-the-lura-command-center">Lura Hub</a> •
   <a href="#-ghost-auth--zero-oauth-integrations">Ghost-Auth</a> •
-  <a href="#-the-dual-agent-system">Dual-Agent</a> •
-  <a href="#-core-features">Features</a> •
+  <a href="#-agent-engine--local-memory">Agent Engine</a> •
   <a href="#%EF%B8%8F-architecture">Architecture</a> •
-  <a href="DOCUMENTATION.md">📖 Docs</a> •
-  <a href="#-license">License</a>
+  <a href="https://www.youtube.com/@BiamOS_AI/videos">📺 YouTube</a> •
+  <a href="DOCUMENTATION.md">📖 Docs</a>
 </p>
 
 ---
 
-## 🎬 See It In Action
+![BiamOS Workspace with Lura Command Center](./docs/assets/hero-dark-magenta.png)
 
-<table>
-<tr>
-<td align="center" width="33%">
+<p align="center">
+  <img src="./docs/assets/1.png" alt="BiamOS Demo Screenshot 1" width="48%" style="border-radius:8px"/>
+  &nbsp;
+  <img src="./docs/assets/2.png" alt="BiamOS Demo Screenshot 2" width="48%" style="border-radius:8px"/>
+</p>
 
-**🚀 Agent v2: NASA → X Post**
-
-[![AI Agent Demo](https://img.youtube.com/vi/ycjD5EDTw28/maxresdefault.jpg)](https://youtu.be/ycjD5EDTw28?si=M-HOXTNraJhX0mXI)
-
-*One prompt — reads NASA.gov, takes notes, navigates to X, writes a post with source link.*
-
-</td>
-<td align="center" width="33%">
-
-**📧 Gmail → YouTube → Email**
-
-[![Workflow Demo](https://img.youtube.com/vi/hPPa_Wx1dnM/maxresdefault.jpg)](https://youtu.be/hPPa_Wx1dnM?si=vc1Fww9B7nuwzoEV)
-
-*Composes email, searches YouTube in background, writes briefing — all autonomous.*
-
-</td>
-<td align="center" width="33%">
-
-**🧬 Platform Overview**
-
-[![Overview Demo](https://img.youtube.com/vi/QOKNlAsJjyw/maxresdefault.jpg)](https://youtu.be/QOKNlAsJjyw?si=ZfFY957UVoGrVQ5o)
-
-*Full overview: Ghost-Auth, Context Engine, Integrations, AI Pipeline.*
-
-</td>
-</tr>
-</table>
-
-> **👆 Click any thumbnail to watch on YouTube**
-
----
 
 ## What is BiamOS?
 
+**BiamOS is a complete paradigm shift for AI interaction.** It replaces the traditional "chatbot next to a browser" experience with a unified **Spatial AI OS**. 
 
-**BiamOS is not just another wrapper.** It transforms your desktop into a **proactive command center**. By combining a native Chromium webview with a local AI pipeline, BiamOS acts as your personal agent — extracting data, bypassing complex API auth via **Ghost-Auth**, and generating modular UI dashboards instantly.
+At the center is the infinite canvas. On the right is **Lura**, your intelligent, global Command Center. The system operates locally, running complex agentic workflows directly on your machine without giving third-party clouds access to your private accounts.
 
-> It's not a browser. It's not a chatbot. It's a **desktop-native AI operating layer** that sits between you and the web.
+> It's not a browser. It's not a copilot wrapper. It's an autonomous desktop operating layer.
 
 ---
 
-## 👻 Ghost-Auth — Zero-OAuth Integrations
+## 🎨 Apple Pro Dark Design System (Asphalt UI)
 
-> **The Game Changer.**
+BiamOS v2 introduces a completely new design language built for focus, deeply inspired by the Apple Pro Dark aesthetic. 
+- **True Black (#000000)** workspace canvas
+- **Asphalt Gray** element backgrounds and UI blocks
+- **Glassmorphism** floating modals with heavy background blur
+- **Magenta Accents** (#DC0070) reserved strictly for primary actions and active focus rings
 
-Forget generating API keys. Forget OAuth permission screens. Forget giving third-party apps access to your accounts.
+![Asphalt UI Design Showcase](./docs/assets/theme-asphalt-magenta.png)
 
-BiamOS uses a **built-in Chromium Webview** with persistent sessions. Log into Gmail, Notion, or WhatsApp — just like you normally would. Then ask the Copilot:
+---
 
-```
-"Summarize my unread emails."
-```
+## 🧠 The Lura Command Center
 
-The local AI **securely reads the DOM** directly from the webview and renders the results. No APIs. No tracking. No tokens leaving your machine.
+The Lura Command Center replaces scattered sidebars and floating input fields with one **unified intelligence pane**.
+
+- **Global Task Manager:** Background agents fetching research or clicking through websites are tracked here as "Global Threads".
+- **Contextual Awareness:** The Command Center reads your active tabs (DOM, screenshot) and binds its chat history specifically to what you are viewing.
+- **Empty State Hub:** When nothing is focused, the Lura panel acts as a master dashboard for all background AI tasks across the entire OS.
+
+![Lura Command Center showing Active Agent Threads](./docs/assets/lura-command-center.png)
+
+---
+
+## 👻 Ghost-Auth: Zero-OAuth AI
+
+> **The ultimate privacy feature for AI agents.**
+
+Forget generating API keys or granting OAuth permissions to startups. BiamOS embeds a native Chromium Webview. Log into Gmail, Notion, X, or SAP directly inside the UI.
+
+When you ask Lura to "Summarize my unread emails", the local AI securely accesses the DOM directly from the webview. **The AI rides on your session.** No tokens leave your machine. No APIs required. 
 
 ### 🛡️ Smart Privacy Shield
-
-Sensitive domains (banking, healthcare, email) are **automatically blocked** from background analysis. BiamOS won't auto-scan these pages. But when **you** explicitly ask a question, the Copilot reads the page content on-demand.
-
-> **You** decide when the AI reads. Not the other way around.
+Sensitive sites (banking, email, healthcare) are auto-blocked from background indexing. Lura only "sees" the page when **you explicitly** issue a command.
 
 ---
 
-## 🧠 The Dual-Agent System
+## 🤖 Advanced Agent Engine & Local Memory
 
-BiamOS runs **two independent AI assistants**, each with a distinct role:
+BiamOS Agents don't just "chat" — they drive the browser using advanced strategies built for the modern, convoluted web. Type a command (e.g. `/act Check Elon Musk's latest tweet`) and watch Lura take the wheel.
 
-<table>
-<tr>
-<td width="50%">
+### Intelligent Navigation (URL-First Strategy)
+Unlike rudimentary agents that struggle with React-based SPAs (Single Page Applications) and fail to click search icons, Lura employs a "URL-First" strategy. For major platforms (X, YouTube, Reddit), the agent skips DOM-clicking and directly fabricates exact Search/Action URls, bypassing fragile UI entirely.
 
-### 🎙️ System Assistant
-**Controls the main canvas.**
+### Anti-Loop Pivot Guard
+When Lura attempts to interact with an unyielding DOM element, the engine detects repeated failures within 2 cycles, immediately aborts the current interaction vector, and self-heals by pivoting its approach—preventing infinite AI loops and wasted token costs.
 
-- 🗣️ **Voice Control** — speak naturally, get audio responses (TTS)
-- 🔀 **Intent Router** — classifies queries: web search vs. API integrations vs. browser action
-- 📊 **UI Block Generator** — renders weather cards, tables, crypto charts, and custom blocks
-- 📌 **Pin & Dashboard** — pin any result to your canvas to build a persistent workspace
+### Set-of-Mark (SoM) Vision
+BiamOS overlays bounding boxes on the DOM before feeding screenshots to the vision model, guaranteeing pixel-perfect clicks instead of relying on hallucinated coordinates.
 
-</td>
-<td width="50%">
+![Set of Mark Vision targeting a DOM element](./docs/assets/set-of-mark-vision.png)
 
-### 🌐 Web Copilot
-**Lives inside the webview.**
-
-- 📖 **DOM-Aware** — reads the actual content of the page you're browsing
-- 📸 **Screenshot Analysis** — takes a visual snapshot for multimodal understanding
-- 🔍 **Web Search Buddy** — answers questions with clickable source links
-- 💬 **Context Chat** — multi-turn conversations scoped to the current site
-- 🤖 **AI Browser Agent (Alpha)** — autonomous click, type, scroll, search, and navigate across any website
-
-</td>
-</tr>
-</table>
-
-**Example flow:**
-1. You browse `gmail.com` in the built-in webview
-2. The Web Copilot extracts the page content (DOM + screenshot)
-3. You type: *"Which emails are urgent?"*
-4. The Copilot analyzes the inbox and responds — **no API, no OAuth, just local AI magic** 👻
+### Reflexive Local Memory
+When you verify that a complex agent task succeeded (👍), BiamOS hashes the semantic intent and saves the entire workflow sequence to a local SQLite database. Next time you ask, Lura recognizes the intent via on-device embedding (MiniLM-L6) and perfectly replays the reflex instantly. 
 
 ---
 
-## 🤖 AI Browser Agent (Alpha)
+## 🔬 Deep Research Engine (GenUI)
 
-> **Your AI can now control the browser — and learn from it.**
+When a command is classified as complex research, BiamOS generates **rich, newspaper-style dashboards** instead of raw text.
 
-Type `/act` followed by a task, and the AI Browser Agent takes over — clicking, typing, scrolling, and searching autonomously. The agent **learns from verified tasks** and replays them as lightning-fast reflexes on similar future requests.
+1. **Parallel Search:** Explodes your request into 3 DuckDuckGo sub-queries.
+2. **Deep Fetch:** Downloads the top articles (up to 15K characters per source).
+3. **Synthesis:** *gemini-2.5-flash* (or models of your choice) evaluates the facts.
+4. **GenUI Rendering:** The result is rendered as draggable React cards (tables, stats, charts, text) directly onto the canvas workspace.
 
-```
-/act Open Gmail, compose an email to team@company.com. Subject: "AI Market Update".
-    Search the web for "top AI browser agents 2026" and write a professional
-    briefing with the top 3 tools, their links, and what each does. Don't send.
-```
-
-**What happens:**
-1. 📧 Agent opens Gmail, clicks Compose, fills To and Subject
-2. 🔍 Background web search runs (no tab switch!) — finds real results with links
-3. ✍️ Agent writes the email body with research findings
-4. ⏸️ Pauses before sending — asks for your confirmation
-5. 👍 Press thumbs up → workflow saved as a **learned reflex** for next time
-
-### Agent Tools
-| Tool | Description |
-|------|-------------|
-| `click` | Click any element by Set-of-Mark ID from DOM snapshot |
-| `click_at` | Fallback: click by x,y coordinates |
-| `type_text` | Type into inputs with optional `submit_after` (auto-Enter for search bars) |
-| `scroll` | Scroll up/down to reveal content |
-| `navigate` | Go to a different website |
-| `go_back` | Return to the previous page |
-| `search_web` | Background web search without leaving the current page |
-| `take_notes` | Save observations that persist across page navigations |
-| `ask_user` | Pause and ask for confirmation before destructive actions |
-| `genui` | Generate a rich newspaper-style dashboard from collected research data |
-
-### 📰 GenUI Dashboard System
-
-The agent can generate **rich, newspaper-style dashboards** with AI-composed content:
-
-- **Newspaper Layout** — `row` blocks place callouts, stats, and insights side-by-side
-- **Content Magazine** — LLM writes real summaries and analysis, not just link lists
-- **32+ Block Types** — titles, text, callouts, feed cards, key-value pairs, timelines, code blocks, and more
-- **Deep Research** — Agent navigates to source pages, reads articles, and extracts real facts before generating
-- **Date-Aware** — Automatically filters search results to the past month for news queries
-
-### 🧠 Agent Memory (Muscle Memory System)
-
-The agent **learns from your feedback**. When you verify a task with 👍, the workflow is stored as a reflex:
-
-- **Semantic matching** — recognizes similar tasks even with different wording
-- **Cross-domain lookup** — finds matching workflows across all websites
-- **Auto-deduplication** — similar intents merge instead of creating duplicates
-- **Local embeddings** — all-MiniLM-L6-v2 runs on-device, no API calls needed
-- **Memory Manager UI** — Settings → Memory to view, verify, and manage all learned workflows
-
-### 🔄 Self-Healing Agent Loop
-
-When the agent gets stuck repeating a failing action, it **heals itself**:
-1. Detects 2 consecutive identical failures
-2. Auto-scrolls the page (element might be off-screen)
-3. Injects a recovery instruction into its history
-4. Takes a fresh screenshot + DOM snapshot
-5. Retries with a completely different approach
-
-> No more infinite loops. No wasted API calls. The agent adapts and completes the task.
-
----
-
-## 🔬 Deep Research Engine
-
-> **A 4-phase pipeline that turns natural queries into rich dashboards.**
-
-When BiamOS classifies a query as research (e.g. *"What's happening with OpenClaw?"*), it bypasses the browser agent entirely and runs a dedicated research pipeline:
-
-```
-User query → Intent Classifier → "RESEARCH"
-    │
-    ├── Phase 1: SEARCH — LLM generates 2-3 focused queries → DuckDuckGo (parallel)
-    ├── Phase 2: FETCH  — Downloads top 3 article pages (15,000 chars each)
-    ├── Phase 3: SYNTHESIZE — MODEL_THINKING (gemini-2.5-flash) generates GenUI dashboard
-    └── Phase 4: DELIVER — SSE streams progress + final dashboard to frontend
-```
-
-### Key Features
-
-| Feature | Detail |
-|---------|--------|
-| **MODEL_THINKING** | Dashboard synthesis uses `gemini-2.5-flash` with reasoning for accurate, hallucination-free output |
-| **Parallel Search** | All DuckDuckGo queries execute simultaneously via `Promise.all` (3x faster) |
-| **Smart Fallback** | Auto-retries without time filter, then with raw query, when niche topics return 0 results |
-| **Ad Filtering** | DDG sponsored results filtered at DOM level (`result--ad` class + `ad_provider` URLs) |
-| **Intent Splitter** | Combined queries like *"check news and post on X"* → RESEARCH first, then ACTION_WITH_CONTEXT |
-| **15K Context Window** | Each page gets 15,000 chars (up from 2,000) — full articles, not just headers |
-| **Abort on Action** | Research streams auto-cancel when user starts a browser agent action |
-| **Dashboard Minimize** | Dashboard auto-collapses when agent starts, revealing the webview |
-
-### Intent Classification (CRUD-Aware)
-
-The classifier maps intents to **CRUD tool permissions**:
-
-| Mode | Method | Tools Allowed |
-|------|--------|---------------|
-| `RESEARCH` | GET | Research engine only |
-| `ACTION` | GET/POST/PUT/DELETE | Browser agent (method-scoped tools) |
-| `ACTION_WITH_CONTEXT` | POST | Agent with dashboard data injected |
-| `CONTEXT_QUESTION` | GET | RAG chat over current page |
-
-
-## ✨ Core Features
-
-<table>
-<tr>
-<td width="50%">
-
-### 🔌 Plugin-Based Integrations & Shop
-Pre-built templates: Weather, Crypto, Wikipedia, Exchange Rates, Hacker News, and more. Create custom integrations via **AI Discovery** (paste any URL), **Swagger import**, or manual JSON schema. Toggle and filter integrations from the sidebar.
-
-### 🧩 Dynamic UI Blocks
-The LLM generates fully customizable UI blocks — weather cards, data tables, numbered lists, charts. **Pin** any block to your canvas to build a persistent, custom dashboard that updates in the background.
-
-### 📌 Pinned Data Cards
-Pin any query result to your workspace. Pinned cards **auto-refresh** on a schedule, keeping your dashboard always up-to-date without manual intervention.
-
-</td>
-<td width="50%">
-
-### 🗣️ Voice Control & TTS
-Speak to the System Assistant. It classifies your intent, fetches data, and **replies with audio** using text-to-speech. Full hands-free operation.
-
-### 🔒 Data Audit & Local Privacy
-Open the **Data Audit** panel in Settings. See exactly what is stored: API keys, agent prompts, browser cookies, integration configs. Wipe **everything** with a single "Delete All Data" button. All data lives in a local SQLite database. Nothing leaves your machine unless you ask.
-
-### 📑 Multi-Tab Browser
-A full tabbed browsing experience with back/forward/refresh, persistent login sessions, and **webview-only zoom** (sidebar stays fixed). Each tab remembers its URL, context, and copilot chat history independently.
-
-</td>
-</tr>
-</table>
+![Deep Research GenUI Dashboard](./docs/assets/deep-research-dashboard.png)
 
 ---
 
@@ -287,11 +128,10 @@ A full tabbed browsing experience with back/forward/refresh, persistent login se
 │  ┌───────────────────────┐    ┌──────────────────────────────┐  │
 │  │   React 19 Frontend   │    │      Hono REST Backend       │  │
 │  │                       │    │                              │  │
-│  │  Canvas Workspace     │◄──►│  Intent Pipeline (6 stages)  │  │
-│  │  Context Sidebar      │    │  Context Engine (DOM → LLM)  │  │
-│  │  Dynamic UI Blocks    │    │  Agent Router & Scorer       │  │
-│  │  Integration Sidebar  │    │  Integration Manager         │  │
-│  │  Settings & Audit     │    │  Context Chat (Web Search)   │  │
+│  │  Spatial Canvas       │◄──►│  Intent Router (6 stages)    │  │
+│  │  Lura Command Center  │    │  Context Engine (DOM → LLM)  │  │
+│  │  GenUI Block System   │    │  Database / Workflow Memory  │  │
+│  │  Data Audit / Setup   │    │  DuckDuckGo Deep Research    │  │
 │  │                       │    │                              │  │
 │  │  TypeScript + MUI     │    │  Drizzle ORM + SQLite        │  │
 │  └───────────────────────┘    └──────────────────────────────┘  │
@@ -299,22 +139,14 @@ A full tabbed browsing experience with back/forward/refresh, persistent login se
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-| Layer | Stack | Role |
-|-------|-------|------|
-| **Frontend** | React 19, TypeScript, MUI | Canvas workspace, dynamic UI blocks, browser tabs |
-| **Backend** | Hono, Drizzle ORM, SQLite | AI pipeline, intent classification, research engine, agent routing |
-| **Desktop** | Electron 34 | Native webview, Ghost-Auth, TTS, session persistence |
-| **AI** | OpenRouter (Gemini 2.5 Flash, GPT-4o, Claude) | Multi-model: MODEL_FAST for classification, MODEL_THINKING for synthesis |
-| **Research** | DuckDuckGo + page-fetcher + Jina Reader | 4-phase pipeline: Search → Fetch → Synthesize → Deliver |
-
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - **Node.js** 18+ and **npm**
 - An **OpenRouter API key** → [Get one here](https://openrouter.ai/keys)
+- *(Optional)* A **Tavily API key** (`TAVILY_API_KEY`) setup in the `.env` file for enhanced Deep Research fidelity.
 
 ### Installation
 
@@ -323,43 +155,29 @@ A full tabbed browsing experience with back/forward/refresh, persistent login se
 git clone https://github.com/BiamOS/BiamOS.git
 cd BiamOS
 
-# Install all dependencies (frontend + backend + electron)
+# Setup Environment Variables (crucial for Research / Web Agents)
+cp .env.example .env
+
+# Install all workspace dependencies (frontend + backend + electron)
 npm install
 
-# Start the full application
+# Start the full application environment
 npm run electron
 ```
 
-On first launch, go to **Settings → LLM** and paste your OpenRouter API key.
+On first launch, the Apple Pro Dark **Onboarding Screen** will guide you to input your active LLM API Key.
 
-> **That's it.** BiamOS auto-starts the backend, launches the frontend, and opens the desktop window. No Docker, no cloud, no config files.
+> **Zero Cloud Configs:** BiamOS natively spins up the backend Node server, launches the React 19 Vite dev-server, and wraps it cleanly in an Electron window entirely on local-host.
 
 ---
 
 ## 📋 Changelog
 
-BiamOS has a **built-in Changelog panel** (Settings → Changelog) that tracks every feature, improvement, and fix across releases.
-
-See the latest changes: **v2.1.0-alpha** — Deep Research Engine with MODEL_THINKING, parallel DuckDuckGo search, CRUD intent classification, and smart search fallbacks.
-
----
-
-## 🛣️ Roadmap
-
-- [x] **Autopilot Mode** — Multi-step browser automation (click, fill, submit) ✅ *v1.0.0-alpha*
-- [x] **Agent Memory** — Learns from verified tasks, replays as reflexes ✅ *v1.1.0-alpha*
-- [x] **Self-Healing Agent** — Auto-recovers from stuck loops ✅ *v1.1.0-alpha*
-- [x] **GenUI Dashboard** — AI-generated newspaper-style dashboards ✅ *v1.2.0-alpha*
-- [x] **Deep Research Engine** — 4-phase pipeline with MODEL_THINKING ✅ *v2.1.0-alpha*
-- [x] **Parallel DuckDuckGo Search** — Promise.all + smart fallback for niche topics ✅ *v2.1.0-alpha*
-- [x] **CRUD Intent Classification** — Least-privilege tool scoping per HTTP method ✅ *v2.1.0-alpha*
-- [x] **Research ↔ Action Decoupling** — Auto-abort, dashboard minimize, intent splitter ✅ *v2.1.0-alpha*
-- [ ] **DuckDuckGo Service Centralization** — Single `duckduckgo.ts` replacing 3 duplicate parsers
-- [ ] **Plugin Marketplace** — Community-created integrations
-- [ ] **Scheduled Agents** — Cron-based data collection and alerts
-- [ ] **macOS & Linux Builds** — Cross-platform Electron packaging
-- [ ] **Offline Mode** — Local LLM support (Ollama / llama.cpp)
-- [ ] **Team Workspaces** — Shared dashboards with role-based access
+Inside the OS settings, you can check the exact changelog history. Some key **v2.2.0-alpha** notes:
+- Applied complete Asphalt UI (Black/Gray/Magenta) redesign.
+- Replaced outdated Sidebars with unified Lura Command Center.
+- Injected URL-First Web Navigation and Anti-Loop Guard to fix SPA Agent looping.
+- Revamped Onboarding Modal and native SQLite Memory Management.
 
 ---
 
@@ -378,5 +196,6 @@ You are free to use, modify, and distribute this software under the terms of the
 
 <p align="center">
   <a href="https://github.com/BiamOS/BiamOS/issues">Report Bug</a> •
-  <a href="https://github.com/BiamOS/BiamOS/issues">Request Feature</a>
+  <a href="https://github.com/BiamOS/BiamOS/issues">Request Feature</a> •
+  <a href="https://www.youtube.com/@BiamOS_AI/videos">📺 YouTube Channel</a>
 </p>

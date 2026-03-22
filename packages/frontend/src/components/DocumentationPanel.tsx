@@ -182,7 +182,7 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
         <Box>
             {/* Header */}
             <Box sx={{ mb: 3 }}>
-                <Typography variant="h5" sx={gradientTitleSx(GRADIENTS.titleCyan)}>
+                <Typography variant="h5" sx={gradientTitleSx()}>
                     📖 Documentation
                 </Typography>
                 <Typography variant="caption" sx={{ color: COLORS.textSecondary, lineHeight: 1.5, display: "block", maxWidth: 600 }}>
@@ -192,7 +192,7 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
             </Box>
 
             {/* ═══ Section 1: Architecture ═══ */}
-            <DocSection emoji="🏗️" title="Architecture Overview" color="#00c8ff" defaultOpen>
+            <DocSection emoji="🏗️" title="Architecture Overview" color={COLORS.accentLight} defaultOpen>
                 <Typography sx={textSx}>
                     BiamOS is an <strong>AI-native workspace OS</strong> built as an Electron desktop app.
                     The frontend (React + Vite) communicates with a local backend (Hono HTTP server) over{" "}
@@ -248,7 +248,7 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
             </DocSection>
 
             {/* ═══ Section 2: Intent Pipeline ═══ */}
-            <DocSection emoji="⚡" title="Intent Pipeline — How Queries Work" color="#581cff">
+            <DocSection emoji="⚡" title="Intent Pipeline — How Queries Work" color={COLORS.accent}>
                 <Typography sx={textSx}>
                     When you type a query in BiamOS, it goes through a <strong>multi-stage AI pipeline</strong>.
                     Each stage is handled by a specialized LLM agent. The pipeline transforms your natural language
@@ -256,11 +256,11 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                 </Typography>
 
                 <Typography sx={headingSx}>Pipeline Stages</Typography>
-                <FlowStep step="1" label="Concierge (Cache)" description="Checks if the query matches a known group embedding. If yes, skips classification." color="#00c8ff" />
-                <FlowStep step="2" label="Classifier" description="Determines the intent type: API_CALL, WEB_SEARCH, NAVIGATE, OPEN_APP, GENERAL_KNOWLEDGE." color="#581cff" />
-                <FlowStep step="3" label="Router" description="Selects the best integration endpoint using semantic matching + LLM reasoning." color="#00dc64" />
-                <FlowStep step="4" label="Param Extractor" description="Extracts API parameters from the query (e.g., 'weather in Berlin' → city=Berlin)." color="#ff9800" />
-                <FlowStep step="5" label="API Call" description="Executes the HTTP request with extracted params and auth config." color="#00c8ff" />
+                <FlowStep step="1" label="Concierge (Cache)" description="Checks if the query matches a known group embedding. If yes, skips classification." color={COLORS.accentLight} />
+                <FlowStep step="2" label="Classifier" description="Determines the intent type: API_CALL, WEB_SEARCH, NAVIGATE, OPEN_APP, GENERAL_KNOWLEDGE." color={COLORS.accent} />
+                <FlowStep step="3" label="Router" description="Selects the correct integration (e.g., Jira, Spotify) based on intent." color={COLORS.accentDark} />
+                <FlowStep step="4" label="Param Extractor" description="Extracts required API payload variables using Llama." color={COLORS.accentLight} />
+                <FlowStep step="5" label="API Call" description="Executes the HTTP request with extracted params and auth config." color={COLORS.accent} />
                 <FlowStep step="6" label="Guard" description="Validates the API response — retries on error or redirects if needed." color="#ff6b6b" />
                 <FlowStep step="7" label="Layout Architect" description="AI generates a block-based layout (JSON) for displaying the API response data." color="#e040fb" />
                 <FlowStep step="8" label="UI Renderer" description="React renders the layout as visual blocks (cards, charts, lists, etc.)." color="#40c4ff" />
@@ -289,8 +289,8 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                     It extracts DOM content, detects the page context, and provides contextual AI insights.
                 </Typography>
                 <FlowStep step="1" label="DOM Extraction" description="Strips scripts/styles, extracts meaningful text from the active webview." color="#00dc64" />
-                <FlowStep step="2" label="Context Analysis" description="LLM identifies the page topic, key entities, and actionable data." color="#00c8ff" />
-                <FlowStep step="3" label="Hint Generation" description="Suggests relevant actions (e.g., 'Check stock price' when on a finance page)." color="#581cff" />
+                <FlowStep step="2" label="Context Analysis" description="LLM identifies the page topic, key entities, and actionable data." color={COLORS.accentLight} />
+                <FlowStep step="3" label="Hint Generation" description="Suggests relevant actions (e.g., 'Check stock price' when on a finance page)." color={COLORS.accent} />
                 <FlowStep step="4" label="Chat Interface" description="Users can ask follow-up questions — Copilot uses web search + page context." color="#ff9800" />
 
                 <Typography sx={headingSx}>AI Create (Builder Pipeline)</Typography>
@@ -298,7 +298,7 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                     The Builder takes an API documentation URL and auto-generates a full integration with endpoints,
                     param schemas, and block layouts. It uses two specialized agents:
                 </Typography>
-                <FlowStep step="1" label="Blueprint Generator" description="Reads API docs and creates a structured endpoint definition (name, method, params, triggers)." color="#581cff" />
+                <FlowStep step="1" label="Blueprint Generator" description="Reads API docs and creates a structured endpoint definition (name, method, params, triggers)." color={COLORS.accent} />
                 <FlowStep step="2" label="Docs Verifier" description="Cross-checks the blueprint against the original docs — catches hallucinated endpoints." color="#ff6b6b" />
                 <FlowStep step="3" label="Save & Embed" description="Stores the integration in the DB and generates embeddings for semantic routing." color="#00dc64" />
 

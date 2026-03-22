@@ -209,21 +209,133 @@ Rules:
 }
 
 /**
- * Execute DuckDuckGo search with OG enrichment for each query.
+ * Execute search with API fallbacks (Tavily -> SerpAPI -> DuckDuckGo).
  */
 async function executeSearches(queries: string[]): Promise<SearchResult[]> {
+    let tavilyKey = process.env.TAVILY_API_KEY;
+    let serpapiKey = process.env.SERPAPI_API_KEY;
+
+    // Try DB config gracefully
+    try {
+        const { db } = await import("../db/db.js");
+        const { systemSettings } = await import("../db/schema.js");
+        const { eq } = await import("drizzle-orm");
+        if (!tavilyKey) {
+            const [tRow] = await db.select().from(systemSettings).where(eq(systemSettings.key, "TAVILY_API_KEY")).limit(1);
+            if (tRow?.value) tavilyKey = tRow.value;
+        }
+        if (!serpapiKey) {
+            const [sRow] = await db.select().from(systemSettings).where(eq(systemSettings.key, "SERPAPI_API_KEY")).limit(1);
+            if (sRow?.value) serpapiKey = sRow.value;
+        }
+    } catch { /* DB not accessible */ }
+
+    // If API keys exist, handle them synchronously to avoid rate limits
+    if (tavilyKey) {
+        log.info(`  🔬 [Research] Using Tavily API for ${queries.length} queries`);
+        const allResults: { title: string; snippet: string; url: string; domain: string; favicon: string }[] = [];
+        for (const query of queries) {
+            try {
+                const results = await searchTavily(query, tavilyKey);
+                allResults.push(...results);
+            } catch (err) {
+                log.warn(`  🧪 [Research] Tavily search failed for "${query}": ${(err as Error).message}`);
+            }
+        }
+        return await enrichWithOg(allResults);
+    }
+
+    if (serpapiKey) {
+        log.info(`  🔬 [Research] Using SerpAPI for ${queries.length} queries`);
+        const allResults: { title: string; snippet: string; url: string; domain: string; favicon: string }[] = [];
+        for (const query of queries) {
+            try {
+                const results = await searchSerpApi(query, serpapiKey);
+                allResults.push(...results);
+            } catch (err) {
+                log.warn(`  🧪 [Research] SerpAPI search failed for "${query}": ${(err as Error).message}`);
+            }
+        }
+        return await enrichWithOg(allResults);
+    }
+
+    // Fallback parallel DuckDuckGo HTML with OG
+    log.info(`  🔬 [Research] No API keys. Falling back to DuckDuckGo HTML for ${queries.length} queries`);
     const searchPromises = queries.map(async (query) => {
         try {
             const results = await searchDdg(query);
             return await enrichWithOg(results);
         } catch (err) {
-            log.warn(`  \u{1F52C} [Research] Search failed for "${query}": ${(err as Error).message}`);
+            log.warn(`  \u{1F52C} [Research] DuckDuckGo search failed for "${query}": ${(err as Error).message}`);
             return [];
         }
     });
 
     const allResults = (await Promise.all(searchPromises)).flat();
     return allResults;
+}
+
+/** Tavily Search API wrapper */
+async function searchTavily(query: string, apiKey: string): Promise<{ title: string; snippet: string; url: string; domain: string; favicon: string }[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const resp = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_key: apiKey,
+                query: query,
+                search_depth: "advanced",
+                include_raw_content: false,
+                include_answers: false,
+                max_results: 8
+            }),
+            signal: controller.signal
+        });
+        if (!resp.ok) throw new Error(`Tavily API returned ${resp.status}`);
+        const data = await resp.json();
+        
+        return (data.results || []).map((r: any) => {
+            let domain = "";
+            try { domain = new URL(r.url).hostname.replace("www.", ""); } catch {}
+            return {
+                title: r.title || "",
+                snippet: r.content || r.snippet || "",
+                url: r.url,
+                domain: domain,
+                favicon: domain ? `https://icons.duckduckgo.com/ip3/${domain}.ico` : ""
+            };
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+/** SerpAPI Search wrapper */
+async function searchSerpApi(query: string, apiKey: string): Promise<{ title: string; snippet: string; url: string; domain: string; favicon: string }[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const searchUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}&engine=google&num=8`;
+        const resp = await fetch(searchUrl, { signal: controller.signal });
+        if (!resp.ok) throw new Error(`SerpAPI returned ${resp.status}`);
+        const data = await resp.json();
+        
+        return (data.organic_results || []).map((r: any) => {
+            let domain = "";
+            try { domain = new URL(r.link).hostname.replace("www.", ""); } catch {}
+            return {
+                title: r.title || "",
+                snippet: r.snippet || "",
+                url: r.link,
+                domain: domain,
+                favicon: domain ? `https://icons.duckduckgo.com/ip3/${domain}.ico` : ""
+            };
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 /**

@@ -109,8 +109,8 @@ export const ListBlock = React.memo(function ListBlock({
                                         width: 6,
                                         height: 6,
                                         borderRadius: "50%",
-                                        bgcolor: isLink ? COLORS.accent : COLORS.cyan,
-                                        boxShadow: `0 0 6px ${isLink ? COLORS.accent : COLORS.cyan}40`,
+                                        bgcolor: isLink ? COLORS.accent : COLORS.accentLight,
+                                        boxShadow: `0 0 6px ${isLink ? COLORS.accent : COLORS.accentLight}40`,
                                     }}
                                 />
                             </ListItemIcon>

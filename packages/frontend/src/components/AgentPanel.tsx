@@ -12,6 +12,7 @@ import {
     Box,
     Typography,
     Alert,
+    Tooltip,
 } from "@mui/material";
 import {
     Token as TokenIcon,
@@ -69,14 +70,14 @@ const statCardSx = {
 };
 
 const AGENT_COLORS = [
-    "#581cff", // purple
-    "#00c8ff", // cyan
-    "#00dc64", // green
-    "#ff6b6b", // red
-    "#ff9800", // orange
-    "#e040fb", // pink
-    "#40c4ff", // light blue
-    "#ffd740", // amber
+    COLORS.accent,       // BiamOS Magenta
+    COLORS.accentLight,  // Bright Magenta
+    COLORS.accentDark,   // Deep Magenta
+    COLORS.green,        // Apple system green
+    COLORS.red,          // Apple system red
+    COLORS.yellow,       // Apple system yellow
+    COLORS.accentLight,  // fallback
+    COLORS.accent,       // fallback
 ];
 
 // ─── Component ──────────────────────────────────────────────
@@ -215,14 +216,16 @@ export const AgentPanel = React.memo(function AgentPanel() {
                         <Typography variant="h6" sx={{ ...gradientTitleSx(), fontSize: "1.3rem" }}>
                             {(systemStats?.total_tokens ?? totalTokens).toLocaleString()}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                            Total Tokens
-                        </Typography>
+                        <Tooltip title="Total tokens used globally, including the Chat Router and Core Engine." arrow placement="top">
+                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, textDecoration: "underline", textDecorationStyle: "dotted", cursor: "help" }}>
+                                System Tokens
+                            </Typography>
+                        </Tooltip>
                     </Box>
 
                     <Box sx={statCardSx}>
-                        <ApiIcon sx={{ fontSize: 24, color: "rgba(0, 200, 255, 0.7)", mb: 0.5 }} />
-                        <Typography variant="h6" sx={{ ...gradientTitleSx(GRADIENTS.titleCyan), fontSize: "1.3rem" }}>
+                        <ApiIcon sx={{ fontSize: 24, color: accentAlpha(0.7), mb: 0.5 }} />
+                        <Typography variant="h6" sx={{ ...gradientTitleSx(), fontSize: "1.3rem" }}>
                             {systemStats?.api_calls ?? totalCalls}
                         </Typography>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
@@ -312,7 +315,7 @@ export const AgentPanel = React.memo(function AgentPanel() {
 
             {/* ─── Intent Pipeline ──── */}
             <Box sx={{ mb: 3 }}>
-                <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: COLORS.cyan }}>
+                <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: COLORS.accent }}>
                     ⚡ Intent Pipeline
                 </Typography>
                 <Typography
@@ -328,7 +331,7 @@ export const AgentPanel = React.memo(function AgentPanel() {
 
             {/* ─── Builder Pipeline ──── */}
             <Box>
-                <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: "rgba(88,28,255,0.8)" }}>
+                <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: COLORS.accentLight }}>
                     🔧 Builder Pipeline
                 </Typography>
                 <Typography
@@ -345,7 +348,7 @@ export const AgentPanel = React.memo(function AgentPanel() {
             {/* ─── Copilot Pipeline ──── */}
             {copilotAgents.length > 0 && (
                 <Box>
-                    <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: "rgba(0,200,100,0.8)" }}>
+                    <Typography sx={{ ...sectionLabelSx, mb: 1.5, color: COLORS.accentDark }}>
                         🌐 Copilot Pipeline
                     </Typography>
                     <Typography

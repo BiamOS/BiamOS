@@ -328,17 +328,18 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                     <Typography variant="body2" sx={{ color: COLORS.textMuted, mb: 2 }}>This will permanently delete:</Typography>
                     {[
                         "🔑 API keys & user settings",
-                        "📊 Usage logs (query history)",
+                        "🧠 Agent Memory (Workflows)",
+                        "📜 Custom Prompt Modules",
+                        "📊 Usage logs & Browsing history",
                         "📈 Agent statistics",
                         "🧩 All integrations",
                         "📌 Pinned blocks & scraper endpoints",
-                        "📋 Changelog entries",
                         "🍪 Browser sessions (cookies, logins)",
                     ].map((item) => (
                         <Typography key={item} variant="body2" sx={{ color: COLORS.textPrimary, py: 0.3 }}>{item}</Typography>
                     ))}
                     <Typography variant="body2" sx={{ color: "#22C55E", mt: 2, fontWeight: 600 }}>
-                        ✅ Agent pipeline configurations are preserved.
+                        ✅ Application files and Changelogs are preserved.
                     </Typography>
                 </DialogContent>
                 <DialogActions sx={{ px: 3, pb: 2.5 }}>
@@ -351,6 +352,8 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                                 const json = await res.json();
                                 if (json.ok) {
                                     if (window.electronAPI?.clearSession) await window.electronAPI.clearSession();
+                                    // Wipe local browser caches (tabs, pinned layouts, preferences)
+                                    localStorage.clear();
                                     // Reload to clear all React state (pinned cards, etc.)
                                     window.location.reload();
                                 } else {

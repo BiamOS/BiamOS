@@ -343,19 +343,17 @@ export function IntegrationManager() {
                                         px: 2,
                                         ...(showBuilder
                                             ? {
-                                                borderColor: "rgba(0, 200, 255, 0.3)",
-                                                color: "rgba(0, 200, 255, 0.9)",
+                                                borderColor: accentAlpha(0.4),
+                                                color: COLORS.accent,
                                                 "&:hover": {
-                                                    borderColor: "rgba(0, 200, 255, 0.6)",
-                                                    bgcolor: "rgba(0, 200, 255, 0.05)",
+                                                    borderColor: accentAlpha(0.7),
+                                                    bgcolor: accentAlpha(0.05),
                                                 },
                                             }
                                             : {
-                                                background:
-                                                    "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)",
+                                                background: `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`,
                                                 "&:hover": {
-                                                    background:
-                                                        "linear-gradient(135deg, #6b33ff 0%, #33d4ff 100%)",
+                                                    background: `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`,
                                                 },
                                             }),
                                     }}
@@ -369,8 +367,8 @@ export function IntegrationManager() {
                                     onClick={fetchIntegrations}
                                     disabled={isLoading}
                                     sx={{
-                                        color: "rgba(0, 200, 255, 0.8)",
-                                        "&:hover": { bgcolor: "rgba(0, 200, 255, 0.1)" },
+                                        color: accentAlpha(0.9),
+                                        "&:hover": { bgcolor: accentAlpha(0.08) },
                                     }}
                                 >
                                     <RefreshIcon />

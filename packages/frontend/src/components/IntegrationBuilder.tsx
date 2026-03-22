@@ -154,9 +154,9 @@ export function IntegrationBuilder({ onClose, onCreated }: CapsuleBuilderProps) 
                     bgcolor: "rgba(0, 200, 255, 0.06)",
                     border: "1px solid rgba(0, 200, 255, 0.15)",
                 }}>
-                    <InfoIcon sx={{ fontSize: 16, color: COLORS.cyan, flexShrink: 0 }} />
-                    <Typography sx={{ fontSize: "0.75rem", color: COLORS.textSecondary }}>
-                        <strong style={{ color: COLORS.cyan }}>GET</strong> endpoints are fully tested. <strong style={{ color: "#ffb400" }}>POST</strong>, PUT, PATCH are supported but not yet verified — use the method selector per endpoint to try them.
+                    <InfoIcon sx={{ fontSize: 16, color: COLORS.accentLight, flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                        <strong style={{ color: COLORS.accentLight }}>GET</strong> endpoints are fully tested. <strong style={{ color: "#ffb400" }}>POST</strong>, PUT, PATCH are supported but not yet verified — use the method selector per endpoint to try them.
                     </Typography>
                 </Box>
             </Box>

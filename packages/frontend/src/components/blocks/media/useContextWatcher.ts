@@ -48,6 +48,7 @@ interface NavigationSync {
 /** Helper: test if a hint should survive auto-analysis clearing */
 function isProtectedHint(h: ContextHint): boolean {
     return h.reason === "Manual query"
+        || h.reason === "Context question"   // ← Context Chat answers (Omnibar "Fasse zusammen")
         || h.query.startsWith("🤖")
         || h.query.startsWith("📊")
         || h.reason === "Research Engine";
@@ -185,6 +186,14 @@ export function useContextWatcher(
         // ─── Trigger Context Analysis
         let retryCount = 0;
         const triggerContextAnalysis = async () => {
+            // Bug fix: Never pull or analyze context on empty/research cards.
+            // This prevents race conditions where auto-analysis wipes out newly injected Research hints.
+            const currentVvUrl = webviewRef.current?.getURL?.() || initialUrl;
+            if (currentVvUrl === 'about:blank' || initialUrl === 'about:blank') {
+                debug.log("🧠 [Trigger] SKIP — about:blank page (Preserving manual/research hints)");
+                return;
+            }
+
             // Bug 2 fix: suppress auto-analysis when agent or research is active
             if (agentStatusRef.current !== "idle") {
                 debug.log("🧠 [Trigger] SKIP — agent active:", agentStatusRef.current);

@@ -11,11 +11,11 @@
 import type { PromptModule } from "./types.js";
 
 export const phaseActionModule: PromptModule = {
-    id: "phase-action",
-    name: "Action Phase Rules",
-    priority: 10,
-    match: { phases: ["action"] },
-    rules: `═══════════════════════════════════════════════════
+  id: "phase-action",
+  name: "Action Phase Rules",
+  priority: 10,
+  match: { phases: ["action"] },
+  rules: `═══════════════════════════════════════════════════
   PHASE 3: ACTION (DOM Interaction)
   Tools: navigate, click, click_at, type_text, scroll, go_back
 ═══════════════════════════════════════════════════

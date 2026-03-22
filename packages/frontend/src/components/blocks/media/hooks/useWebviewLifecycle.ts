@@ -29,7 +29,7 @@ interface AgentActions {
 
 type SetContextHints = React.Dispatch<React.SetStateAction<ContextHint[]>>;
 
-interface LifecycleConfig {
+export interface LifecycleConfig {
     webviewRef: RefObject<any>;
     isElectron: boolean;
     initialUrl: string;
@@ -37,44 +37,6 @@ interface LifecycleConfig {
     agentTaskRef: RefObject<string>;
     setContextHints: SetContextHints;
     genuiBlocks?: any[];
-    dashboardDismissed: boolean;
-    setDashboardDismissed: (v: boolean) => void;
-}
-
-// ─── Dashboard Dismissal Effect ─────────────────────────────
-
-function useDashboardDismissal(
-    genuiBlocks: any[] | undefined,
-    dashboardDismissed: boolean,
-    setDashboardDismissed: (v: boolean) => void,
-    agentSteps: Array<{ action: string }>,
-    agentStatus: string,
-) {
-    useEffect(() => {
-        if (!genuiBlocks || dashboardDismissed) return;
-
-        // Case 1: New agent task started — steps reset to empty/few = fresh run
-        if (agentStatus === 'running' && agentSteps.length <= 1) {
-            setDashboardDismissed(true);
-            return;
-        }
-
-        // Case 2: Agent navigated away after dashboard was generated
-        let genuiIdx = -1;
-        for (let i = agentSteps.length - 1; i >= 0; i--) {
-            if (agentSteps[i].action === 'genui' || agentSteps[i].action === 'done') {
-                genuiIdx = i;
-                break;
-            }
-        }
-        if (genuiIdx < 0) return;
-        const hasActionAfterDashboard = agentSteps.slice(genuiIdx + 1).some((s) =>
-            ['navigate', 'click', 'click_at', 'type_text'].includes(s.action)
-        );
-        if (hasActionAfterDashboard) {
-            setDashboardDismissed(true);
-        }
-    }, [agentSteps, agentStatus, genuiBlocks, dashboardDismissed, setDashboardDismissed]);
 }
 
 // ─── Agent ↔ Sidebar Sync Effect ────────────────────────────
@@ -152,6 +114,10 @@ function useAgentSidebarSync(
                     data: {
                         summary,
                         _source: "page_context",
+                        _task: taskLabel,
+                        _steps: steps,
+                        _status: status,
+                        _currentAction: currentAction,
                         ...(isDone && lastWorkflowId ? {
                             _workflowId: lastWorkflowId,
                             _sendFeedback: sendFeedback,
@@ -348,17 +314,7 @@ export function useWebviewLifecycle(config: LifecycleConfig) {
     const {
         webviewRef, isElectron, initialUrl,
         agent, agentTaskRef, setContextHints,
-        genuiBlocks, dashboardDismissed, setDashboardDismissed,
     } = config;
-
-    // Dashboard auto-dismiss
-    useDashboardDismissal(
-        genuiBlocks,
-        dashboardDismissed,
-        setDashboardDismissed,
-        agent.agentState.steps,
-        agent.agentState.status,
-    );
 
     // Agent state → sidebar chat hint sync
     useAgentSidebarSync(

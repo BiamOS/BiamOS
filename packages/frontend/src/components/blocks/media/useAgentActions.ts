@@ -567,46 +567,83 @@ export function useAgentActions(
         let shouldContinue = true;
         let consecutiveFailures = 0;
 
-        while (shouldContinue && !abortRef.current && stepCount < MAX_STEPS) {
-            stepCount++;
-            shouldContinue = await runStep(task);
-
-            const lastStep = stepsRef.current[stepsRef.current.length - 1];
-            if (lastStep?.result?.startsWith("Action failed")) {
-                consecutiveFailures++;
-                if (consecutiveFailures >= 2) {
-                    setAgentState(prev => ({
-                        ...prev,
-                        status: "error",
-                        currentAction: `❌ Stopped: ${consecutiveFailures} consecutive failures`,
-                    }));
-                    shouldContinue = false;
+        try {
+            // Guard: Initial about:blank navigation
+            const wv = webviewRef.current as any;
+            if (wv && wv.getURL) {
+                const currentUrl = wv.getURL();
+                if (currentUrl === 'about:blank' || currentUrl.startsWith('data:')) {
+                    debug.log("🤖 [Agent] Webview is blank. Navigating to google.com first...");
+                    setAgentState(prev => ({ ...prev, currentAction: "🌐 Loading search engine..." }));
+                    try {
+                        if (wv.loadURL) {
+                            // Hard 5s timeout — if Electron doesn't navigate in time,
+                            // we proceed anyway. The agent will handle the blank state.
+                            const navTimeout = new Promise<void>((_, reject) =>
+                                setTimeout(() => reject(new Error('Navigation timeout (5s)')), 5000)
+                            );
+                            await Promise.race([
+                                (async () => {
+                                    await wv.loadURL('https://www.google.com');
+                                    await waitForPageReady('initial-load');
+                                })(),
+                                navTimeout,
+                            ]);
+                        }
+                    } catch (e) {
+                        debug.log("🤖 [Agent] Initial navigation failed or timed out — continuing anyway:", e);
+                    }
                 }
-            } else {
-                consecutiveFailures = 0;
             }
-        }
 
-        if (stepCount >= MAX_STEPS) {
+            while (shouldContinue && !abortRef.current && stepCount < MAX_STEPS) {
+                stepCount++;
+                shouldContinue = await runStep(task);
+
+                const lastStep = stepsRef.current[stepsRef.current.length - 1];
+                if (lastStep?.result?.startsWith("Action failed")) {
+                    consecutiveFailures++;
+                    if (consecutiveFailures >= 2) {
+                        setAgentState(prev => ({
+                            ...prev,
+                            status: "error",
+                            currentAction: `❌ Stopped: ${consecutiveFailures} consecutive failures`,
+                        }));
+                        shouldContinue = false;
+                    }
+                } else {
+                    consecutiveFailures = 0;
+                }
+            }
+
+            if (stepCount >= MAX_STEPS) {
+                setAgentState(prev => ({
+                    ...prev,
+                    status: "done",
+                    currentAction: `⚠️ Step limit reached (${MAX_STEPS}/${MAX_STEPS}). Task may be incomplete — try breaking it into smaller commands.`,
+                }));
+            }
+        } catch (fatalError: any) {
+            debug.log("🤖 [Agent] Fatal runtime error in startAgent loop:", fatalError);
             setAgentState(prev => ({
                 ...prev,
-                status: "done",
-                currentAction: `⚠️ Step limit reached (${MAX_STEPS}/${MAX_STEPS}). Task may be incomplete — try breaking it into smaller commands.`,
+                status: "error",
+                currentAction: `❌ Fatal Error: ${fatalError?.message || 'Unknown crash'}`,
             }));
+        } finally {
+            // Auto-dismiss errors after 8s
+            setTimeout(() => {
+                setAgentState(prev => {
+                    if (prev.status === "error") {
+                        return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
+                    }
+                    if (prev.status === "done" && !prev.lastWorkflowId) {
+                        return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
+                    }
+                    return prev;
+                });
+            }, 8000);
         }
-
-        // Auto-dismiss errors after 8s
-        setTimeout(() => {
-            setAgentState(prev => {
-                if (prev.status === "error") {
-                    return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
-                }
-                if (prev.status === "done" && !prev.lastWorkflowId) {
-                    return { ...prev, status: "idle", currentAction: "", pauseQuestion: null };
-                }
-                return prev;
-            });
-        }, 8000);
     }, [runStep]);
 
     // ─── Continue after pause ───────────────────────────────

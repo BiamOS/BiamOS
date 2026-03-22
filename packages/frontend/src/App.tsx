@@ -12,25 +12,24 @@ import {
     DeleteSweep as ClearAllIcon,
     ChevronLeft as ChevronLeftIcon,
     ChevronRight as ChevronRightIcon,
-    KeyboardArrowDown as HideBottomIcon,
-    KeyboardArrowUp as ShowBottomIcon,
     VolumeUp as VoiceOnIcon,
     VolumeOff as VoiceOffIcon,
     WarningAmber as WarningIcon,
 } from "@mui/icons-material";
 import { DragCanvas } from "./components/DragCanvas";
 
-import { IntentInput } from "./components/IntentInput";
 import { Whitebox } from "./components/Whitebox";
 import { SettingsShell } from "./components/SettingsShell";
-import { IntegrationSidebar } from "./components/IntegrationSidebar";
-import { ChatThread } from "./components/ChatThread";
+import { CommandCenter } from "./components/CommandCenter";
 import { SplashScreen } from "./components/SplashScreen";
 import { OnboardingScreen } from "./components/OnboardingScreen";
 import { LinkPrompt, type LinkOpenDetail } from "./components/LinkPrompt";
 import { NavigationProvider } from "./contexts/NavigationContext";
 import { useIntentHandler } from "./hooks/useIntentHandler";
 import { useBiamSpeech } from "./hooks/useBiamSpeech";
+import { useFocusStore } from "./stores/useFocusStore";
+import { matchAppRegistry } from "./tools/registry";
+import { onBiamosEvent, offBiamosEvent, type BiamosEventHandler } from "./events/biamosEvents";
 import {
     theme,
     LOGO_GRADIENT,
@@ -42,7 +41,6 @@ import {
     rootSx,
     topBarSx,
     errorAlertSx,
-    floatingSearchSx,
     resizeHandleSx,
     accentAlpha,
 } from "./theme/theme";
@@ -71,9 +69,9 @@ function VersionBadge() {
                 height: 18,
                 fontSize: "0.6rem",
                 fontWeight: 700,
-                bgcolor: "rgba(88,28,255,0.1)",
-                color: "rgba(88,28,255,0.7)",
-                border: "1px solid rgba(88,28,255,0.2)",
+                bgcolor: "rgba(255,255,255,0.06)",
+                color: "rgba(255,255,255,0.7)",
+                border: "1px solid rgba(255,255,255,0.1)",
             }}
         />
     );
@@ -129,7 +127,6 @@ export default function App() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(1200);
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [bottomBarOpen, setBottomBarOpen] = useState(true);
 
     // ─── Container width measurement (stable, no showManager dep)
     useEffect(() => {
@@ -137,7 +134,11 @@ export default function App() {
         if (!el) return;
         const ro = new ResizeObserver((entries) => {
             const width = entries[0]?.contentRect.width;
-            if (width) setContainerWidth(width);
+            if (width) {
+                window.requestAnimationFrame(() => {
+                    setContainerWidth(width);
+                });
+            }
         });
         ro.observe(el);
         setContainerWidth(el.clientWidth);
@@ -155,10 +156,68 @@ export default function App() {
     }, [addIframeCard]);
 
     // Wrap handleIntent to handle showManager signal
-    const onIntent = async (text: string) => {
+    const onIntent = useCallback(async (text: string) => {
         const result = await handleIntent(text);
         if (result?.showManager) setShowManager(true);
-    };
+    }, [handleIntent]);
+
+    // ─── BIAMOS_GLOBAL_INTENT listener (from FloatingOmnibar) ──
+    // Bridge: splits compound queries on conjunctions until Phase 2B
+    // adds the backend universal router (/api/intent/route).
+    useEffect(() => {
+        const handler: BiamosEventHandler = (event) => {
+            if (event.type === 'BIAMOS_CREATE_EMPTY_CARD') {
+                addIframeCard("about:blank", event.title, undefined, undefined, event.cardId);
+                return;
+            }
+
+            if (event.type === 'BIAMOS_GLOBAL_INTENT') {
+                const query = event.query.trim();
+                if (!query) return;
+
+                // 1. Direct single-intent app call? (e.g. "gmail", "open youtube")
+                const appMatch = matchAppRegistry(query);
+                if (appMatch) {
+                    addIframeCard(appMatch.url, appMatch.label);
+                    return;
+                }
+
+                // 2. Compound query? Split on conjunctions and handle each part
+                const hasConjunction = /\s+(und|and)\s+|,\s*/i.test(query);
+                if (hasConjunction) {
+                    const subQueries = query
+                        .split(/\s+(?:und|and)\s+|,\s*/i)
+                        .map(q => q.trim())
+                        .filter(Boolean);
+
+                    for (const sub of subQueries) {
+                        const subAppMatch = matchAppRegistry(sub);
+                        if (subAppMatch) {
+                            addIframeCard(subAppMatch.url, subAppMatch.label);
+                        } else {
+                            onIntent(sub);
+                        }
+                    }
+                    return;
+                }
+
+                // 3. Single intent → backend
+                onIntent(query);
+            }
+        };
+        onBiamosEvent(handler);
+        return () => offBiamosEvent(handler);
+    }, [onIntent, addIframeCard]);
+
+    // ─── Focus clearing: ESC key + canvas background click ──
+    const clearFocus = useFocusStore((s) => s.clearFocus);
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') clearFocus();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [clearFocus]);
 
     const [splashDone, setSplashDone] = useState(false);
     const onSplashComplete = useCallback(() => setSplashDone(true), []);
@@ -174,7 +233,7 @@ export default function App() {
                     if (!r.ok) throw new Error(`HTTP ${r.status}`);
                     const d = await r.json();
                     if (cancelled) return;
-                    setNeedsSetup(!d.hasApiKey);
+                    setNeedsSetup(prev => prev === null ? !d.hasApiKey : prev);
                     setLlmMissing(!d.hasApiKey);
                     return; // Success — stop retrying
                 } catch {
@@ -186,7 +245,7 @@ export default function App() {
             }
             // All retries failed — show setup
             if (!cancelled) {
-                setNeedsSetup(true);
+                setNeedsSetup(prev => prev === null ? true : prev);
                 setLlmMissing(true);
             }
         };
@@ -284,167 +343,32 @@ export default function App() {
                         </Box>
                     </Box>
 
-                    {/* ═══ Smart Bar (top overlay below brand bar) ═══ */}
-                    {!showManager && (
-                        <Box
-                            sx={{
-                                ...floatingSearchSx,
-                                maxHeight: bottomBarOpen ? 400 : 0,
-                                py: bottomBarOpen ? 1.5 : 0,
-                                opacity: bottomBarOpen ? 1 : 0,
-                            }}
-                        >
-                            <Box sx={{ width: "100%", maxWidth: 680, mx: "auto" }}>
-                                <ChatThread
-                                    messages={chatMessages}
-                                    isOpen={chatOpen}
-                                    onSuggestionClick={handleSuggestionClick}
-                                    onToggle={toggleChat}
-                                />
-                                {llmMissing && (
-                                    <Box
-                                        onClick={() => { setSettingsPanel("llm"); setShowManager(true); }}
-                                        sx={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            gap: 1,
-                                            mb: 1,
-                                            py: 0.8,
-                                            px: 2,
-                                            borderRadius: 2,
-                                            bgcolor: "rgba(239, 68, 68, 0.08)",
-                                            border: "1px solid rgba(239, 68, 68, 0.2)",
-                                            cursor: "pointer",
-                                            transition: "all 0.2s ease",
-                                            "&:hover": {
-                                                bgcolor: "rgba(239, 68, 68, 0.12)",
-                                                borderColor: "rgba(239, 68, 68, 0.35)",
-                                            },
-                                        }}
-                                    >
-                                        <WarningIcon sx={{ fontSize: 16, color: "#ef4444" }} />
-                                        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#ef4444" }}>
-                                            No AI provider configured — Set up LLM
-                                        </Typography>
-                                    </Box>
-                                )}
-                                <IntentInput onSubmit={onIntent} isLoading={isLoading} activeGroups={activeGroups} pipelineStep={pipelineStep} />
-                            </Box>
-                            {/* Smart Bar minimize chevron */}
-                            <Box sx={{ display: "flex", justifyContent: "center", mt: 0.5 }}>
-                                <Tooltip title="Minimize Assistant">
-                                    <IconButton
-                                        onClick={() => setBottomBarOpen(false)}
-                                        size="small"
-                                        sx={{
-                                            width: 28,
-                                            height: 14,
-                                            borderRadius: "0 0 8px 8px",
-                                            color: "rgba(255,255,255,0.2)",
-                                            "&:hover": { color: "rgba(255,255,255,0.5)", bgcolor: "rgba(255,255,255,0.04)" },
-                                        }}
-                                    >
-                                        <HideBottomIcon sx={{ fontSize: 16, transform: "rotate(180deg)" }} />
-                                    </IconButton>
-                                </Tooltip>
-                            </Box>
-                        </Box>
-                    )}
-
-                    {/* Smart Bar expand tab (when minimized) */}
-                    {!showManager && !bottomBarOpen && (
-                        <Box sx={{ display: "flex", justifyContent: "center", position: "relative", zIndex: 50 }}>
-                            <Tooltip title="Show Assistant">
-                                <IconButton
-                                    onClick={() => setBottomBarOpen(true)}
-                                    size="small"
-                                    sx={{
-                                        bgcolor: "rgba(9, 9, 11, 0.9)",
-                                        border: "1px solid rgba(255,255,255,0.08)",
-                                        borderTop: "none",
-                                        color: "rgba(255,255,255,0.35)",
-                                        borderRadius: "0 0 8px 8px",
-                                        width: 40,
-                                        height: 22,
-                                        "&:hover": { color: "rgba(255,255,255,0.7)", bgcolor: "rgba(9,9,11,1)", borderColor: "rgba(255,255,255,0.15)" },
-                                        transition: "all 0.2s ease",
-                                    }}
-                                >
-                                    <ShowBottomIcon sx={{ fontSize: 18 }} />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                    )}
-
-                    {/* ═══ Content with Sidebar ═══ */}
-                    <Box sx={{ flex: 1, display: "flex", overflow: "hidden" }}>
-                        {/* Sidebar — with integrated toggle */}
-                        <Box
-                            sx={{
-                                display: showManager ? "none" : "flex",
-                                position: "relative",
-                                width: sidebarOpen ? 80 : 0,
-                                minWidth: sidebarOpen ? 80 : 0,
-                                overflow: "visible",
-                                transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                            }}
-                        >
-                            {sidebarOpen && <IntegrationSidebar onFilterChange={setActiveGroups} />}
-                            {/* Sidebar toggle chevron */}
-                            <Tooltip title={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"} placement="right">
-                                <IconButton
-                                    onClick={() => setSidebarOpen(s => !s)}
-                                    size="small"
-                                    sx={{
-                                        position: "absolute",
-                                        right: -12,
-                                        top: "50%",
-                                        transform: "translateY(-50%)",
-                                        zIndex: 10,
-                                        width: 24,
-                                        height: 24,
-                                        bgcolor: "rgba(16,20,30,0.95)",
-                                        border: "1px solid rgba(255,255,255,0.08)",
-                                        color: "rgba(255,255,255,0.3)",
-                                        "&:hover": { color: "rgba(255,255,255,0.7)", bgcolor: "rgba(16,20,30,1)", borderColor: "rgba(255,255,255,0.15)" },
-                                        transition: "all 0.2s ease",
-                                    }}
-                                >
-                                    {sidebarOpen ? <ChevronLeftIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
+                    {/* ═══ Content: Canvas + CommandCenter ═══ */}
+                    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
                         {/* Settings view — stays mounted, hidden via CSS */}
-                        <Box sx={{ flex: 1, display: showManager ? "flex" : "none", overflow: "auto" }}>
-                            <Box sx={{ flex: 1, height: "calc(100vh - 140px)" }}>
+                        <Box sx={{ flex: 1, display: showManager ? 'flex' : 'none', overflow: 'auto' }}>
+                            <Box sx={{ flex: 1, height: 'calc(100vh - 140px)' }}>
                                 <SettingsShell initialPanel={settingsPanel as any} />
                             </Box>
                         </Box>
 
-                        {/* Canvas scroll wrapper */}
-                        <Box sx={{ flex: 1, overflowY: "auto", overflowX: "hidden", display: showManager ? "none" : "block" }}>
-                            <Box ref={containerRef} sx={{ px: 2, py: 2, pb: 4, minHeight: "100%" }}>
-                                {error && (
-                                    <Alert severity="error" onClose={clearError} sx={errorAlertSx}>
-                                        {error}
-                                    </Alert>
-                                )}
-
-                                {/* Watermark */}
-                                <Box
-                                    sx={{
-                                        position: "absolute",
-                                        top: "50%",
-                                        left: "50%",
-                                        transform: "translate(-50%, -60%)",
-                                        pointerEvents: "none",
-                                        userSelect: "none",
-                                        textAlign: "center",
-                                        zIndex: 0,
-                                    }}
-                                >
+                        {/* Canvas Area with Fixed Watermark */}
+                        <Box sx={{ flex: 1, position: 'relative', display: showManager ? 'none' : 'flex', flexDirection: 'column' }}>
+                            <Box
+                                sx={{
+                                    position: "absolute",
+                                    top: 0, left: 0, right: 0, bottom: 0,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    pointerEvents: "none",
+                                    userSelect: "none",
+                                    zIndex: 0,
+                                }}
+                            >
+                                <Box sx={{ transform: "translateY(-10%)", textAlign: "center" }}>
                                     <Typography
                                         sx={{
                                             fontWeight: 900,
@@ -471,6 +395,22 @@ export default function App() {
                                         Base for Intent & AI Middleware
                                     </Typography>
                                 </Box>
+                            </Box>
+
+                            {/* Canvas scroll wrapper */}
+                            <Box
+                                sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', zIndex: 1 }}
+                                onClick={(e: React.MouseEvent) => {
+                                    // Click on canvas background → clear focus
+                                    if (e.target === e.currentTarget) clearFocus();
+                                }}
+                            >
+                                <Box ref={containerRef} sx={{ pl: 2, pr: 4, py: 2, pb: 4, minHeight: '100%' }}>
+                                    {error && (
+                                        <Alert severity="error" onClose={clearError} sx={errorAlertSx}>
+                                            {error}
+                                        </Alert>
+                                    )}
 
 
                                 {/* ═══ Draggable + Resizable Canvas ═══ */}
@@ -501,6 +441,12 @@ export default function App() {
                                                         pipelineTotalSteps={item._pipelineTotalSteps}
                                                         pendingPipelineStep={item._pendingPipelineStep}
                                                         isPinnedInitial={item._pinned}
+                                                        onRequestResize={(w, h) => {
+                                                            const layout = gridLayouts.find(g => g.i === item._id);
+                                                            if (layout && (layout.w !== w || layout.h !== h)) {
+                                                                onCardLayoutChange(item._id, { ...layout, w, h });
+                                                            }
+                                                        }}
                                                     />
                                                 </CardGroupContext.Provider>
                                             );
@@ -509,7 +455,16 @@ export default function App() {
                                 )}
                             </Box>
                         </Box>  {/* /canvas scroll wrapper */}
-                    </Box>  {/* /content with sidebar */}
+                        </Box>  {/* /Canvas Area with Fixed Watermark */}
+                        {!showManager && (
+                            <CommandCenter
+                                onOpenSettings={() => {
+                                    setSettingsPanel('llm');
+                                    setShowManager(true);
+                                }}
+                            />
+                        )}
+                    </Box>  {/* /content: canvas + commandcenter */}
                 </Box>
             </NavigationProvider>
             {/* ═══ Smart Link Prompt ═══ */}

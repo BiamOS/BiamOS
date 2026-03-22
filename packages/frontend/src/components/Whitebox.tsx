@@ -33,6 +33,7 @@ import { LayoutRenderer, type LayoutSpec } from "./blocks";
 import { CardContextProvider } from "./blocks/CardContext";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { accentAlpha, COLORS } from "./ui/SharedUI";
+import { useFocusStore, type CardMeta } from "../stores/useFocusStore";
 import type { CanvasTab } from "../types/canvas";
 import {
     DebugPanel,
@@ -71,6 +72,7 @@ interface WhiteboxProps {
     pipelineTotalSteps?: number;
     pendingPipelineStep?: string;
     isPinnedInitial?: boolean;
+    onRequestResize?: (w: number, h: number) => void;
 }
 
 // ============================================================
@@ -123,6 +125,31 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
     const [zoom, setZoom] = React.useState(1);
     const cardRef = React.useRef<HTMLDivElement>(null);
 
+    // ─── Focus Store integration ─────────────────────────────
+    const activeCardId = useFocusStore((s) => s.activeCardId);
+    const setFocus = useFocusStore((s) => s.setFocus);
+    const clearFocusStore = useFocusStore((s) => s.clearFocus);
+    const isFocused = activeCardId === cardId;
+
+    const handleCardClick = React.useCallback(() => {
+        // Check if there's already richer meta from IframeBlock (live page title + URL).
+        // If so, keep it and only update hasDashboard — don't overwrite with generic Whitebox meta.
+        const existing = useFocusStore.getState().activeCardMeta;
+        if (existing && useFocusStore.getState().activeCardId === cardId && existing.hasWebview && existing.url && !existing.url.startsWith('about:')) {
+            // IframeBlock already set rich meta — just re-affirm cardId without degrading the label
+            useFocusStore.getState().setFocus(cardId, existing);
+            return;
+        }
+        const meta: CardMeta = {
+            label: groupName || integrationName || query || cardId,
+            icon: "📦",
+            url: apiEndpoint,
+            hasWebview: false,
+            hasDashboard: true,
+        };
+        setFocus(cardId, meta);
+    }, [cardId, groupName, integrationName, query, apiEndpoint, setFocus]);
+
     React.useEffect(() => {
         const el = cardRef.current;
         if (!el) return;
@@ -155,8 +182,23 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
     const arrowSx = { fontSize: 10, color: accentAlpha(0.35), mx: 0.3 };
 
     const cardContent = (
-        <Card ref={cardRef} sx={{
+        <Card ref={cardRef} onClick={handleCardClick} sx={{
             ...cardSx,
+            // Sanfte Transition, damit der Staub weich ein- und ausblendet, wenn du klickst
+            transition: "box-shadow 0.3s ease-out, border 0.3s ease-out",
+            ...(isFocused ? {
+                // Der "Staub"-Effekt: 
+                // 1. Ein hauchdünner, scharfer Ring (0.4 Opacity)
+                // 2. Eine dichte Staubwolke (12px Blur, 0.2 Opacity)
+                // 3. Eine weite, ganz feine Staubwolke (30px Blur, 0.08 Opacity)
+                // + den existierenden schwarzen Schatten für die Tiefe
+                boxShadow: `
+            0 0 0 1px rgba(220, 0, 112, 0.4), 
+            0 0 12px rgba(220, 0, 112, 0.2), 
+            0 0 30px rgba(220, 0, 112, 0.08), 
+            ${(cardSx as any).boxShadow || '0 8px 32px rgba(0,0,0,0.5)'}
+        `,
+            } : {}),
             ...(isFullscreen ? {
                 width: "100%",
                 height: "100%",
@@ -177,10 +219,10 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                                     variant="caption"
                                     sx={{
                                         color: i === 0
-                                            ? accentAlpha(0.7)
+                                            ? COLORS.textPrimary
                                             : i === breadcrumbParts.length - 1
-                                                ? "rgba(0, 200, 255, 0.6)"
-                                                : "rgba(180, 140, 255, 0.5)",
+                                                ? COLORS.textSecondary
+                                                : COLORS.textFaint,
                                         fontSize: "0.62rem",
                                         fontWeight: i === 0 ? 700 : 500,
                                         whiteSpace: "nowrap",
@@ -199,7 +241,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                     <Typography
                         variant="caption"
                         sx={{
-                            color: "rgba(180, 140, 255, 0.6)",
+                            color: COLORS.textSecondary,
                             fontSize: "0.65rem",
                             flex: 1,
                             overflow: "hidden",
@@ -342,7 +384,7 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                 </IconButton>
                 <IconButton
                     className="no-drag"
-                    onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    onClick={(e) => { e.stopPropagation(); if (isFocused) clearFocusStore(); onRemove(); }}
                     size="small"
                     sx={{
                         p: 0.5,
@@ -489,6 +531,7 @@ export const Whitebox = React.memo(function Whitebox({
     pipelineTotalSteps,
     pendingPipelineStep,
     isPinnedInitial,
+    onRequestResize,
 }: WhiteboxProps) {
     if (!payload) return null;
 
@@ -731,19 +774,19 @@ export const Whitebox = React.memo(function Whitebox({
                             tabs.map((tab, i) => {
                                 if (!tab.payload?.layout) return null;
                                 return (
-                                <Box key={tab.id} sx={{
-                                    display: i === (activeTabIndex ?? 0) ? "flex" : "none",
-                                    flexDirection: "column", flex: 1, minHeight: 0,
-                                }}>
-                                    <CardContextProvider cardId={cardId}>
-                                        <LayoutRenderer layout={tab.payload.layout} stagger />
-                                    </CardContextProvider>
-                                </Box>
+                                    <Box key={tab.id} sx={{
+                                        display: i === (activeTabIndex ?? 0) ? "flex" : "none",
+                                        flexDirection: "column", flex: 1, minHeight: 0,
+                                    }}>
+                                        <CardContextProvider cardId={cardId}>
+                                            <LayoutRenderer layout={tab.payload.layout} stagger onRequestResize={onRequestResize} />
+                                        </CardContextProvider>
+                                    </Box>
                                 );
                             })
                         ) : (
                             <CardContextProvider cardId={cardId}>
-                                <LayoutRenderer layout={payload.layout} stagger />
+                                <LayoutRenderer layout={payload.layout} stagger onRequestResize={onRequestResize} />
                             </CardContextProvider>
                         )}
                     </Box>

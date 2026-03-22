@@ -110,6 +110,55 @@ export const TOOL_REGISTRY: readonly Tool[] = [
     },
 ] as const;
 
+// ─── App Registry (Intent→URL Fast-Path) ───────────────────
+// Known navigation intents that can be resolved without an LLM call.
+// Prevents "empty box" rendering for common apps.
+
+export interface AppEntry {
+    /** Keywords that trigger this app (matched case-insensitively) */
+    keywords: string[];
+    /** Target URL to open */
+    url: string;
+    /** Display label */
+    label: string;
+    /** Emoji icon */
+    icon: string;
+}
+
+export const APP_REGISTRY: readonly AppEntry[] = [
+    { keywords: ["gmail", "email", "e-mail"], url: "https://mail.google.com", label: "Gmail", icon: "📧" },
+    { keywords: ["youtube"], url: "https://www.youtube.com", label: "YouTube", icon: "▶️" },
+    { keywords: ["google", "suche"], url: "https://www.google.com", label: "Google", icon: "🔍" },
+    { keywords: ["github"], url: "https://github.com", label: "GitHub", icon: "🐙" },
+    { keywords: ["twitter", "x.com"], url: "https://x.com", label: "X", icon: "𝕏" },
+    { keywords: ["reddit"], url: "https://www.reddit.com", label: "Reddit", icon: "🔴" },
+    { keywords: ["linkedin"], url: "https://www.linkedin.com", label: "LinkedIn", icon: "💼" },
+    { keywords: ["wikipedia"], url: "https://www.wikipedia.org", label: "Wikipedia", icon: "📚" },
+];
+
+/**
+ * Match a known app from a **direct** app-call query.
+ * Only matches when the query IS the app call, not when the
+ * keyword is buried inside a compound sentence.
+ *
+ * Matches: "gmail", "open gmail", "öffne youtube", "go to github"
+ * Does NOT match: "wetter wien und open gmail" (compound → backend splits this)
+ */
+export function matchAppRegistry(query: string): (AppEntry & { keywords: string[] }) | null {
+    // Strip common action verbs to isolate the target
+    const stripped = query
+        .trim()
+        .toLowerCase()
+        .replace(/^(open|öffne|go\s+to|gehe\s+zu|start|starte|launch|navigate\s+to|navigiere\s+zu)\s+/i, "")
+        .trim();
+
+    // Only match if the stripped query IS the keyword (± minor trailing words)
+    // This prevents "wetter wien und open gmail" from matching
+    return APP_REGISTRY.find(app =>
+        app.keywords.some(kw => stripped === kw || stripped.startsWith(kw + "."))
+    ) as (AppEntry & { keywords: string[] }) | null;
+}
+
 // ─── Matchers ───────────────────────────────────────────────
 
 /**

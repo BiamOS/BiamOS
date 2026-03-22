@@ -12,14 +12,14 @@
 | `IframeBlock.tsx` | Command center — intent routing, agent/research dispatch | ~635 |
 | `useContextWatcher.ts` | Auto-analysis — URL change detection, context API calls, caching | ~384 |
 | `useWebviewLifecycle.ts` → `useAgentSidebarSync()` | Agent progress — syncs agent steps into sidebar hints | ~80 |
-| `ContextSidebar.tsx` | Render layer — chat UI, drag-resize, hint cards | ~737 |
-| `ContextSidebarParts.tsx` | Sub-components — markdown renderer, hint blocks, badges | N/A |
+| `Lura Command Center.tsx` | Render layer — chat UI, drag-resize, hint cards | ~737 |
+| `Lura Command CenterParts.tsx` | Sub-components — markdown renderer, hint blocks, badges | N/A |
 
 ---
 
 ## 1. Data Model: `ContextHint`
 
-Every item in the sidebar is a `ContextHint` (defined in `ContextSidebar.tsx:30`):
+Every item in the sidebar is a `ContextHint` (defined in `Lura Command Center.tsx:30`):
 
 ```typescript
 interface ContextHint {
@@ -47,7 +47,7 @@ interface ContextHint {
 
 ## 2. State Flow: `contextHints` Array
 
-The `contextHints` state lives in `useContextWatcher.ts` (line 61) and is shared via props through `IframeBlock.tsx` → `ContextSidebar.tsx`.
+The `contextHints` state lives in `useContextWatcher.ts` (line 61) and is shared via props through `IframeBlock.tsx` → `Lura Command Center.tsx`.
 
 ### Who writes to `setContextHints`?
 

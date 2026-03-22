@@ -145,9 +145,13 @@ setFormRenderBlock(RenderBlock);
 export const LayoutRenderer = React.memo(function LayoutRenderer({
     layout,
     stagger = false,
+    width,
+    onRequestResize,
 }: {
     layout: LayoutSpec;
     stagger?: boolean;
+    width?: number;
+    onRequestResize?: (w: number, h: number) => void;
 }) {
     // Find the index of the last block that should expand to fill remaining space
     const nonExpandable = new Set(["title", "divider", "spacer"]);
@@ -162,6 +166,9 @@ export const LayoutRenderer = React.memo(function LayoutRenderer({
     return (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1, height: "100%", flex: 1, overflowX: "hidden", overflowY: "auto", minHeight: 0 }}>
             {layout.blocks.map((block, i) => {
+                // Pass width and onRequestResize down to the block spec
+                const enrichedBlock = { ...block, width, onRequestResize };
+
                 // Stagger animation wrapper — each block fades in sequentially
                 const staggerSx = stagger ? {
                     animation: "blockReveal 0.4s ease-out both",
@@ -183,7 +190,7 @@ export const LayoutRenderer = React.memo(function LayoutRenderer({
                                 ...staggerSx,
                             }}
                         >
-                            <RenderBlock block={block} />
+                            <RenderBlock block={enrichedBlock} />
                         </Box>
                     );
                 }
@@ -209,7 +216,7 @@ export const LayoutRenderer = React.memo(function LayoutRenderer({
                 if (block.type === "iframe") {
                     return (
                         <Box key={i} sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", ...staggerSx }}>
-                            <RenderBlock block={block} />
+                            <RenderBlock block={enrichedBlock} />
                         </Box>
                     );
                 }
@@ -217,7 +224,7 @@ export const LayoutRenderer = React.memo(function LayoutRenderer({
                 // All other blocks — normal flow, last one expands
                 return (
                     <Box key={i} sx={{ ...staggerSx, ...expandSx }}>
-                        <RenderBlock block={block} />
+                        <RenderBlock block={enrichedBlock} />
                     </Box>
                 );
             })}

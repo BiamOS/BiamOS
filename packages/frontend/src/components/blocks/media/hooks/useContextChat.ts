@@ -29,6 +29,13 @@ export function useContextChat(
     const chatHistoryRef = useRef<Map<string, { role: "user" | "assistant"; content: string }[]>>(new Map());
 
     const startContextChat = useCallback(async (query: string) => {
+        // ── Show loading indicator IMMEDIATELY (before any async ops) ──
+        // This is critical: executeJavaScript + capturePage() can take 2-3s.
+        // Without this, the user sees nothing and thinks the command failed.
+        const newHint: ContextHint = { query, reason: "Context question", expanded: true, loading: true, timestamp: Date.now() };
+        setContextHints(prev => [...prev, newHint]);
+        console.log(`🔍 [ContextChat] Hint added, starting page extraction...`);
+
         // Extract page context from webview
         let pageUrl = "";
         let pageTitle = "";
@@ -47,7 +54,6 @@ export function useContextChat(
                 try {
                     const nativeImage = await webviewRef.current.capturePage();
                     if (nativeImage && !nativeImage.isEmpty()) {
-                        // Resize to max 800px wide to save tokens
                         const size = nativeImage.getSize();
                         const maxW = 800;
                         const resized = size.width > maxW
@@ -68,10 +74,6 @@ export function useContextChat(
 
         // Get existing history for this domain
         const domainHistory = chatHistoryRef.current.get(historyKey) || [];
-
-        // Add as a new chat-style hint
-        const newHint: ContextHint = { query, reason: "Context question", expanded: true, loading: true, timestamp: Date.now() };
-        setContextHints(prev => [...prev, newHint]);
 
         // Stream Context Chat Agent with SSE
         try {

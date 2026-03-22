@@ -65,7 +65,7 @@ export const emptyEndpoint = (): EndpointEntry => ({
 
 export const methodColors: Record<string, string> = {
     GET: "#00dc64",
-    POST: "#00c8ff",
+    POST: "#FF3399",
     PUT: "#ffb400",
     DELETE: "#ff6b6b",
     PATCH: "#b48cff",

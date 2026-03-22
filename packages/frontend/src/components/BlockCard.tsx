@@ -167,8 +167,8 @@ export const ImportsReference = React.memo(function ImportsReference() {
                     LinearProgress, CircularProgress{"\n"}
 
                     <Typography variant="caption" sx={{ color: "rgba(0,200,255,0.6)", fontWeight: 700, display: "block", mt: 1, mb: 0.5 }}>Design Tokens</Typography>
-                    COLORS.accent <span style={{ color: "#581cff" }}>■</span>{" "}
-                    COLORS.cyan <span style={{ color: "#00c8ff" }}>■</span>{"\n"}
+                    COLORS.accent <span style={{ color: COLORS.accent }}>■</span>{" "}
+                    COLORS.accentLight <span style={{ color: COLORS.accentLight }}>■</span>{"\n"}
                     COLORS.textPrimary{"\n"}
                     COLORS.textSecondary{"\n"}
                     COLORS.textMuted{"\n"}

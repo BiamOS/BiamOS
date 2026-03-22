@@ -11,6 +11,7 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import { Box } from "@mui/material";
 import { ROW_HEIGHT, GRID_MARGIN } from "../theme/theme";
+import { useFocusStore } from "../stores/useFocusStore";
 
 const COLS = 12;
 
@@ -228,7 +229,14 @@ export const DragCanvas = React.memo(function DragCanvas({
     const childArray = React.Children.toArray(children);
 
     return (
-        <Box sx={{ position: "relative", width: "100%", minHeight: containerHeight }}>
+        <Box 
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    useFocusStore.getState().clearFocus();
+                }
+            }}
+            sx={{ position: "relative", width: "100%", minHeight: `max(100vh, ${containerHeight}px)` }}
+        >
             {layouts.map((layout, idx) => {
                 const child = childArray[idx];
                 if (!child) return null;

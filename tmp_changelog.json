@@ -1,0 +1,14 @@
+{
+    "version": "2.2.0-alpha",
+    "entries": [
+        { "type": "feature", "text": "Apple Pro Dark Theme & Magenta Highlights (Asphalt UI)" },
+        { "type": "feature", "text": "Renamed Command Center to 'Lura', embedded Global Tasks" },
+        { "type": "feature", "text": "Agentic Engine: URL-First Navigation Strategy for strict SPAs (X.com, YouTube)" },
+        { "type": "feature", "text": "Anti-Loop Pivot Guard: Prevents stuck agents on unresponsive UI elements" },
+        { "type": "feature", "text": "Overhauled the Onboarding Experience (BiamOS Engine + Agent Tutorials)" },
+        { "type": "fix", "text": "Removed ContextSidebar entirely; centralized all history and state into Lura Chat" },
+        { "type": "fix", "text": "Fixed Agent Infinite Refresh Bug on DOM-Ready Webviews" },
+        { "type": "fix", "text": "Fixed React State limit crash in getSnapshot caches" },
+        { "type": "fix", "text": "Moved 'No LLM' warnings cleanly into the Chat Stream (no floating overlays)" }
+    ]
+}

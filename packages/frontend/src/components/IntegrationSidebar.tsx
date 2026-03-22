@@ -259,7 +259,7 @@ function SidebarItem({ icon, label, isActive, dimmed, onClick, isHome }: Sidebar
                         width: 3,
                         height: 20,
                         borderRadius: "0 3px 3px 0",
-                        background: "linear-gradient(180deg, #581cff 0%, #a78bfa 100%)",
+                        background: `linear-gradient(180deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`,
                         boxShadow: `0 0 6px ${accentAlpha(0.4)}`,
                     }
                     : {},

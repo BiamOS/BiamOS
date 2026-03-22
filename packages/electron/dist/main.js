@@ -177,7 +177,7 @@ function createWindow() {
         minWidth: 800,
         minHeight: 600,
         title: "BiamOS",
-        backgroundColor: "#0a0a1c",
+        backgroundColor: "#000000",
         autoHideMenuBar: true,
         show: false,
         icon: hasIcon ? iconPath : undefined,

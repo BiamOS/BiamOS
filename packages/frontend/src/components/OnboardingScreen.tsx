@@ -60,16 +60,17 @@ const containerSx = {
     position: "fixed" as const, inset: 0, zIndex: 9999,
     display: "flex", flexDirection: "column" as const,
     alignItems: "center", justifyContent: "center",
-    background: "radial-gradient(ellipse at 30% 20%, rgba(88,28,255,0.15) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(0,200,255,0.08) 0%, transparent 50%), #0a0a14",
+    background: "#000000",
     overflow: "hidden",
 };
 
 const cardGlassSx = {
     maxWidth: 720, width: "92%", p: { xs: 3, sm: 5 },
     borderRadius: 4,
-    background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
+    background: "rgba(28, 28, 30, 0.4)",
     border: "1px solid rgba(255,255,255,0.08)",
-    backdropFilter: "blur(40px)",
+    backdropFilter: "blur(30px)",
+    WebkitBackdropFilter: "blur(30px)",
     position: "relative" as const, overflow: "hidden",
 };
 
@@ -78,7 +79,7 @@ const featureCardSx = {
     bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
     display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "center",
     textAlign: "center" as const, transition: "all 0.3s ease",
-    "&:hover": { transform: "translateY(-4px)", borderColor: accentAlpha(0.3), bgcolor: "rgba(255,255,255,0.05)" },
+    "&:hover": { transform: "translateY(-4px)", borderColor: "rgba(255,255,255,0.15)", bgcolor: "rgba(255,255,255,0.05)" },
 };
 
 const pillSx = {
@@ -101,16 +102,16 @@ const iconCircleSx = (color: string) => ({
 
 const progressDotSx = (active: boolean, done: boolean) => ({
     width: active ? 32 : 10, height: 10, borderRadius: 5,
-    bgcolor: done ? "#22c55e" : active ? accentAlpha(0.8) : "rgba(255,255,255,0.15)",
+    bgcolor: done ? "#8E8E93" : active ? COLORS.accent : "rgba(255,255,255,0.15)",
     transition: "all 0.4s ease",
 });
 
 const providerTabSx = (active: boolean) => ({
     p: 2, borderRadius: 2.5, cursor: "pointer",
-    bgcolor: active ? accentAlpha(0.08) : "rgba(255,255,255,0.02)",
-    border: `1.5px solid ${active ? accentAlpha(0.4) : "rgba(255,255,255,0.06)"}`,
+    bgcolor: active ? "rgba(220, 0, 112, 0.08)" : "rgba(255,255,255,0.02)",
+    border: `1.5px solid ${active ? COLORS.accent : "rgba(255,255,255,0.06)"}`,
     transition: "all 0.25s ease",
-    "&:hover": { borderColor: accentAlpha(0.3), bgcolor: accentAlpha(0.05) },
+    "&:hover": { borderColor: active ? COLORS.accent : "rgba(255,255,255,0.15)", bgcolor: active ? "rgba(220, 0, 112, 0.12)" : "rgba(255,255,255,0.05)" },
 });
 
 // ============================================================
@@ -176,8 +177,7 @@ export const OnboardingScreen = React.memo(function OnboardingScreen({ onComplet
     return (
         <Box sx={containerSx}>
             {/* Decorative orbs */}
-            <Box sx={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(88,28,255,0.08), transparent 70%)", top: -100, right: -100, pointerEvents: "none" }} />
-            <Box sx={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(0,200,255,0.06), transparent 70%)", bottom: -80, left: -80, pointerEvents: "none" }} />
+
 
             <Box sx={{
                 ...cardGlassSx,
@@ -232,23 +232,23 @@ function StepWelcome() {
         <Box sx={{ textAlign: "center" }}>
             <Typography sx={{
                 fontWeight: 900, fontSize: "3.8rem", letterSpacing: "-0.04em",
-                background: GRADIENTS.title || "linear-gradient(135deg, #a855f7, #6366f1, #06b6d4)",
+                background: "linear-gradient(135deg, #FFFFFF 0%, #8E8E93 100%)",
                 WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", mb: 0.5,
             }}>
-                BiamOS
+                Welcome to BiamOS.
             </Typography>
             <Typography variant="h5" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 1 }}>
-                The AI-Native Workspace OS.
+                Powered by Lura Core.
             </Typography>
             <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 4, maxWidth: 540, mx: "auto", lineHeight: 1.7 }}>
-                Transform your desktop into a proactive command center. BiamOS combines a built-in web browser with local AI to read your context, bypass complex API auth, and generate dynamic UI dashboards instantly.
+                Transform your desktop into a proactive command center. End the era of broken tabs and manual tasks with the first OS built completely on agentic intelligence.
             </Typography>
 
             <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
                 {[
-                    { icon: <AIIcon sx={{ fontSize: 36 }} />, color: "#a855f7", title: "Context-Aware", sub: "The AI thinks with you. Surf the web normally and let BiamOS auto-generate data blocks based on what you're viewing." },
-                    { icon: <BlockIcon sx={{ fontSize: 36 }} />, color: "#06b6d4", title: "Dynamic Blocks", sub: "Stop reading text walls. The LLM renders completely customizable UI blocks. Pin them directly to your canvas." },
-                    { icon: <PrivacyIcon sx={{ fontSize: 36 }} />, color: "#22c55e", title: "Ghost-Auth", sub: "Log into Gmail or Notion via the webview. The local AI securely reads the DOM. No API keys or OAuth required." },
+                    { icon: <AIIcon sx={{ fontSize: 36 }} />, color: "#8E8E93", title: "Agentic Web Browser", sub: "The Copilot reads the DOM, clicks elements, types text, and navigates seamlessly across any website tab." },
+                    { icon: <BlockIcon sx={{ fontSize: 36 }} />, color: "#8E8E93", title: "Dynamic Canvas", sub: "Stop reading raw chat responses. The LLM generates interactive data blocks you can pin to your dashboard." },
+                    { icon: <PrivacyIcon sx={{ fontSize: 36 }} />, color: "#8E8E93", title: "Reflexive Memory", sub: "Lura learns your routines. Repetitive verified workflows are instantly recognized via local vector memory." },
                 ].map((f, i) => (
                     <Box key={i} sx={featureCardSx}>
                         <Box sx={{ color: f.color, mb: 1 }}>{f.icon}</Box>
@@ -267,19 +267,19 @@ function StepWelcome() {
 
 function StepHowItWorks() {
     const items = [
-        { icon: <AgentIcon />, color: "#f59e0b", title: "Dual-Agent System", desc: "Two specialized AIs: The System Assistant controls your OS canvas, while the Web Copilot reads and interacts with your browser DOM." },
-        { icon: <PrivacyIcon />, color: "#22c55e", title: "Smart Privacy Shield", desc: "Sensitive domains (banking, email) are auto-blocked from background analysis. You are always in control of what the AI sees." },
-        { icon: <AIIcon />, color: "#a855f7", title: "6-Stage AI Pipeline", desc: "Our local middleware routes your intent, extracts parameters, bypasses API limits, and composes a dynamic layout in milliseconds." },
-        { icon: <DashboardIcon />, color: "#06b6d4", title: "Persistent Workspaces", desc: "Your interactive command center. Pin generated UI blocks, drag, resize, and organize your daily tools into a living dashboard." },
+        { icon: <AgentIcon />, color: "#8E8E93", title: "Dual-Agent Architecture", desc: "Two specialized systems: The OS Assistant controls your UI layout, while the Web Agent acts directly within your browser DOM." },
+        { icon: <PrivacyIcon />, color: "#8E8E93", title: "Per-Tab Ghost-Auth Isolation", desc: "Each tab is an independent Chromium instance. Log in normally; the AI uses your secure cookies without needing any API keys." },
+        { icon: <AIIcon />, color: "#8E8E93", title: "Reflexive Memory Engine", desc: "Local semantic embedding matches your intent with previously verified workflows, executing complex routines instantly." },
+        { icon: <DashboardIcon />, color: "#8E8E93", title: "Global Task Manager", desc: "A unified Command Center tracks all running AI sequences and agent reasoning loops across your entire workspace in real-time." },
     ];
 
     return (
         <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.textPrimary, mb: 0.5 }}>
-                ⚡ The Engine Behind BiamOS
+                ⚡ The Lura Core Engine
             </Typography>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
-                Four pillars that power your intelligent workspace
+                Four pillars that power your intelligent OS
             </Typography>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -305,18 +305,18 @@ function StepWhyBiamOS() {
     return (
         <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.textPrimary, mb: 0.5 }}>
-                🚀 Why BiamOS?
+                🚀 Why This Changes Everything
             </Typography>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
-                What makes BiamOS different from every other tool out there
+                What makes this OS different from every other chat tool out there
             </Typography>
 
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 3 }}>
                 {[
-                    { icon: <AIIcon sx={{ fontSize: 28 }} />, color: "#a855f7", title: "Zero-Prompting", sub: "You don't always have to ask. BiamOS proactively detects your context and fetches relevant data before you type a single word." },
-                    { icon: <PrivacyIcon sx={{ fontSize: 28 }} />, color: "#22c55e", title: "1-Click Data Audit", sub: "Your data never leaves your machine. Check the Data Audit panel anytime to see exactly what's stored in your local SQLite database." },
-                    { icon: <SpeedIcon sx={{ fontSize: 28 }} />, color: "#f59e0b", title: "Voice & TTS", sub: "Talk to your OS naturally. The System Assistant processes your spoken intent and replies with high-quality Text-to-Speech audio." },
-                    { icon: <ShopIcon sx={{ fontSize: 28 }} />, color: "#06b6d4", title: "Integration Shop", sub: "Install pre-built templates in one click, or let the AI build custom endpoints via Swagger and AI Discovery." },
+                    { icon: <SpeedIcon sx={{ fontSize: 28 }} />, color: "#8E8E93", title: "URL-First Strategy", sub: "The agent bypasses broken SPA (React) interfaces and uses direct URL parameter navigation to completely eliminate input loops." },
+                    { icon: <SearchIcon sx={{ fontSize: 28 }} />, color: "#8E8E93", title: "Set-of-Mark Vision", sub: "Absolute precision. Page elements are tagged with numeric IDs so the agent clicks exactly what it needs to, every time." },
+                    { icon: <PrivacyIcon sx={{ fontSize: 28 }} />, color: "#8E8E93", title: "1-Click Data Audit", sub: "Total control. Check the Data Audit panel anytime to see exactly what workflows and history are stored in your local SQLite database." },
+                    { icon: <ShopIcon sx={{ fontSize: 28 }} />, color: "#8E8E93", title: "No Developer Keys", sub: "Ghost-Auth uses your active browser session. Automate Gmail, X.com, or Notion using standard user cookies without needing OAuth." },
                 ].map((s, i) => (
                     <Box key={i} sx={strengthSx}>
                         <Box sx={{ color: s.color, mb: 1 }}>{s.icon}</Box>
@@ -329,14 +329,14 @@ function StepWhyBiamOS() {
             {/* Comparison pill */}
             <Box sx={{
                 p: 2, borderRadius: 2.5,
-                background: "linear-gradient(135deg, rgba(88,28,255,0.06), rgba(6,182,212,0.04))",
-                border: "1px solid rgba(88,28,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.08)",
             }}>
                 <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 600, mb: 0.5 }}>
-                    💡 Unlike ChatGPT or standard browsers...
+                    💡 Say goodbye to the chat window...
                 </Typography>
                 <Typography variant="caption" sx={{ color: COLORS.textMuted, lineHeight: 1.6, display: "block" }}>
-                    BiamOS doesn't trap AI in a simple chat window. It acts as an intelligent layer over your entire workflow, creating visual, actionable UI blocks instead of plain text.
+                    BiamOS acts as an intelligent layer over your entire workflow, replacing massive text dialogues with visual blocks and autonomous background actions.
                 </Typography>
             </Box>
         </Box>
@@ -479,6 +479,13 @@ function StepLLMSetup({ llmChoice, setLlmChoice, newKey, setNewKey, customUrl, s
             }}>
                 Skip for now — configure in Settings → LLM later
             </Typography>
+
+            <Box sx={{ mt: 3, p: 2, borderRadius: 2.5, bgcolor: "rgba(220, 0, 112, 0.08)", border: `1px solid rgba(220, 0, 112, 0.2)` }}>
+                <Typography variant="caption" sx={{ color: COLORS.textPrimary, display: "block", textAlign: "center", lineHeight: 1.5 }}>
+                    <strong>You are ready!</strong><br/>To start, open the Command Center on the right and simply type:<br/>
+                    <em style={{ color: COLORS.accent }}>"Go to X.com and search for AI News"</em>
+                </Typography>
+            </Box>
         </Box>
     );
 }

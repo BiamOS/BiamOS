@@ -44,7 +44,7 @@ export const TitleBlock = React.memo(function TitleBlock({
                     fontWeight: 800,
                     letterSpacing: "-0.03em",
                     lineHeight: 1.15,
-                    background: GRADIENTS.titleSoft,
+                    background: GRADIENTS.title,
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                 }}
@@ -301,7 +301,10 @@ export const AccordionBlock = React.memo(function AccordionBlock({
                     disableGutters
                     elevation={0}
                     sx={{
-                        ...GLASS.subtle,
+                        bgcolor: COLORS.surfaceSubtle,
+                        backdropFilter: "blur(12px)",
+                        border: `1px solid ${COLORS.borderSubtle}`,
+                        borderRadius: "10px",
                         mb: 0.8,
                         "&:before": { display: "none" },
                         "&.Mui-expanded": {

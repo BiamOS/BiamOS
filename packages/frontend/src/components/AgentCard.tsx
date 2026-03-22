@@ -27,7 +27,7 @@ import {
     ErrorOutline as InvalidIcon,
     RestartAlt as ResetIcon,
 } from "@mui/icons-material";
-import { COLORS, GRADIENTS, inputSx } from "./ui/SharedUI";
+import { COLORS, GRADIENTS, inputSx, accentAlpha } from "./ui/SharedUI";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -49,12 +49,12 @@ interface ModelOption {
     thinking: boolean;
 }
 
-// ─── Pipeline accent colors ─────────────────────────────────
+// ─── Pipeline accent colors (all unified to BiamOS Magenta) ─
 
 const PIPELINE_ACCENTS: Record<string, { color: string; gradient: string; glow: string }> = {
-    intent:  { color: "#00c8ff", gradient: "linear-gradient(135deg, #00c8ff, #0090ff)", glow: "rgba(0,200,255,0.15)" },
-    builder: { color: "#a855f7", gradient: "linear-gradient(135deg, #a855f7, #7c3aed)", glow: "rgba(168,85,247,0.15)" },
-    copilot: { color: "#10b981", gradient: "linear-gradient(135deg, #10b981, #059669)", glow: "rgba(16,185,129,0.15)" },
+    intent:  { color: COLORS.accent,      gradient: `linear-gradient(135deg, ${COLORS.accentLight}, ${COLORS.accent})`,  glow: accentAlpha(0.15) },
+    builder: { color: COLORS.accentLight, gradient: `linear-gradient(135deg, ${COLORS.accentLight}, ${COLORS.accent})`, glow: accentAlpha(0.12) },
+    copilot: { color: COLORS.accentDark,  gradient: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accentDark})`,  glow: accentAlpha(0.12) },
 };
 
 function getAccent(pipeline: string) {

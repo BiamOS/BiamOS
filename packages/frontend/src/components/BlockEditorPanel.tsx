@@ -477,7 +477,7 @@ export const BlockEditorPanel = React.memo(function BlockEditorPanel({
                                 {/* Component Name (auto-derived) */}
                                 <Box sx={{ display: "flex", gap: 0.5, alignItems: "center", mb: 1 }}>
                                     <Typography variant="caption" sx={{ color: COLORS.textMuted, fontSize: "0.7rem" }}>Component:</Typography>
-                                    <Typography variant="caption" sx={{ color: COLORS.cyan, fontFamily: "'JetBrains Mono', monospace", fontSize: "0.72rem" }}>
+                                    <Typography variant="caption" sx={{ color: COLORS.accentLight, fontFamily: "'JetBrains Mono', monospace", fontSize: "0.72rem" }}>
                                         {componentName}
                                     </Typography>
                                 </Box>

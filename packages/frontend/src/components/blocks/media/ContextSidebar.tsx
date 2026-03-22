@@ -8,12 +8,10 @@
 // ============================================================
 
 import React from "react";
-import { Box, Typography, IconButton, InputBase } from "@mui/material";
+import { Box, Typography, IconButton } from "@mui/material";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import { TOOL_REGISTRY } from "../../../tools/registry";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import SendIcon from "@mui/icons-material/Send";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import ArticleIcon from "@mui/icons-material/Article";
 import {
@@ -23,7 +21,12 @@ import {
     SourceBadge,
     MarkdownContent,
     CopyableMarkdown,
+    ResearchProgressBubble,
+    AgentStepBubble,
 } from "./ContextSidebarParts.js";
+import { getChatTokens } from "../../ui/SharedUI";
+
+const tokens = getChatTokens("dark");
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -49,6 +52,12 @@ interface ContextSidebarProps {
     isPrivacyBlocked?: boolean;
     onShowPageContext?: () => void;
     agentStatus?: "idle" | "running" | "paused" | "done" | "error";
+    /** The question the agent is waiting on (set when status === 'paused') */
+    pauseQuestion?: string | null;
+    /** Called when the user clicks ✅ Yes — resumes the agent */
+    onAgentConfirm?: () => void;
+    /** Called when the user clicks ❌ Cancel — stops the agent */
+    onAgentCancel?: () => void;
 }
 
 // ─── Main Sidebar Component ─────────────────────────────────
@@ -66,9 +75,11 @@ export const ContextSidebar = React.memo(function ContextSidebar({
     isPrivacyBlocked,
     onShowPageContext,
     agentStatus,
+    pauseQuestion,
+    onAgentConfirm,
+    onAgentCancel,
 }: ContextSidebarProps) {
     const [isDragging, setIsDragging] = React.useState(false);
-    const [manualInput, setManualInput] = React.useState("");
     const hasHints = hints.length > 0;
     const chatContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -82,18 +93,6 @@ export const ContextSidebar = React.memo(function ContextSidebar({
         }
     }, [hints]);
 
-    // ── GenUI Prefill Bridge: dashboard buttons pre-fill chat input ──
-    React.useEffect(() => {
-        const handler = (e: Event) => {
-            const command = (e as CustomEvent).detail?.command;
-            if (command && typeof command === 'string') {
-                setManualInput(command);
-                if (!open) setOpen(true);
-            }
-        };
-        window.addEventListener('biamos:prefill-command', handler);
-        return () => window.removeEventListener('biamos:prefill-command', handler);
-    }, [open, setOpen]);
 
     const handleHintClick = React.useCallback(async (index: number) => {
         const hint = hints[index];
@@ -124,8 +123,8 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                 transition: isDragging
                     ? "none"
                     : "width 0.35s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.35s ease",
-                borderLeft: "2px solid rgba(0, 212, 255, 0.25)",
-                bgcolor: "rgba(0, 12, 24, 0.6)",
+                borderLeft: tokens.border,
+                bgcolor: tokens.sidebarBg,
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
@@ -144,7 +143,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                         position: "absolute", left: -4, top: 0, bottom: 0, width: 8,
                         cursor: "col-resize", zIndex: 20,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        "&:hover > div": { bgcolor: "rgba(0, 212, 255, 0.5)" },
+                        "&:hover > div": { bgcolor: tokens.secondaryText },
                     }}
                     onMouseDown={(e) => {
                         e.preventDefault();
@@ -167,7 +166,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                         document.addEventListener("mouseup", onUp);
                     }}
                 >
-                    <Box sx={{ width: 2, height: 24, borderRadius: 1, bgcolor: "rgba(0, 212, 255, 0.2)", transition: "background-color 0.15s" }} />
+                    <Box sx={{ width: 2, height: 24, borderRadius: 1, bgcolor: tokens.border, transition: "background-color 0.15s" }} />
                 </Box>
             )}
 
@@ -176,7 +175,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                 sx={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     px: open ? 1.5 : 0.5, py: 0.8,
-                    borderBottom: "1px solid rgba(0, 212, 255, 0.1)",
+                    borderBottom: tokens.border,
                     cursor: "pointer",
                 }}
                 onClick={() => setOpen(!open)}
@@ -211,7 +210,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                             size="small"
                             onClick={(e) => { e.stopPropagation(); onTriggerAnalysis(); }}
                             sx={{
-                                color: isAnalyzing ? "rgba(0, 212, 255, 0.4)" : "#00d4ff",
+                                color: isAnalyzing ? tokens.secondaryText : tokens.statusActive,
                                 p: 0.3,
                                 animation: isAnalyzing ? "spin 1s linear infinite" : "none",
                                 "@keyframes spin": { "0%": { transform: "rotate(0deg)" }, "100%": { transform: "rotate(360deg)" } },
@@ -221,7 +220,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                             <RefreshIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                     )}
-                    <IconButton size="small" sx={{ color: "#00d4ff", p: 0.3 }}>
+                    <IconButton size="small" sx={{ color: tokens.secondaryText, p: 0.3 }}>
                         {open ? <ChevronRightIcon sx={{ fontSize: 16 }} /> : <ChevronLeftIcon sx={{ fontSize: 16 }} />}
                     </IconButton>
                 </Box>
@@ -269,58 +268,17 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 </Box>
                             )}
 
-                            {/* Auto-detected suggestions as compact chips */}
-                            {(() => {
-                                const autoHints = hints.filter(h => h.reason !== "Manual query" && h.reason !== "low_confidence");
-                                if (autoHints.length === 0) return null;
-                                return (
-                                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                                        <Typography sx={{ color: "rgba(0, 212, 255, 0.35)", fontSize: "0.55rem", fontWeight: 600, width: "100%", mb: 0.2 }}>
-                                            ✨ Suggestions
-                                        </Typography>
-                                        {autoHints.map((hint, i) => (
-                                            <Box
-                                                key={`${hint.query}-${i}`}
-                                                component="button"
-                                                title={hint.reason || hint.query}
-                                                onClick={() => {
-                                                    const idx = hints.indexOf(hint);
-                                                    handleHintClick(idx);
-                                                }}
-                                                sx={{
-                                                    display: "inline-flex", alignItems: "center", gap: 0.4,
-                                                    px: 1, py: 0.4,
-                                                    fontSize: "0.62rem", fontWeight: 500,
-                                                    color: "rgba(0, 212, 255, 0.8)",
-                                                    bgcolor: "rgba(0, 212, 255, 0.06)",
-                                                    border: "1px solid rgba(0, 212, 255, 0.12)",
-                                                    borderRadius: 3,
-                                                    cursor: "pointer",
-                                                    transition: "all 0.15s ease",
-                                                    whiteSpace: "nowrap",
-                                                    "&:hover": {
-                                                        bgcolor: "rgba(0, 212, 255, 0.14)",
-                                                        borderColor: "rgba(0, 212, 255, 0.3)",
-                                                        color: "#00d4ff",
-                                                    },
-                                                }}
-                                            >
-                                                ✨ {hint.query}
-                                            </Box>
-                                        ))}
-                                    </Box>
-                                );
-                            })()}
+
                         </Box>
                     )}
 
                     {/* Divider + Clear chat */}
-                    {hints.some(h => h.reason === "Manual query") && (
+                    {hints.some(h => h.reason === "Manual query" || h.reason === "Context question") && (
                         <Box sx={{ display: "flex", alignItems: "center", mx: 1, gap: 0.5 }}>
-                            <Box sx={{ flex: 1, borderBottom: "1px solid rgba(0, 212, 255, 0.08)" }} />
+                            <Box sx={{ flex: 1, borderBottom: tokens.border }} />
                             <Box
                                 component="button"
-                                onClick={() => setHints(prev => prev.filter(h => h.reason !== "Manual query"))}
+                                onClick={() => setHints(prev => prev.filter(h => h.reason !== "Manual query" && h.reason !== "Context question"))}
                                 sx={{
                                     fontSize: "0.5rem", fontWeight: 600,
                                     color: "rgba(255, 255, 255, 0.25)",
@@ -343,13 +301,14 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                         flex: 1, display: "flex", flexDirection: "column",
                         overflow: "auto", p: 1, gap: 1,
                         "&::-webkit-scrollbar": { width: 4 },
-                        "&::-webkit-scrollbar-thumb": { background: "rgba(0,212,255,0.15)", borderRadius: 2 },
+                        "&::-webkit-scrollbar-thumb": { background: tokens.border, borderRadius: 2 },
                     }}>
                         {/* Spacer pushes messages to bottom — shrinks when messages overflow */}
                         <Box sx={{ flex: 1 }} />
                         {/* Chat messages — oldest at top, newest at bottom */}
                         {(() => {
-                            const chatHints = hints.filter(h => h.reason === "Manual query");
+                            // Show both CONTEXT_QUESTION hints + agent/omnibar manual queries
+                            const chatHints = hints.filter(h => h.reason === "Manual query" || h.reason === "Context question");
                             if (chatHints.length === 0) return (
                                 <Box sx={{
                                     display: "flex", flexDirection: "column", alignItems: "center",
@@ -357,7 +316,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                 }}>
                                     <Typography sx={{ fontSize: "1.5rem" }}>🤖</Typography>
                                     <Typography sx={{
-                                        color: "rgba(0, 212, 255, 0.3)",
+                                        color: tokens.secondaryText,
                                         fontSize: "0.7rem",
                                         fontWeight: 500,
                                         textAlign: "center",
@@ -372,15 +331,15 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                             sx={{
                                                 mt: 0.5, px: 1.5, py: 0.5,
                                                 fontSize: "0.65rem", fontWeight: 600,
-                                                color: "#00d4ff",
-                                                bgcolor: "rgba(0, 212, 255, 0.08)",
-                                                border: "1px solid rgba(0, 212, 255, 0.15)",
+                                                color: tokens.secondaryText,
+                                                bgcolor: tokens.aiBubbleBg,
+                                                border: tokens.border,
                                                 borderRadius: 1.5,
                                                 cursor: "pointer",
                                                 transition: "all 0.15s ease",
                                                 "&:hover": {
-                                                    bgcolor: "rgba(0, 212, 255, 0.15)",
-                                                    borderColor: "rgba(0, 212, 255, 0.3)",
+                                                    bgcolor: tokens.cardBg,
+                                                    borderColor: tokens.secondaryText,
                                                 },
                                             }}
                                         >
@@ -403,23 +362,22 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                         >
                                             <Box sx={{
                                                 px: 1.5, py: 0.8,
-                                                borderRadius: "12px 12px 4px 12px",
-                                                bgcolor: "rgba(0, 212, 255, 0.15)",
-                                                border: "1px solid rgba(0, 212, 255, 0.25)",
+                                                borderRadius: tokens.userBubbleRadius,
+                                                bgcolor: tokens.userBubbleBg,
                                                 maxWidth: "85%",
                                             }}>
                                                 <Typography sx={{
-                                                    color: "#e0f0ff",
-                                                    fontSize: "0.75rem",
-                                                    fontWeight: 500,
-                                                    lineHeight: 1.4,
+                                                    color: tokens.userBubbleText,
+                                                    fontSize: tokens.chatFontSize,
+                                                    fontWeight: tokens.chatFontWeight,
+                                                    lineHeight: tokens.chatLineHeight,
                                                 }}>
                                                     {hint.query}
                                                 </Typography>
                                                 {hint.timestamp && (
                                                     <Typography sx={{
-                                                        color: "rgba(0, 212, 255, 0.3)",
-                                                        fontSize: "0.5rem",
+                                                        color: "rgba(255, 255, 255, 0.5)",
+                                                        fontSize: tokens.secondaryFontSize,
                                                         textAlign: "right",
                                                         mt: 0.3,
                                                     }}>
@@ -433,77 +391,75 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                             <Box sx={{
                                                 display: "flex", justifyContent: "flex-start",
                                                 maxWidth: "92%", alignSelf: "flex-start",
+                                                w: '100%'
                                             }}>
-                                                <Box sx={{
-                                                    px: 1.5, py: 1,
-                                                    borderRadius: "12px 12px 12px 4px",
-                                                    bgcolor: "rgba(0, 212, 255, 0.08)",
-                                                    border: "1px solid rgba(0, 212, 255, 0.12)",
-                                                    position: "relative",
-                                                    "&:hover .copy-btn": { opacity: 1 },
-                                                }}>
-
-                                                    {hint.loading && !hint.data?.summary ? (
-                                                        <Box sx={{
-                                                            display: "flex", gap: 0.5, alignItems: "center",
-                                                            py: 0.5,
-                                                        }}>
+                                                {/* V2 Bubbles for Agent/Research or V1 for Chat */}
+                                                {hint.query.startsWith('📊 Research:') && hint.data?.summary ? (
+                                                    <Box sx={{ width: '100%' }}>
+                                                        <ResearchProgressBubble
+                                                            query={hint.query.replace('📊 Research: ', '')}
+                                                            steps={hint.data._steps || []}
+                                                            status={hint.data._status || (hint.loading ? 'running' : 'done')}
+                                                            phase={hint.data._phase || (hint.loading ? 'search' : 'done')}
+                                                        />
+                                                    </Box>
+                                                ) : hint.query.startsWith('🤖 Agent:') && hint.data?.summary ? (
+                                                    <Box sx={{ width: '100%' }}>
+                                                        <AgentStepBubble
+                                                            task={hint.data._task || hint.query.replace('🤖 Agent: ', '')}
+                                                            steps={hint.data._steps || []}
+                                                            status={hint.data._status || (hint.loading ? 'running' : 'done')}
+                                                            currentAction={hint.data._currentAction || (hint.loading ? 'Working...' : 'Done')}
+                                                            pauseQuestion={(hint.data._status === 'paused') ? pauseQuestion : null}
+                                                            onConfirm={onAgentConfirm}
+                                                            onCancel={onAgentCancel}
+                                                        />
+                                                    </Box>
+                                                ) : (
+                                                    <Box sx={{
+                                                        px: 1.5, py: 1,
+                                                        borderRadius: tokens.aiBubbleRadius,
+                                                        bgcolor: tokens.aiBubbleBg,
+                                                        position: "relative",
+                                                        "&:hover .copy-btn": { opacity: 1 },
+                                                        width: '100%'
+                                                    }}>
+                                                        {hint.loading && !hint.data?.summary ? (
                                                             <Box sx={{
-                                                                width: 6, height: 6, borderRadius: "50%",
-                                                                bgcolor: "#00d4ff",
-                                                                animation: "typingDot 1.4s ease-in-out infinite",
-                                                                "@keyframes typingDot": {
-                                                                    "0%, 100%": { opacity: 0.2, transform: "scale(0.8)" },
-                                                                    "50%": { opacity: 1, transform: "scale(1)" },
-                                                                },
-                                                            }} />
-                                                            <Box sx={{
-                                                                width: 6, height: 6, borderRadius: "50%",
-                                                                bgcolor: "#00d4ff",
-                                                                animation: "typingDot 1.4s ease-in-out infinite 0.2s",
-                                                            }} />
-                                                            <Box sx={{
-                                                                width: 6, height: 6, borderRadius: "50%",
-                                                                bgcolor: "#00d4ff",
-                                                                animation: "typingDot 1.4s ease-in-out infinite 0.4s",
-                                                            }} />
-                                                        </Box>
-                                                    ) : hint.data?.summary ? (
-                                                        <>
-                                                            <CopyableMarkdown markdown={hint.data.summary} />
-                                                            {/* Blinking cursor while streaming */}
-                                                            {hint.loading && (
-                                                                <Box component="span" sx={{
-                                                                    display: "inline",
-                                                                    color: "#00d4ff",
-                                                                    fontWeight: 700,
-                                                                    animation: "blink 1s step-end infinite",
-                                                                    "@keyframes blink": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0 } },
-                                                                }}>▌</Box>
-                                                            )}
-                                                            {hint.data._source && (
-                                                                <Typography sx={{
-                                                                    color: hint.data._source === "page_context"
-                                                                        ? "rgba(0, 200, 100, 0.5)"
-                                                                        : hint.data._source === "web_search"
-                                                                            ? "rgba(255, 180, 0, 0.6)"
-                                                                            : "rgba(0, 212, 255, 0.4)",
-                                                                    fontSize: "0.55rem",
-                                                                    fontWeight: 600,
-                                                                    mt: 0.5,
-                                                                }}>
-                                                                    {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
-                                                                </Typography>
-                                                            )}
+                                                                display: "flex", gap: 0.5, alignItems: "center",
+                                                                py: 0.5,
+                                                            }}>
+                                                                <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: tokens.secondaryText, animation: "typingDot 1.4s ease-in-out infinite" }} />
+                                                                <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: tokens.secondaryText, animation: "typingDot 1.4s ease-in-out infinite 0.2s" }} />
+                                                                <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: tokens.secondaryText, animation: "typingDot 1.4s ease-in-out infinite 0.4s" }} />
+                                                            </Box>
+                                                        ) : hint.data?.summary ? (
+                                                            <>
+                                                                <CopyableMarkdown markdown={hint.data.summary} />
+                                                                {/* Blinking cursor while streaming */}
+                                                                {hint.loading && (
+                                                                    <Box component="span" sx={{
+                                                                        display: "inline", color: tokens.statusActive, fontWeight: 700,
+                                                                        animation: "blink 1s step-end infinite"
+                                                                    }}>▌</Box>
+                                                                )}
+                                                                {hint.data._source && (
+                                                                    <Typography sx={{
+                                                                        color: hint.data._source === "page_context" ? tokens.statusSuccess : hint.data._source === "web_search" ? tokens.statusWarning : tokens.secondaryText,
+                                                                        fontSize: "0.55rem", fontWeight: 600, mt: 0.5,
+                                                                    }}>
+                                                                        {hint.data._source === "page_context" ? "📄 From page" : hint.data._source === "web_search" ? "🔍 Web search" : "🧠 General knowledge"}
+                                                                    </Typography>
+                                                                )}
                                                             {/* 👍/👎 Agent workflow feedback */}
                                                             {hint.data._workflowId && hint.data._sendFeedback && (
                                                                 <Box sx={{
                                                                     display: "flex", gap: 0.8, mt: 0.8, pt: 0.6,
-                                                                    borderTop: "1px solid rgba(0, 212, 255, 0.08)",
+                                                                    borderTop: tokens.border,
                                                                     alignItems: "center",
                                                                 }}>
                                                                     <Typography sx={{
-                                                                        color: "rgba(0, 212, 255, 0.4)",
+                                                                        color: tokens.secondaryText,
                                                                         fontSize: "0.55rem",
                                                                         fontWeight: 500,
                                                                     }}>
@@ -560,6 +516,7 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                                         </Typography>
                                                     ) : null}
                                                 </Box>
+                                                )}
                                             </Box>
                                         )}
                                         {/* Follow-up suggestion chips */}
@@ -575,18 +532,18 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                                                         sx={{
                                                             px: 1.2, py: 0.4,
                                                             borderRadius: "12px",
-                                                            bgcolor: "rgba(0, 212, 255, 0.06)",
-                                                            border: "1px solid rgba(0, 212, 255, 0.2)",
+                                                            bgcolor: tokens.aiBubbleBg,
+                                                            border: tokens.border,
                                                             cursor: "pointer",
                                                             transition: "all 0.15s ease",
                                                             "&:hover": {
-                                                                bgcolor: "rgba(0, 212, 255, 0.15)",
-                                                                borderColor: "rgba(0, 212, 255, 0.4)",
+                                                                bgcolor: tokens.cardBg,
+                                                                borderColor: tokens.secondaryText,
                                                             },
                                                         }}
                                                     >
                                                         <Typography sx={{
-                                                            color: "rgba(0, 212, 255, 0.7)",
+                                                            color: tokens.secondaryText,
                                                             fontSize: "0.65rem",
                                                             fontWeight: 500,
                                                             whiteSpace: "nowrap",
@@ -605,119 +562,6 @@ export const ContextSidebar = React.memo(function ContextSidebar({
                 </Box>
             )}
 
-            {/* Chat input */}
-            {
-                open && onManualQuery && (
-                    <Box
-                        component="form"
-                        onSubmit={(e: React.FormEvent) => {
-                            e.preventDefault();
-                            const q = manualInput.trim();
-                            if (!q) return;
-                            onManualQuery(q);
-                            setManualInput("");
-                        }}
-                        sx={{
-                            display: "flex", alignItems: "center", gap: 1,
-                            px: 1.5, py: 1,
-                            borderTop: "1px solid rgba(0, 212, 255, 0.15)",
-                            bgcolor: "rgba(0, 12, 24, 0.4)",
-                            flexShrink: 0,
-                            position: "relative",
-                        }}
-                    >
-                        {/* Slash command autocomplete */}
-                        {manualInput.trim().startsWith("/") && (
-                            <Box sx={{
-                                position: "absolute", bottom: "100%", left: 0, right: 0,
-                                bgcolor: "rgba(8, 18, 30, 0.95)",
-                                borderTop: "1px solid rgba(0, 212, 255, 0.2)",
-                                borderBottom: "1px solid rgba(0, 212, 255, 0.1)",
-                                backdropFilter: "blur(8px)",
-                                py: 0.5,
-                            }}>
-                                {TOOL_REGISTRY
-                                    .map(t => ({ cmd: t.slashCommand, emoji: t.emoji, desc: `${t.name} — ${t.description}` }))
-                                    .filter(c => c.cmd.startsWith(manualInput.trim().split(" ")[0].toLowerCase()))
-                                    .map(c => (
-                                        <Box
-                                            key={c.cmd}
-                                            onClick={() => {
-                                                setManualInput(c.cmd + " ");
-                                            }}
-                                            sx={{
-                                                px: 1.5, py: 0.6,
-                                                display: "flex", alignItems: "center", gap: 1,
-                                                cursor: "pointer",
-                                                transition: "all 0.1s",
-                                                "&:hover": { bgcolor: "rgba(0, 212, 255, 0.1)" },
-                                            }}
-                                        >
-                                            <Typography sx={{ fontSize: "0.85rem" }}>{c.emoji}</Typography>
-                                            <Box>
-                                                <Typography sx={{ color: "#00d4ff", fontSize: "0.7rem", fontWeight: 600 }}>
-                                                    {c.cmd}
-                                                </Typography>
-                                                <Typography sx={{ color: "rgba(255,255,255,0.4)", fontSize: "0.6rem" }}>
-                                                    {c.desc}
-                                                </Typography>
-                                            </Box>
-                                        </Box>
-                                    ))}
-                            </Box>
-                        )}
-                        <InputBase
-                            value={manualInput}
-                            onChange={(e) => setManualInput(e.target.value)}
-                            onKeyDown={(e: React.KeyboardEvent) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    const q = manualInput.trim();
-                                    if (!q || !onManualQuery) return;
-                                    onManualQuery(q);
-                                    setManualInput("");
-                                }
-                            }}
-                            placeholder={agentStatus === "paused"
-                                ? "💬 Gib dem Agenten Feedback... (Enter)"
-                                : agentStatus === "running"
-                                    ? "🤖 Agent läuft..."
-                                    : "Ask something... (Enter to send)"}
-                            multiline
-                            maxRows={3}
-                            sx={{
-                                flex: 1,
-                                fontSize: "0.8rem",
-                                color: "rgba(255,255,255,0.9)",
-                                "& .MuiInputBase-input": { p: 0, py: 0.5 },
-                                "& .MuiInputBase-input::placeholder": {
-                                    color: "rgba(0, 212, 255, 0.35)",
-                                    fontSize: "0.8rem",
-                                },
-                            }}
-                            inputProps={{ spellCheck: false }}
-                            disabled={agentStatus === "running"}
-                        />
-                        <IconButton
-                            type="submit"
-                            disabled={!manualInput.trim()}
-                            sx={{
-                                width: 32, height: 32, borderRadius: "50%",
-                                bgcolor: manualInput.trim()
-                                    ? "rgba(0, 212, 255, 0.2)"
-                                    : "transparent",
-                                color: manualInput.trim() ? "#00d4ff" : "rgba(0, 212, 255, 0.2)",
-                                transition: "all 0.2s ease",
-                                "&:hover": {
-                                    bgcolor: "rgba(0, 212, 255, 0.3)",
-                                },
-                            }}
-                        >
-                            <SendIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                    </Box>
-                )
-            }
             {/* AI Disclaimer */}
             {open && (
                 <Typography sx={{

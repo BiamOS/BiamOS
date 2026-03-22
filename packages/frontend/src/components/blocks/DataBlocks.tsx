@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 import { COLORS, GRADIENTS, SectionLabel } from "../ui/SharedUI";
-import { GLASS, SHADOWS } from "../../theme/theme";
+import { GLASS, SHADOWS, accentAlpha } from "../../theme/theme";
 import { useCardContext } from "./CardContext";
 import type {
     HeroBlockSpec,
@@ -40,7 +40,7 @@ export const HeroBlock = React.memo(function HeroBlock({
     blockId,
 }: HeroBlockSpec) {
     const cardCtx = useCardContext();
-    const g = gradient ?? [COLORS.accent, COLORS.cyan];
+    const g = gradient ?? [COLORS.accentLight, COLORS.accent];
 
     const dynamicResult = blockId && cardCtx ? cardCtx.results[blockId] : undefined;
     const isLoading = blockId && cardCtx ? cardCtx.loading[blockId] : false;
@@ -71,7 +71,7 @@ export const HeroBlock = React.memo(function HeroBlock({
                     WebkitTextFillColor: "transparent",
                     display: "inline",
                     transition: "all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-                    filter: error ? "none" : "drop-shadow(0 2px 8px rgba(88,28,255,0.15))",
+                    filter: error ? "none" : `drop-shadow(0 2px 8px ${accentAlpha(0.15)})`,
                 }}
             >
                 {displayValue}
@@ -121,7 +121,10 @@ export const KeyValueBlock = React.memo(function KeyValueBlock({
                     <Grid size={12 / columns} key={i}>
                         <Box
                             sx={{
-                                ...GLASS.subtle,
+                                bgcolor: COLORS.surfaceSubtle,
+                                backdropFilter: "blur(12px)",
+                                border: `1px solid ${COLORS.borderSubtle}`,
+                                borderRadius: "10px",
                                 p: 1.2,
                                 transition: "all 0.3s ease",
                                 "&:hover": {
@@ -253,7 +256,10 @@ export const TableBlock = React.memo(function TableBlock({
             {label && <SectionLabel text={label} />}
             <TableContainer
                 sx={{
-                    ...GLASS.surface,
+                    bgcolor: COLORS.surfaceSubtle,
+                    backdropFilter: "blur(12px)",
+                    border: `1px solid ${COLORS.borderSubtle}`,
+                    borderRadius: "10px",
                     overflow: "hidden",
                 }}
             >
@@ -309,7 +315,10 @@ export const MetricRowBlock = React.memo(function MetricRowBlock({
                         flex: 1,
                         minWidth: 90,
                         textAlign: "center",
-                        ...GLASS.subtle,
+                        bgcolor: COLORS.surfaceSubtle,
+                        backdropFilter: "blur(12px)",
+                        border: `1px solid ${COLORS.borderSubtle}`,
+                        borderRadius: "10px",
                         p: 1.3,
                         transition: "all 0.3s ease",
                         "&:hover": {
@@ -427,7 +436,7 @@ export const TimelineBlock = React.memo(function TimelineBlock({
                         top: 6,
                         bottom: 6,
                         width: 2.5,
-                        background: `linear-gradient(180deg, ${COLORS.accent}, ${COLORS.cyan}40)`,
+                        background: `linear-gradient(180deg, ${COLORS.accent}, ${COLORS.accentDark}40)`,
                         borderRadius: "99px",
                     }}
                 />
@@ -442,15 +451,18 @@ export const TimelineBlock = React.memo(function TimelineBlock({
                                 width: 12,
                                 height: 12,
                                 borderRadius: "50%",
-                                bgcolor: i === 0 ? COLORS.cyan : COLORS.accent,
-                                border: "2.5px solid rgba(10, 10, 15, 0.95)",
-                                boxShadow: `0 0 10px ${i === 0 ? COLORS.cyan : COLORS.accent}50`,
+                                bgcolor: i === 0 ? COLORS.accentLight : COLORS.accent,
+                                border: "2.5px solid rgba(0, 0, 0, 0.95)",
+                                boxShadow: `0 0 10px ${i === 0 ? COLORS.accentLight : COLORS.accent}50`,
                                 transition: "box-shadow 0.3s ease",
                             }}
                         />
                         <Box
                             sx={{
-                                ...GLASS.subtle,
+                                bgcolor: COLORS.surfaceSubtle,
+                                backdropFilter: "blur(12px)",
+                                border: `1px solid ${COLORS.borderSubtle}`,
+                                borderRadius: "10px",
                                 p: 1.5,
                                 transition: "all 0.3s ease",
                                 "&:hover": {
@@ -462,7 +474,7 @@ export const TimelineBlock = React.memo(function TimelineBlock({
                             <Typography
                                 variant="caption"
                                 sx={{
-                                    color: COLORS.cyan,
+                                    color: COLORS.accentLight,
                                     fontWeight: 600,
                                     fontSize: "0.68rem",
                                     textTransform: "uppercase",

@@ -76,12 +76,17 @@ export function checkSelfHealing(
     const last2 = steps.slice(-2);
     const currentSig = `${currentAction}|${currentDescription}`;
     const allSame = last2.every(
-        (s: AgentStep) =>
-            `${s.action}|${s.description}` === currentSig &&
-            (s.result?.includes("NO DOM CHANGE") ||
-                s.result?.includes("No element") ||
-                s.result?.includes("failed") ||
-                s.result?.includes("⚠️")),
+        (s: AgentStep) => {
+            const isSameSig = `${s.action}|${s.description}` === currentSig;
+            const wasSuccessful = s.result?.includes("✓ COMPLETE") ||
+                                  s.result?.includes("already present") ||
+                                  s.result?.includes("✓ Clicking");
+            const hasErrorFlag = s.result?.includes("NO DOM CHANGE") ||
+                                 s.result?.includes("No element") ||
+                                 s.result?.includes("failed") ||
+                                 s.result?.includes("⚠️");
+            return isSameSig && hasErrorFlag && !wasSuccessful;
+        },
     );
 
     if (!allSame) return { action: "continue" };
@@ -112,14 +117,22 @@ export function checkSelfHealing(
 
 // ─── Stuck Detection ────────────────────────────────────────
 // 3+ consecutive NO DOM CHANGE = give up.
+// BUT: Skip steps where the action itself succeeded (e.g. type_text
+// reported "✓ COMPLETE"). Gmail's contenteditable often doesn't
+// trigger a visible DOM diff even when text was inserted.
 
 export function checkStuckDetection(steps: AgentStep[]): SafetyResult {
     if (steps.length < 3) return { action: "continue" };
 
     const last3 = steps.slice(-3);
-    const allNoChange = last3.every((s: AgentStep) =>
-        s.result?.includes("NO DOM CHANGE"),
-    );
+    const allNoChange = last3.every((s: AgentStep) => {
+        const hasNoDomChange = s.result?.includes("NO DOM CHANGE");
+        // Successful actions should NOT count as "stuck"
+        const wasSuccessful = s.result?.includes("✓ COMPLETE") ||
+                              s.result?.includes("already present") ||
+                              s.result?.includes("✓ Clicking");
+        return hasNoDomChange && !wasSuccessful;
+    });
 
     if (allNoChange) {
         debug.log(`🛑 [Stuck] 3 consecutive NO DOM CHANGE — forcing done`);

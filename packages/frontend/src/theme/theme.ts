@@ -3,8 +3,8 @@
 // ============================================================
 // BiamOS — Theme & Design Tokens (SINGLE SOURCE OF TRUTH)
 // ============================================================
-// All colors, gradients, spacing, and MUI overrides live here.
-// Import tokens from here or via SharedUI re-exports.
+// The "Magenta Pro" Apple Clean Aesthetic.
+// Pure Blacks, Asphalt Grays, and exactly ONE Accent Color.
 // ============================================================
 
 import { createTheme } from "@mui/material";
@@ -14,59 +14,55 @@ import { createTheme } from "@mui/material";
 // ============================================================
 
 export const COLORS = {
-    // ─── Brand ─────────────────────────────────
-    accent: "#581cff",
-    cyan: "#00c8ff",
-    green: "#00dc64",
-    red: "#ff6b6b",
+    // ─── Brand (Apple Pro Dark × Magenta) ──────
+    accent: "#DC0070",          // Lura Magenta — single accent
+    accentDark: "#A30053",      // Hover / pressed state
+    accentLight: "#FF3399",     // Highlight / glow
+    green: "#30D158",           // Apple system green
+    red: "#FF453A",             // Apple system red
+    yellow: "#FFD60A",          // Apple system yellow
 
-    // ─── Text ──────────────────────────────────
-    textPrimary: "rgba(255, 255, 255, 0.9)",
-    textSecondary: "rgba(255, 255, 255, 0.7)",
-    textMuted: "rgba(255, 255, 255, 0.4)",
-    textFaint: "rgba(255, 255, 255, 0.2)",
+    // ─── Text (Apple typography) ────────────────
+    textPrimary: "#F5F5F7",     // Apple off-white (crisp)
+    textSecondary: "#8E8E93",   // Apple secondary grey (asphalt)
+    textMuted: "rgba(255, 255, 255, 0.35)",
+    textFaint: "rgba(255, 255, 255, 0.15)",
 
-    // ─── Surfaces ──────────────────────────────
-    bg: "#09090B",             // Zinc 950
-    bgPaper: "#18181B",        // Zinc 900
-    surface: "#18181B",        // Surface-Grau (solid)
-    surfaceSubtle: "rgba(255, 255, 255, 0.02)",
+    // ─── Surfaces (Apple Dark Mode) ─────────────
+    bg: "#000000",              // Endless canvas — true black
+    bgPaper: "#121212ff",         // Bento cards, panels — Apple Charcoal
+    surface: "#2C2C2E",         // Elevated containers, hover states
+    surfaceSubtle: "rgba(255, 255, 255, 0.03)",
     surfaceFaint: "rgba(255, 255, 255, 0.01)",
-    surfaceDark: "rgba(0, 0, 0, 0.2)",
-    surfaceGlass: "rgba(255, 255, 255, 0.04)",
-    surfaceElevated: "rgba(255, 255, 255, 0.05)",
+    surfaceDark: "rgba(0, 0, 0, 0.3)",
+    surfaceGlass: "rgba(28, 28, 30, 0.65)", // Charcoal glass
 
-    // ─── Borders ───────────────────────────────
-    border: "rgba(255, 255, 255, 0.1)",        // 1px subtle
+    // ─── Borders ────────────────────────────────
+    border: "#3A3A3C",          // Asphalt grey border
     borderFaint: "rgba(255, 255, 255, 0.06)",
     borderSubtle: "rgba(255, 255, 255, 0.04)",
-    borderHover: "rgba(88, 28, 255, 0.3)",
-    borderGlass: "rgba(255, 255, 255, 0.08)",
+    borderHover: "rgba(255, 255, 255, 0.20)",
+    borderGlass: "rgba(255, 255, 255, 0.1)",
 } as const;
 
-/** Helper: accent color with custom opacity */
-export const accentAlpha = (opacity: number) => `rgba(88, 28, 255, ${opacity})`;
-
-/** Helper: cyan brand color with custom opacity */
-export const cyanAlpha = (opacity: number) => `rgba(0, 200, 255, ${opacity})`;
+/** Helper: accent (Magenta) with custom opacity */
+export const accentAlpha = (opacity: number) => `rgba(220, 0, 112, ${opacity})`;
 
 export const GRADIENTS = {
-    primary: "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)",
-    primaryHover: "linear-gradient(135deg, #6b33ff 0%, #33d4ff 100%)",
-    accent: `linear-gradient(135deg, ${accentAlpha(0.8)}, ${cyanAlpha(0.8)})`,
-    card: "linear-gradient(135deg, rgba(25, 25, 50, 0.95) 0%, rgba(12, 12, 30, 0.98) 100%)",
-    panel: "linear-gradient(135deg, rgba(30, 30, 60, 0.9) 0%, rgba(15, 15, 35, 0.95) 100%)",
-    title: `linear-gradient(135deg, #fff 0%, ${accentAlpha(0.8)} 100%)`,
-    titleCyan: `linear-gradient(135deg, #fff 0%, ${cyanAlpha(0.8)} 100%)`,
-    titleSoft: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.5) 100%)",
+    primary: `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`,
+    primaryHover: `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accentDark} 100%)`,
+    accent: `linear-gradient(135deg, ${accentAlpha(0.8)}, ${accentAlpha(0.3)})`,
+    card: "linear-gradient(135deg, rgba(28, 28, 30, 1) 0%, rgba(15, 15, 15, 1) 100%)",
+    panel: "linear-gradient(135deg, rgba(28, 28, 30, 0.95) 0%, rgba(0, 0, 0, 0.98) 100%)",
+    title: `linear-gradient(135deg, #ffffff 0%, ${COLORS.textSecondary} 100%)`, // Clean silver gradient
 } as const;
 
 // ─── Apple-Style Shadows (layered for depth) ────────────────
 
 export const SHADOWS = {
-    sm: "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.15)",
-    md: "0 2px 8px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2)",
-    lg: "0 4px 16px rgba(0,0,0,0.3), 0 8px 32px rgba(0,0,0,0.25), 0 16px 48px rgba(0,0,0,0.15)",
+    sm: "0 1px 2px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.2)",
+    md: "0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3)",
+    lg: "0 12px 32px rgba(0,0,0,0.5), 0 24px 64px rgba(0,0,0,0.4)",
     glow: (color: string, intensity = 0.15) => `0 0 20px rgba(${color}, ${intensity}), 0 0 40px rgba(${color}, ${intensity * 0.5})`,
 } as const;
 
@@ -75,27 +71,71 @@ export const SHADOWS = {
 export const GLASS = {
     surface: {
         bgcolor: COLORS.surfaceGlass,
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
+        backdropFilter: "blur(24px) saturate(1.2)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.2)",
         border: `1px solid ${COLORS.borderGlass}`,
-        borderRadius: "16px",
+        borderRadius: "12px",
     },
     card: {
-        bgcolor: "rgba(255, 255, 255, 0.03)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        border: `1px solid rgba(255, 255, 255, 0.06)`,
-        borderRadius: "20px",
+        bgcolor: "rgba(28, 28, 30, 0.4)",
+        backdropFilter: "blur(30px) saturate(1.5)",
+        WebkitBackdropFilter: "blur(30px) saturate(1.5)",
+        border: `1px solid rgba(255, 255, 255, 0.08)`,
+        borderRadius: "16px",
         boxShadow: SHADOWS.md,
     },
-    subtle: {
-        bgcolor: "rgba(255, 255, 255, 0.02)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        border: `1px solid rgba(255, 255, 255, 0.04)`,
-        borderRadius: "14px",
+} as const;
+
+// ============================================================
+// V2 Chat Design Tokens (Professional Neutrals)
+// ============================================================
+
+export const CHAT_TOKENS = {
+    light: {
+        sidebarBg: '#FFFFFF',
+        canvasBg: '#F5F5F7',
+        cardBg: '#FFFFFF',
+        userBubbleBg: COLORS.accent, // Brand consistency
+        userBubbleText: '#FFFFFF',
+        userBubbleRadius: '16px 16px 4px 16px',
+        aiBubbleBg: '#F5F5F7',
+        aiBubbleText: '#1D1D1F',
+        aiBubbleRadius: '16px 16px 16px 4px',
+        chatFontSize: '0.85rem',
+        chatLineHeight: 1.5,
+        chatFontWeight: 400,
+        secondaryText: '#86868B',
+        secondaryFontSize: '0.7rem',
+        border: '1px solid rgba(0, 0, 0, 0.08)',
+        statusSuccess: COLORS.green,
+        statusActive: COLORS.accent,
+        statusWarning: COLORS.yellow,
+        statusError: COLORS.red,
+    },
+    dark: {
+        sidebarBg: COLORS.bgPaper,
+        canvasBg: COLORS.bg,
+        cardBg: COLORS.bgPaper,
+        userBubbleBg: '#3A3A3C',    // Asphalt for user
+        userBubbleText: '#FFFFFF',
+        userBubbleRadius: '14px 14px 4px 14px',
+        aiBubbleBg: 'transparent',  // Ultra-clean AI bubbles
+        aiBubbleText: '#F5F5F7',
+        aiBubbleRadius: '14px 14px 14px 4px',
+        chatFontSize: '0.85rem',
+        chatLineHeight: 1.6,
+        chatFontWeight: 400,
+        secondaryText: COLORS.textSecondary,
+        secondaryFontSize: '0.7rem',
+        border: `1px solid ${COLORS.border}`,
+        statusSuccess: COLORS.green,
+        statusActive: COLORS.accent,
+        statusWarning: COLORS.yellow,
+        statusError: COLORS.red,
     },
 } as const;
+
+export const getChatTokens = (mode: 'light' | 'dark' = 'dark') => CHAT_TOKENS[mode];
 
 // ============================================================
 // App Constants
@@ -111,7 +151,7 @@ export const ROW_HEIGHT = 30;
 export const CARD_CONSTRAINTS = { minW: 2, minH: 4, maxW: 12 };
 
 export const LOGO_GRADIENT =
-    `linear-gradient(135deg, #fff 0%, ${accentAlpha(0.8)} 50%, ${cyanAlpha(0.8)} 100%)`;
+    `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`;
 
 // ============================================================
 // MUI Theme with Component Overrides
@@ -120,11 +160,17 @@ export const LOGO_GRADIENT =
 export const theme = createTheme({
     palette: {
         mode: "dark",
-        primary: { main: COLORS.accent },
-        secondary: { main: COLORS.cyan },
+        primary: {
+            main: COLORS.accent,
+            dark: COLORS.accentDark,
+            light: COLORS.accentLight,
+            contrastText: "#FFFFFF",
+        },
         error: { main: COLORS.red },
         success: { main: COLORS.green },
+        warning: { main: COLORS.yellow },
         background: { default: COLORS.bg, paper: COLORS.bgPaper },
+        divider: COLORS.border,
         text: {
             primary: COLORS.textPrimary,
             secondary: COLORS.textSecondary,
@@ -132,52 +178,57 @@ export const theme = createTheme({
         },
     },
     typography: {
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     },
-    shape: { borderRadius: 6 },
+    shape: { borderRadius: 8 }, // Crisp Apple corners
     components: {
-        // ─── Button ─────────────────────────────
         MuiButton: {
             styleOverrides: {
                 root: {
-                    textTransform: "none" as const,
-                    fontWeight: 700,
+                    textTransform: "none",
+                    fontWeight: 600, // Slightly less bold for elegance
+                    letterSpacing: "-0.01em",
                     borderRadius: 8,
+                    boxShadow: "none",
+                    "&:hover": {
+                        boxShadow: "none",
+                    },
                 },
             },
         },
-        // ─── TextField / OutlinedInput ──────────
         MuiOutlinedInput: {
             styleOverrides: {
                 root: {
-                    backgroundColor: COLORS.surfaceDark,
+                    backgroundColor: COLORS.surface,
                     borderRadius: 8,
+                    transition: "all 0.2s ease",
                     "& .MuiOutlinedInput-notchedOutline": {
                         borderColor: COLORS.border,
                     },
                     "&:hover .MuiOutlinedInput-notchedOutline": {
-                        borderColor: COLORS.borderHover,
+                        borderColor: COLORS.textSecondary, // Asphalt hover
                     },
                     "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        borderColor: accentAlpha(0.6),
+                        borderColor: COLORS.accent, // Laser magenta focus
+                        borderWidth: "1px",
                     },
                 },
                 input: {
                     color: COLORS.textPrimary,
                     fontSize: "0.85rem",
+                    padding: "10px 14px",
                 },
             },
         },
         MuiInputLabel: {
             styleOverrides: {
-                root: { color: COLORS.textSecondary },
+                root: { color: COLORS.textSecondary, fontSize: "0.85rem" },
             },
         },
-        // ─── Select ─────────────────────────────
         MuiSelect: {
             styleOverrides: {
                 root: {
-                    backgroundColor: COLORS.surfaceDark,
+                    backgroundColor: COLORS.surface,
                     borderRadius: 8,
                 },
             },
@@ -185,67 +236,68 @@ export const theme = createTheme({
         MuiMenu: {
             styleOverrides: {
                 paper: {
-                    backgroundColor: COLORS.bgPaper,
+                    backgroundColor: COLORS.surface,
                     border: `1px solid ${COLORS.border}`,
-                    borderRadius: 8,
+                    borderRadius: 10,
+                    boxShadow: SHADOWS.md,
                 },
             },
         },
-        // ─── Dialog ─────────────────────────────
         MuiDialog: {
             styleOverrides: {
                 paper: {
                     backgroundColor: COLORS.bgPaper,
                     border: `1px solid ${COLORS.border}`,
-                    borderRadius: 12,
+                    borderRadius: 16, // Apple standard for modals
+                    boxShadow: SHADOWS.lg,
                 },
             },
         },
-        // ─── Chip ───────────────────────────────
         MuiChip: {
             styleOverrides: {
                 root: {
-                    fontWeight: 700,
+                    fontWeight: 600,
                     fontSize: "0.7rem",
                     borderRadius: 6,
+                    backgroundColor: COLORS.surface,
+                    border: `1px solid ${COLORS.borderSubtle}`,
                 },
             },
         },
-        // ─── Alert ──────────────────────────────
         MuiAlert: {
             styleOverrides: {
                 root: {
                     borderRadius: 12,
+                    alignItems: "center",
                 },
             },
         },
-        // ─── Divider ────────────────────────────
         MuiDivider: {
             styleOverrides: {
-                root: {
-                    borderColor: COLORS.border,
-                },
+                root: { borderColor: COLORS.border },
             },
         },
-        // ─── Tooltip ────────────────────────────
         MuiTooltip: {
             styleOverrides: {
                 tooltip: {
-                    backgroundColor: COLORS.bgPaper,
+                    backgroundColor: COLORS.surface,
                     border: `1px solid ${COLORS.border}`,
                     color: COLORS.textPrimary,
-                    fontSize: "0.75rem",
+                    fontSize: "0.7rem",
+                    fontWeight: 500,
                     borderRadius: 6,
+                    boxShadow: SHADOWS.sm,
                 },
             },
         },
-        // ─── Icon Button ────────────────────────
         MuiIconButton: {
             styleOverrides: {
                 root: {
                     color: COLORS.textSecondary,
+                    transition: "color 0.2s ease, background-color 0.2s ease",
                     "&:hover": {
                         color: COLORS.textPrimary,
+                        backgroundColor: COLORS.surfaceSubtle,
                     },
                 },
             },
@@ -264,6 +316,7 @@ export const rootSx = {
     position: "relative" as const,
     overflow: "hidden",
     zIndex: 1,
+    bgcolor: COLORS.bg, // Force absolute black
 };
 
 export const topBarSx = {
@@ -277,18 +330,18 @@ export const topBarSx = {
     zIndex: 10,
     backdropFilter: "blur(24px) saturate(1.8)",
     WebkitBackdropFilter: "blur(24px) saturate(1.8)",
-    bgcolor: "rgba(9, 9, 11, 0.75)",
-    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+    bgcolor: "rgba(22, 22, 22, 0.75)", // Apple pure dark glass
+    borderBottom: `1px solid ${COLORS.borderFaint}`,
 };
 
 export const errorAlertSx = {
     maxWidth: 600,
     mx: "auto",
     mb: 2,
-    bgcolor: "rgba(255, 50, 50, 0.08)",
+    bgcolor: "rgba(255, 69, 58, 0.1)", // Apple Red alpha
     color: COLORS.red,
-    border: "1px solid rgba(255, 50, 50, 0.2)",
-    borderRadius: 3,
+    border: `1px solid rgba(255, 69, 58, 0.2)`,
+    borderRadius: 2,
     "& .MuiAlert-icon": { color: COLORS.red },
 };
 
@@ -301,8 +354,8 @@ export const floatingSearchSx = {
     width: "100%",
     backdropFilter: "blur(24px) saturate(1.8)",
     WebkitBackdropFilter: "blur(24px) saturate(1.8)",
-    bgcolor: "rgba(9, 9, 11, 0.85)",
-    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+    bgcolor: "rgba(0, 0, 0, 0.85)", // Apple pure dark glass
+    borderBottom: `1px solid ${COLORS.borderFaint}`,
     px: 3,
     py: 1.5,
     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",

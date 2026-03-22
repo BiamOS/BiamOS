@@ -50,6 +50,14 @@ export interface BrowserToolbarProps {
     onRefresh: () => void;
     onNewTab: () => void;
     contextNotice?: string | null;
+    /** Whether a generated dashboard is available for this card */
+    hasDashboard?: boolean;
+    /** Whether dashboard is still loading */
+    dashboardLoading?: boolean;
+    /** Current active view tab */
+    activeTab?: 'web' | 'dashboard';
+    /** Called when the user toggles between web and dashboard */
+    onToggleTab?: (tab: 'web' | 'dashboard') => void;
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -75,6 +83,10 @@ export const BrowserToolbar = React.memo(function BrowserToolbar({
     onRefresh,
     onNewTab,
     contextNotice,
+    hasDashboard = false,
+    dashboardLoading = false,
+    activeTab = 'web',
+    onToggleTab,
 }: BrowserToolbarProps) {
     const [urlInput, setUrlInput] = useState(currentUrl);
     const [urlFocused, setUrlFocused] = useState(false);
@@ -178,6 +190,42 @@ export const BrowserToolbar = React.memo(function BrowserToolbar({
             <Tooltip title="Forward" arrow><IconButton size="small" onClick={onForward} sx={navBtnSx}><ArrowForwardIcon sx={{ fontSize: 20 }} /></IconButton></Tooltip>
             <Tooltip title="Refresh" arrow><IconButton size="small" onClick={onRefresh} sx={navBtnSx}><RefreshIcon sx={{ fontSize: 20 }} /></IconButton></Tooltip>
 
+            {/* Dashboard Toggle — appears when a dashboard exists or is loading */}
+            {(hasDashboard || dashboardLoading) && (
+                <Box sx={{
+                    display: 'flex', alignItems: 'center',
+                    bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2,
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    overflow: 'hidden', flexShrink: 0, mx: 0.5,
+                }}>
+                    {(['web', 'dashboard'] as const).map((tab) => {
+                        const isActive = activeTab === tab;
+                        const isLoadingTab = tab === 'dashboard' && dashboardLoading && activeTab !== 'dashboard';
+                        return (
+                            <Box
+                                key={tab}
+                                onClick={() => !dashboardLoading && onToggleTab?.(tab)}
+                                sx={{
+                                    display: 'flex', alignItems: 'center', gap: 0.5,
+                                    px: 1.2, py: 0.5,
+                                    fontSize: '0.68rem', fontWeight: 700,
+                                    cursor: dashboardLoading && tab === 'dashboard' ? 'wait' : 'pointer',
+                                    bgcolor: isActive ? `rgba(255,255,255,0.12)` : 'transparent',
+                                    color: isActive ? COLORS.textPrimary : 'rgba(255,255,255,0.45)',
+                                    borderRight: tab === 'web' ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                                    transition: 'all 0.15s ease',
+                                    '&:hover': isActive ? {} : { bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.75)' },
+                                    userSelect: 'none',
+                                }}
+                            >
+                                {tab === 'web' ? '🌐' : isLoadingTab ? '⏳' : '📊'}
+                                <span>{tab === 'web' ? 'Web' : isLoadingTab ? 'Loading…' : 'Dashboard'}</span>
+                            </Box>
+                        );
+                    })}
+                </Box>
+            )}
+
             {/* URL bar */}
             <Box
                 component="form"
@@ -187,7 +235,7 @@ export const BrowserToolbar = React.memo(function BrowserToolbar({
                     position: "relative",
                     bgcolor: urlFocused ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
                     borderRadius: 6,
-                    border: `1px solid ${urlFocused ? accentAlpha(0.3) : "rgba(255,255,255,0.04)"}`,
+                    border: `1px solid ${urlFocused ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.04)"}`,
                     px: 1.2, py: 0.4,
                     mx: 0.5,
                     transition: "all 0.2s ease",

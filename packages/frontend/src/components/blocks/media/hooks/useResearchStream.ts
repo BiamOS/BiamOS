@@ -48,6 +48,7 @@ export function useResearchStream(onStart?: () => void) {
         setResearchState({ status: 'running', phase: 'search', steps: [], query, blocks: undefined });
 
         try {
+            console.log("🔥 FETCHING RESEARCH API:", query);
             const resp = await fetch('http://localhost:3001/api/research', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -56,6 +57,7 @@ export function useResearchStream(onStart?: () => void) {
             });
 
             if (!resp.ok || !resp.body) {
+                console.error("🔥 RESEARCH API HTTP ERROR:", resp.status, resp.statusText);
                 setResearchState(prev => ({ ...prev, status: 'error', phase: 'error' }));
                 return;
             }
@@ -65,6 +67,9 @@ export function useResearchStream(onStart?: () => void) {
             const decoder = new TextDecoder();
             let buffer = '';
 
+            let currentEvent = '';
+            let currentData = '';
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -73,9 +78,6 @@ export function useResearchStream(onStart?: () => void) {
                 // Process complete SSE events
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || ''; // keep incomplete line in buffer
-
-                let currentEvent = '';
-                let currentData = '';
 
                 for (const line of lines) {
                     if (line.startsWith('event: ')) {

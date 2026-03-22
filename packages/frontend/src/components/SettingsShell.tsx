@@ -48,10 +48,11 @@ const navItemSx = (active: boolean) => ({
     borderRadius: 2,
     mx: 1,
     mb: 0.5,
-    color: active ? accentAlpha(0.9) : COLORS.textSecondary,
-    bgcolor: active ? accentAlpha(0.08) : "transparent",
+    color: active ? COLORS.textPrimary : COLORS.textSecondary,
+    bgcolor: active ? "rgba(255,255,255,0.08)" : "transparent",
     "&:hover": {
-        bgcolor: active ? accentAlpha(0.12) : COLORS.surface,
+        color: COLORS.textPrimary,
+        bgcolor: active ? "rgba(255,255,255,0.12)" : COLORS.surface,
     },
     transition: "all 0.2s ease",
 });

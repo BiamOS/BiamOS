@@ -25,7 +25,7 @@ All views render inside `IframeBlock.tsx` (the orchestrator). The rendering stac
 ├──────────────────────────────────────────────────────┤
 │  z:0  Webview / iframe (the actual website)           │ ← Hidden when GenUI dashboard is active
 ├──────────────────────────────────────────────────────┤
-│  SIDE  ContextSidebar (right, resizable 280px)       │ ← Chat, agent progress, auto-hints
+│  SIDE  Lura Command Center (right, resizable 280px)       │ ← Chat, agent progress, auto-hints
 └──────────────────────────────────────────────────────┘
   TOP  BrowserToolbar (URL bar, nav buttons, zoom)
 ```
@@ -94,11 +94,11 @@ All views render inside `IframeBlock.tsx` (the orchestrator). The rendering stac
 | Visibility | `display: hasDashboard ? 'none' : 'block'` |
 | Note | Hidden when legacy GenUI dashboard is active. Visible behind Command Center overlay. |
 
-### 2.6 ContextSidebar (right side)
+### 2.6 Lura Command Center (right side)
 
 | Property | Value |
 |----------|-------|
-| File | `ContextSidebar.tsx` + `useContextWatcher.ts` |
+| File | `Lura Command Center.tsx` + `useContextWatcher.ts` |
 | Position | Right side, resizable (default 280px) |
 | Content | Auto-suggestions, agent progress (🤖), research progress (📊), manual chat, page context |
 | Documented in | `docs/CONTEXT_COPILOT_LOGIC.md` |
@@ -206,7 +206,7 @@ User input → Classifier → │  SSE /api/research │ → researchState.block
                   ┌─ ACTION ───────────┐
                   │  useAgentActions    │
               → │  SSE /api/act       │ → agentState.steps → AgentOverlay
-                  │  (MODEL_THINKING)   │   + useAgentSidebarSync → ContextSidebar
+                  │  (MODEL_THINKING)   │   + useAgentSidebarSync → Lura Command Center
                   └────────────────────┘
 
                   ┌─ ACTION_WITH_CONTEXT ─┐
@@ -216,7 +216,7 @@ User input → Classifier → │  SSE /api/research │ → researchState.block
                   └────────────────────────┘
 
                   ┌─ CONTEXT_QUESTION ──┐
-              → │  useContextChat     │ → ContextSidebar hint
+              → │  useContextChat     │ → Lura Command Center hint
                   │  RAG over page text │
                   └────────────────────┘
 ```

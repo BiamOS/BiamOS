@@ -186,7 +186,7 @@ export const ChangelogPanel = React.memo(function ChangelogPanel() {
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
                 <Box>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                        <Typography variant="h5" sx={gradientTitleSx(GRADIENTS.titleCyan)}>
+                        <Typography variant="h5" sx={gradientTitleSx()}>
                             📋 Changelog
                         </Typography>
                         <Chip

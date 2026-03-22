@@ -131,7 +131,7 @@ export const IntegrationStore = React.memo(function IntegrationStore() {
             {/* Header */}
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                 <Box>
-                    <Typography variant="h5" sx={gradientTitleSx(GRADIENTS.titleCyan)}>
+                    <Typography variant="h5" sx={gradientTitleSx()}>
                         🧩 Integrations
                     </Typography>
                     <Typography variant="caption" sx={{ color: COLORS.textSecondary, lineHeight: 1.5, display: "block", maxWidth: 600 }}>

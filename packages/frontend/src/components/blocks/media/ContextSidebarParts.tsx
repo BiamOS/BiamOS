@@ -14,6 +14,7 @@
 import React from "react";
 import { Box, Typography, IconButton } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { getChatTokens } from "../../../theme/theme";
 
 // ─── Lightweight Markdown → HTML ─────────────────────────────
 
@@ -455,6 +456,372 @@ export function CopyableMarkdown({ markdown, sx }: { markdown: string; sx?: any 
                     </Box>
                 );
             })}
+        </Box>
+    );
+}
+
+// ─── Research Progress Bubble (Perplexity-Style Accordion) ──
+
+interface ResearchStep {
+    phase: string;
+    status: string;
+    data?: Record<string, unknown>;
+}
+
+export function ResearchProgressBubble({
+    steps,
+    phase,
+    status,
+    query,
+}: {
+    steps: ResearchStep[];
+    phase: string;
+    status: 'idle' | 'running' | 'done' | 'error';
+    query: string;
+}) {
+    const [expanded, setExpanded] = React.useState(false);
+    // Use dark tokens (V2 will add theme mode switching)
+    const t = getChatTokens('dark');
+
+    const isRunning = status === 'running';
+    const isDone = status === 'done';
+    const stepCount = steps.length;
+
+    // Summary label
+    const summaryText = isRunning
+        ? phase === 'search' ? `Searching...` : phase === 'fetch' ? `Reading ${stepCount} sources...` : `Building dashboard...`
+        : isDone
+            ? `${stepCount} steps completed`
+            : `Research: ${query}`;
+
+    return (
+        <Box sx={{
+            bgcolor: t.aiBubbleBg,
+            borderRadius: t.aiBubbleRadius,
+            border: t.border,
+            overflow: 'hidden',
+            mb: 1,
+        }}>
+            {/* Accordion Header — always visible */}
+            <Box
+                onClick={() => setExpanded(!expanded)}
+                sx={{
+                    display: 'flex', alignItems: 'center', gap: 1,
+                    px: 1.5, py: 1,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
+                }}
+            >
+                <Box sx={{
+                    fontSize: '0.9rem', lineHeight: 1,
+                    animation: isRunning ? 'spin 2s linear infinite' : 'none',
+                    '@keyframes spin': {
+                        '0%': { transform: 'rotate(0deg)' },
+                        '100%': { transform: 'rotate(360deg)' },
+                    },
+                }}>
+                    {isRunning ? '🔄' : isDone ? '📊' : '❌'}
+                </Box>
+                <Typography sx={{
+                    flex: 1,
+                    fontSize: t.chatFontSize,
+                    lineHeight: t.chatLineHeight,
+                    fontWeight: t.chatFontWeight,
+                    color: t.aiBubbleText,
+                }}>
+                    {summaryText}
+                </Typography>
+                <Typography sx={{ fontSize: '0.7rem', color: t.secondaryText }}>
+                    {expanded ? '▾' : `▸ ${stepCount}`}
+                </Typography>
+            </Box>
+
+            {/* Expanded Step List */}
+            {expanded && (
+                <Box sx={{ px: 1.5, pb: 1, borderTop: t.border }}>
+                    {steps.map((step, i) => {
+                        const isActive = isRunning && i === steps.length - 1;
+                        const icon = step.phase === 'search' ? '🔍'
+                            : step.phase === 'fetch' ? '📄'
+                            : step.phase === 'synthesize' ? '✨' : '✅';
+                        return (
+                            <Box key={i} sx={{
+                                display: 'flex', alignItems: 'center', gap: 0.8,
+                                py: 0.4,
+                            }}>
+                                {isActive ? (
+                                    <Box sx={{
+                                        width: 6, height: 6, borderRadius: '50%',
+                                        bgcolor: t.statusActive,
+                                        animation: 'pulse 1.5s ease-in-out infinite',
+                                        '@keyframes pulse': {
+                                            '0%, 100%': { opacity: 0.4 },
+                                            '50%': { opacity: 1 },
+                                        },
+                                    }} />
+                                ) : (
+                                    <Typography sx={{ fontSize: '0.7rem', lineHeight: 1 }}>{icon}</Typography>
+                                )}
+                                <Typography sx={{
+                                    fontSize: t.secondaryFontSize,
+                                    color: isActive ? t.aiBubbleText : t.secondaryText,
+                                    fontWeight: isActive ? 500 : 400,
+                                }}>
+                                    {step.status}
+                                    {step.data && (step.data as any).resultCount ? ` (${(step.data as any).resultCount} results)` : ''}
+                                    {step.data && (step.data as any).pagesRead != null ? ` (${(step.data as any).pagesRead} pages)` : ''}
+                                </Typography>
+                            </Box>
+                        );
+                    })}
+                </Box>
+            )}
+        </Box>
+    );
+}
+
+// ─── Agent Step Bubble ──────────────────────────────────────
+
+interface AgentStep {
+    action: string;
+    description: string;
+    result?: string;
+}
+
+export function AgentStepBubble({
+    steps,
+    status,
+    task,
+    currentAction,
+    pauseQuestion,
+    onConfirm,
+    onCancel,
+}: {
+    steps: AgentStep[];
+    status: string;
+    task: string;
+    currentAction: string;
+    /** Set when the agent is paused with ask_user */
+    pauseQuestion?: string | null;
+    /** User clicked ✅ Yes */
+    onConfirm?: () => void;
+    /** User clicked ❌ Cancel */
+    onCancel?: () => void;
+}) {
+    const [expanded, setExpanded] = React.useState(false);
+    const t = getChatTokens('dark');
+
+    const isRunning = status === 'running';
+    const isDone = status === 'done';
+    const isError = status === 'error';
+    const stepCount = steps.length;
+
+    const stepIcon = (action: string) => {
+        switch (action) {
+            case 'navigate': return '🌐';
+            case 'click': case 'click_at': return '🖱️';
+            case 'type_text': return '⌨️';
+            case 'scroll': return '📜';
+            case 'take_notes': return '📝';
+            case 'search_web': return '🔍';
+            case 'genui': return '🎨';
+            case 'done': return '✅';
+            default: return '▸';
+        }
+    };
+
+    const isPaused = status === 'paused';
+
+    const statusLabel = isRunning
+        ? currentAction || 'Working...'
+        : isPaused
+            ? `⏸️ Waiting for confirmation`
+            : isDone
+                ? `✅ ${stepCount} steps · Done`
+                : isError
+                    ? `❌ Failed after ${stepCount} steps`
+                    : task;
+
+    return (
+        <Box sx={{
+            bgcolor: t.aiBubbleBg,
+            borderRadius: t.aiBubbleRadius,
+            border: t.border,
+            overflow: 'hidden',
+            mb: 1,
+        }}>
+            {/* Header */}
+            <Box
+                onClick={() => setExpanded(!expanded)}
+                sx={{
+                    display: 'flex', alignItems: 'center', gap: 1,
+                    px: 1.5, py: 1,
+                    cursor: 'pointer', userSelect: 'none',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
+                }}
+            >
+                <Box sx={{
+                    fontSize: '0.9rem', lineHeight: 1,
+                    animation: isRunning ? 'botBounce 1s ease-in-out infinite' : 'none',
+                    '@keyframes botBounce': {
+                        '0%, 100%': { transform: 'translateY(0)' },
+                        '50%': { transform: 'translateY(-2px)' },
+                    },
+                }}>
+                    🤖
+                </Box>
+                <Typography sx={{
+                    flex: 1,
+                    fontSize: t.chatFontSize,
+                    lineHeight: t.chatLineHeight,
+                    fontWeight: t.chatFontWeight,
+                    color: t.aiBubbleText,
+                }}>
+                    {statusLabel}
+                </Typography>
+                <Typography sx={{ fontSize: '0.7rem', color: t.secondaryText }}>
+                    {expanded ? '▾' : `▸ ${stepCount}`}
+                </Typography>
+            </Box>
+
+            {/* Step List */}
+            {expanded && steps.length > 0 && (
+                <Box sx={{ px: 1.5, pb: 1, borderTop: t.border }}>
+                    {steps.map((step, i) => {
+                        const isActive = isRunning && i === steps.length - 1;
+                        return (
+                            <Box key={i} sx={{
+                                display: 'flex', alignItems: 'flex-start', gap: 0.8,
+                                py: 0.3,
+                            }}>
+                                {isActive ? (
+                                    <Box sx={{
+                                        width: 6, height: 6, borderRadius: '50%',
+                                        bgcolor: t.statusActive, mt: 0.6,
+                                        animation: 'pulse 1.5s ease-in-out infinite',
+                                    }} />
+                                ) : (
+                                    <Typography sx={{ fontSize: '0.7rem', lineHeight: 1, mt: 0.2 }}>
+                                        {step.action === 'done' ? '✅' : stepIcon(step.action)}
+                                    </Typography>
+                                )}
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography sx={{
+                                        fontSize: t.secondaryFontSize,
+                                        color: isActive ? t.aiBubbleText : t.secondaryText,
+                                        fontWeight: isActive ? 500 : 400,
+                                    }}>
+                                        {step.description}
+                                    </Typography>
+                                    {step.result && (
+                                        <Typography sx={{
+                                            fontSize: '0.65rem',
+                                            color: t.secondaryText,
+                                            opacity: 0.7,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            → {step.result.split('\n')[0].substring(0, 80)}
+                                        </Typography>
+                                    )}
+                                </Box>
+                            </Box>
+                        );
+                    })}
+                </Box>
+            )}
+
+            {/* ⏸️ Pause Confirmation Card — shown when agent calls ask_user */}
+            {isPaused && pauseQuestion && (
+                <Box sx={{
+                    mx: 1.5, mb: 1.5, mt: 0.5,
+                    p: 1.2,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(255, 180, 50, 0.06)',
+                    border: '1px solid rgba(255, 180, 50, 0.25)',
+                    borderLeft: '3px solid rgba(255, 180, 50, 0.7)',
+                }}>
+                    {/* Pause indicator */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, mb: 0.8 }}>
+                        <Box sx={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            bgcolor: 'rgba(255, 180, 50, 0.8)',
+                            animation: 'pausePulse 1.8s ease-in-out infinite',
+                            '@keyframes pausePulse': {
+                                '0%, 100%': { opacity: 0.4, transform: 'scale(0.9)' },
+                                '50%': { opacity: 1, transform: 'scale(1.1)' },
+                            },
+                        }} />
+                        <Typography sx={{
+                            fontSize: '0.6rem',
+                            fontWeight: 700,
+                            color: 'rgba(255, 180, 50, 0.8)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                        }}>
+                            Agent waiting
+                        </Typography>
+                    </Box>
+
+                    {/* The question */}
+                    <Typography sx={{
+                        fontSize: t.chatFontSize,
+                        color: t.aiBubbleText,
+                        lineHeight: t.chatLineHeight,
+                        mb: 1.2,
+                    }}>
+                        {pauseQuestion}
+                    </Typography>
+
+                    {/* Yes / Cancel buttons */}
+                    <Box sx={{ display: 'flex', gap: 0.8 }}>
+                        <Box
+                            component="button"
+                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onConfirm?.(); }}
+                            sx={{
+                                flex: 1,
+                                py: 0.6, px: 1,
+                                fontSize: '0.65rem', fontWeight: 700,
+                                color: 'rgba(0, 220, 130, 1)',
+                                bgcolor: 'rgba(0, 220, 130, 0.08)',
+                                border: '1px solid rgba(0, 220, 130, 0.3)',
+                                borderRadius: 1.5,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                '&:hover': {
+                                    bgcolor: 'rgba(0, 220, 130, 0.15)',
+                                    borderColor: 'rgba(0, 220, 130, 0.6)',
+                                },
+                            }}
+                        >
+                            ✅ Yes, continue
+                        </Box>
+                        <Box
+                            component="button"
+                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onCancel?.(); }}
+                            sx={{
+                                flex: 1,
+                                py: 0.6, px: 1,
+                                fontSize: '0.65rem', fontWeight: 700,
+                                color: 'rgba(255, 100, 100, 0.8)',
+                                bgcolor: 'rgba(255, 100, 100, 0.06)',
+                                border: '1px solid rgba(255, 100, 100, 0.2)',
+                                borderRadius: 1.5,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                '&:hover': {
+                                    bgcolor: 'rgba(255, 100, 100, 0.12)',
+                                    borderColor: 'rgba(255, 100, 100, 0.4)',
+                                },
+                            }}
+                        >
+                            ❌ Cancel
+                        </Box>
+                    </Box>
+                </Box>
+            )}
         </Box>
     );
 }

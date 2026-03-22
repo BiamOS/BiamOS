@@ -23,7 +23,7 @@ import {
 import { Close as CloseIcon } from "@mui/icons-material";
 
 // ─── Re-export tokens from theme (single source of truth) ───
-export { COLORS, GRADIENTS, accentAlpha, cyanAlpha } from "../../theme/theme";
+export { COLORS, GRADIENTS, accentAlpha, getChatTokens } from "../../theme/theme";
 import { COLORS, GRADIENTS, accentAlpha } from "../../theme/theme";
 
 // ============================================================

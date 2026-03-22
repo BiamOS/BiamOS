@@ -10,7 +10,10 @@
 
 import React from "react";
 import { Box, Typography } from "@mui/material";
-import { accentAlpha, COLORS } from "./ui/SharedUI";
+import { accentAlpha, COLORS, getChatTokens } from "./ui/SharedUI";
+
+// We'll use the V2 tokens for our base structure
+const tokens = getChatTokens("dark");
 
 // ============================================================
 // Shared Styles
@@ -48,12 +51,13 @@ export const cardSx = {
     height: "100%",
     display: "flex",
     flexDirection: "column" as const,
-    bgcolor: "rgba(14, 14, 28, 0.95)",
-    border: "1px solid rgba(255, 255, 255, 0.06)",
+    bgcolor: tokens.cardBg,
+    border: tokens.border,
     borderRadius: 2,
     overflow: "hidden",
     transition: "border-color 0.2s",
-    "&:hover": { borderColor: accentAlpha(0.2) },
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)", // V2: slight elevation
+    "&:hover": { borderColor: "rgba(255, 255, 255, 0.15)" },
 };
 
 export const dragHandleSx = {
@@ -64,7 +68,7 @@ export const dragHandleSx = {
     py: 0.5,
     cursor: "grab",
     bgcolor: "rgba(255, 255, 255, 0.02)",
-    borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+    borderBottom: tokens.border,
     minHeight: 36,
     "&:active": { cursor: "grabbing" },
     userSelect: "none" as const,

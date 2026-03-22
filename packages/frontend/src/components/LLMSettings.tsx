@@ -172,6 +172,7 @@ export const LLMSettings = React.memo(function LLMSettings() {
             if (res.ok) {
                 setProv(prev => ({ ...prev, provider: id, baseUrl: body.baseUrl || def.url }));
                 flash(`Switched to ${def.label.replace(/^[^\w]*/, "")} ✓`, true);
+                window.dispatchEvent(new Event('biamos:llm-configured'));
             } else flash("Failed to save", false);
         } catch { flash("Connection error", false); }
         setSaving(false);
@@ -189,6 +190,7 @@ export const LLMSettings = React.memo(function LLMSettings() {
                 flash("API key saved ✓", true);
                 setNewKey(""); setProv(prev => ({ ...prev, hasApiKey: true }));
                 load();
+                window.dispatchEvent(new Event('biamos:llm-configured'));
                 // Re-test this provider with the new key
                 testProvider(prov.provider);
             } else flash("Failed to save", false);
@@ -207,6 +209,7 @@ export const LLMSettings = React.memo(function LLMSettings() {
                 flash("API key removed ✓", true);
                 setProv(prev => ({ ...prev, hasApiKey: false }));
                 load();
+                window.dispatchEvent(new Event('biamos:llm-configured'));
                 testProvider(prov.provider);
             } else flash("Failed to remove key", false);
         } catch { flash("Connection error", false); }

@@ -183,7 +183,7 @@ export const BlockManager = React.memo(function BlockManager() {
             {/* Header */}
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
                 <Box>
-                    <Typography variant="h5" sx={gradientTitleSx(GRADIENTS.titleCyan)}>
+                    <Typography variant="h5" sx={gradientTitleSx()}>
                         🧊 Blocks
                     </Typography>
                     <Typography variant="caption" sx={{ color: COLORS.textSecondary, lineHeight: 1.5, display: "block", maxWidth: 600 }}>

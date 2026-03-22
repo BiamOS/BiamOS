@@ -59,6 +59,8 @@ export interface IframeBlockSpec extends BaseBlock {
     agentDisabled?: boolean;
     /** GenUI dashboard blocks — when set, renders these blocks instead of webview */
     _genuiBlocks?: any[];
+    width?: number;
+    onRequestResize?: (w: number, h: number) => void;
 }
 
 // ─── Content Blocks ─────────────────────────────────────────

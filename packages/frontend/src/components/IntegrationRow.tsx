@@ -39,7 +39,7 @@ import {
     Save as SaveIcon,
 } from "@mui/icons-material";
 import type { IntegrationListItem, CapsuleUpdatePayload } from "./IntegrationManager";
-import { accentAlpha } from "./ui/SharedUI";
+import { accentAlpha, COLORS } from "./ui/SharedUI";
 
 // ============================================================
 // Shared Styles
@@ -345,13 +345,13 @@ export const CapsuleRow = React.memo(function CapsuleRow({
                                         </MenuItem>
                                         <MenuItem value="bearer">
                                             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                                <AuthIcon sx={{ fontSize: 16, color: "#00c8ff" }} />
+                                                <AuthIcon sx={{ fontSize: 16, color: COLORS.accent }} />
                                                 Bearer Token
                                             </Box>
                                         </MenuItem>
                                         <MenuItem value="oauth2">
                                             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                                <AuthIcon sx={{ fontSize: 16, color: "#b48cff" }} />
+                                                <AuthIcon sx={{ fontSize: 16, color: COLORS.accentLight }} />
                                                 OAuth2
                                             </Box>
                                         </MenuItem>
@@ -420,11 +420,11 @@ export const CapsuleRow = React.memo(function CapsuleRow({
                                     sx={{
                                         ...gradientButtonSx,
                                         background: hasChanges
-                                            ? "linear-gradient(135deg, #581cff 0%, #00c8ff 100%)"
+                                            ? `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`
                                             : undefined,
                                         "&:hover": {
                                             background:
-                                                "linear-gradient(135deg, #6b33ff 0%, #33d4ff 100%)",
+                                                `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`,
                                         },
                                     }}
                                 >

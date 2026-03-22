@@ -24,6 +24,15 @@ import { contextRoutes } from "./routes/context-routes.js";
 import { summarizeRoutes } from "./routes/summarize-routes.js";
 import { selectorRoutes } from "./routes/selector-routes.js";
 import { autopilotRoutes } from "./routes/autopilot-routes.js";
+
+// Additional hoisted routes
+import { changelogRoutes } from "./routes/changelog-routes.js";
+import { historyRoutes } from "./routes/history-routes.js";
+import { researchRoutes } from "./routes/research-routes.js";
+import { classifyRoutes } from "./routes/classify-routes.js";
+import { universalRouter } from "./routes/universal-router.js";
+import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
+
 import { db } from "./db/db.js";
 import { agents } from "./db/schema.js";
 import { eq } from "drizzle-orm";
@@ -61,7 +70,10 @@ const app = new Hono();
 app.use(
   "*",
   cors({
-    origin: (origin) => origin?.startsWith("http://localhost") ? origin : "http://localhost:5173",
+    origin: (origin) => {
+        if (!origin || origin === "null" || origin.startsWith("file://")) return "*";
+        return origin.startsWith("http://localhost") ? origin : "http://localhost:5173";
+    },
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   })
@@ -77,7 +89,12 @@ app.get("/api/health", (c) => {
 
 app.route("/api/integrations", integrationRoutes);
 app.route("/api/builder", builderRoutes);
+
+// Specific Intent Routes MUST come before generic "/api/intent"
+app.route("/api/intent/classify", classifyRoutes);
+app.route("/api/intent/route", universalRouter);
 app.route("/api/intent", intentRoutes);
+
 app.route("/api/system", systemRoutes);
 app.route("/api/blocks", blockRoutes);
 app.route("/api/agents", agentRoutes);
@@ -86,25 +103,9 @@ app.route("/api/context", contextRoutes);
 app.route("/api/scrape", summarizeRoutes);
 app.route("/api/scrapers", selectorRoutes);
 app.route("/api/autopilot", autopilotRoutes);
-
-// Changelog
-import { changelogRoutes } from "./routes/changelog-routes.js";
 app.route("/api/changelog", changelogRoutes);
-
-// Browsing history
-import { historyRoutes } from "./routes/history-routes.js";
 app.route("/api/history", historyRoutes);
-
-// Research Engine (API-based, no browser)
-import { researchRoutes } from "./routes/research-routes.js";
 app.route("/api/research", researchRoutes);
-
-// Intent Classifier (LLM Router)
-import { classifyRoutes } from "./routes/classify-routes.js";
-app.route("/api/intent/classify", classifyRoutes);
-
-// Prompt Library (User-created prompt modules)
-import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
 app.route("/api/prompt-modules", promptModuleRoutes);
 
 // ─── Start Server ───────────────────────────────────────────
@@ -146,4 +147,8 @@ bootstrapDatabase()
 
     // Background: Pre-load embedding model for semantic intent matching
     import("./services/embedding.js").then(m => m.preloadModel()).catch(() => {});
+  })
+  .catch((err) => {
+      log.error("❌ FATAL: Server failed to start!", err);
+      process.exit(1);
   });

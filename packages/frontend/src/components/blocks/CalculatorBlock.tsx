@@ -25,10 +25,10 @@ const API_URL = "http://api.mathjs.org/v4/";
 const BTN_COLORS = {
     number: "rgba(255, 255, 255, 0.08)",
     numberHover: "rgba(255, 255, 255, 0.14)",
-    operator: "rgba(0, 200, 255, 0.15)",
-    operatorHover: "rgba(0, 200, 255, 0.28)",
-    equals: "linear-gradient(135deg, #00c8ff, #7c4dff)",
-    equalsHover: "linear-gradient(135deg, #33d4ff, #9c7cff)",
+    operator: `rgba(220, 0, 112, 0.15)`,
+    operatorHover: `rgba(220, 0, 112, 0.28)`,
+    equals: `linear-gradient(135deg, ${COLORS.accentLight}, ${COLORS.accent})`,
+    equalsHover: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accentDark})`,
     special: "rgba(255, 255, 255, 0.04)",
     specialHover: "rgba(255, 255, 255, 0.1)",
 };
@@ -191,7 +191,7 @@ export const CalculatorBlock = React.memo(function CalculatorBlock(_props: Calcu
                         fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
                         background: result === "Error"
                             ? "linear-gradient(135deg, #ff5252, #ff8a80)"
-                            : "linear-gradient(135deg, #fff, rgba(0, 200, 255, 0.9))",
+                            : `linear-gradient(135deg, #fff, ${COLORS.accent})`,
                         WebkitBackgroundClip: "text",
                         WebkitTextFillColor: "transparent",
                         transition: "all 0.2s ease",

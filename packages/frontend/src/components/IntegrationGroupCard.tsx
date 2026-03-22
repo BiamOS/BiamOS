@@ -195,7 +195,7 @@ export const IntegrationGroupCard = React.memo(function IntegrationGroupCard({
                                 {groupStatus.label}
                             </Typography>
                             <Typography sx={{ fontSize: "0.65rem", color: COLORS.textMuted }}>•</Typography>
-                            <Typography sx={{ fontSize: "0.65rem", color: isWeb ? "#00c8ff" : COLORS.textMuted }}>
+                            <Typography sx={{ fontSize: "0.65rem", color: isWeb ? COLORS.accent : COLORS.textMuted }}>
                                 {isWeb ? "🌐 Web" : (first.is_auto_generated ? "Auto" : "Manual")}
                             </Typography>
                             {/* Health badge */}

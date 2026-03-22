@@ -147,6 +147,9 @@ settingsRoutes.delete("/data", async (c) => {
         await db.run(sql`DELETE FROM capsules`);
         await db.run(sql`DELETE FROM pinned_intents`);
         await db.run(sql`DELETE FROM scraper_endpoints`);
+        await db.run(sql`DELETE FROM agent_workflows`);
+        await db.run(sql`DELETE FROM user_prompt_modules`);
+        await db.run(sql`DELETE FROM browsing_history`);
 
         return c.json({
             ok: true,
