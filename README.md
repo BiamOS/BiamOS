@@ -28,7 +28,7 @@
 
 ---
 
-![BiamOS Workspace with Lura Command Center](./docs/assets/hero-dark-magenta.png)
+
 
 <p align="center">
   <img src="./docs/assets/1.png" alt="BiamOS Demo Screenshot 1" width="48%" style="border-radius:8px"/>
@@ -55,7 +55,6 @@ BiamOS v2 introduces a completely new design language built for focus, deeply in
 - **Glassmorphism** floating modals with heavy background blur
 - **Magenta Accents** (#DC0070) reserved strictly for primary actions and active focus rings
 
-![Asphalt UI Design Showcase](./docs/assets/theme-asphalt-magenta.png)
 
 ---
 
@@ -67,7 +66,6 @@ The Lura Command Center replaces scattered sidebars and floating input fields wi
 - **Contextual Awareness:** The Command Center reads your active tabs (DOM, screenshot) and binds its chat history specifically to what you are viewing.
 - **Empty State Hub:** When nothing is focused, the Lura panel acts as a master dashboard for all background AI tasks across the entire OS.
 
-![Lura Command Center showing Active Agent Threads](./docs/assets/lura-command-center.png)
 
 ---
 
@@ -97,7 +95,7 @@ When Lura attempts to interact with an unyielding DOM element, the engine detect
 ### Set-of-Mark (SoM) Vision
 BiamOS overlays bounding boxes on the DOM before feeding screenshots to the vision model, guaranteeing pixel-perfect clicks instead of relying on hallucinated coordinates.
 
-![Set of Mark Vision targeting a DOM element](./docs/assets/set-of-mark-vision.png)
+
 
 ### Reflexive Local Memory
 When you verify that a complex agent task succeeded (👍), BiamOS hashes the semantic intent and saves the entire workflow sequence to a local SQLite database. Next time you ask, Lura recognizes the intent via on-device embedding (MiniLM-L6) and perfectly replays the reflex instantly. 
@@ -113,7 +111,6 @@ When a command is classified as complex research, BiamOS generates **rich, newsp
 3. **Synthesis:** *gemini-2.5-flash* (or models of your choice) evaluates the facts.
 4. **GenUI Rendering:** The result is rendered as draggable React cards (tables, stats, charts, text) directly onto the canvas workspace.
 
-![Deep Research GenUI Dashboard](./docs/assets/deep-research-dashboard.png)
 
 ---
 
