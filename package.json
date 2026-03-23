@@ -31,6 +31,9 @@
     "lint:fix": "eslint packages/*/src/**/*.{ts,tsx} --fix",
     "format": "prettier --write packages/*/src/**/*.{ts,tsx}",
     "format:check": "prettier --check packages/*/src/**/*.{ts,tsx}",
-    "test": "npm run test -w packages/backend"
+    "test": "npm run test -w packages/backend",
+    "build:all": "npm run build:frontend && npm run build:backend",
+    "dist:mac": "npm run build:all && npm run dist:mac -w packages/electron",
+    "dist:win": "npm run build:all && npm run dist:win -w packages/electron"
   }
 }

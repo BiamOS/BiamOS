@@ -299,6 +299,27 @@ const AGENT_TOOLS = [
             },
         },
     },
+    {
+        type: "function" as const,
+        function: {
+            name: "wait",
+            description: "[ACTION · Cost: zero] Wait for the page to finish rendering before taking the next action. Use when: (1) you just navigated and a modal/compose window is still loading, (2) you clicked a button and expect a UI change that hasn't appeared yet, (3) the DOM snapshot shows no expected elements. Max one wait per navigation. Do NOT use repeatedly.",
+            parameters: {
+                type: "object",
+                properties: {
+                    ms: {
+                        type: "number",
+                        description: "Milliseconds to wait. Use 500 for quick renders (dropdowns). Use 1000-1500 for compose windows, modals, page transitions. Max: 3000.",
+                    },
+                    reason: {
+                        type: "string",
+                        description: "Brief description of what you're waiting for (e.g. 'Waiting for Gmail compose window to fully render')",
+                    },
+                },
+                required: ["ms", "reason"],
+            },
+        },
+    },
 
     // ── ANY Phase Tools ─────────────────────────────────────
     {
@@ -577,7 +598,7 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
 
     // Add screenshot + DOM as user message
     const userContent: any[] = [
-        { type: "text", text: `DOM Snapshot (interactive elements with Set-of-Mark IDs):\n\`\`\`\n${ctx.dom_snapshot}\n\`\`\`\n\nUse click(id: N) to interact with elements by their [N] ID. Analyze the page and decide the next action to complete the task: "${ctx.task}"` },
+        { type: "text", text: `DOM Snapshot (interactive elements with Set-of-Mark IDs):\nFormat: [ID] tag "label" (aria-label: "...", placeholder: "...") — Read the aria-label and placeholder to identify WHAT each element does. NEVER guess by position or visual location alone.\n\`\`\`\n${ctx.dom_snapshot}\n\`\`\`\n\nUse click(id: N) to interact with elements by their [N] ID. Analyze the page and decide the next action to complete the task: "${ctx.task}"` },
     ];
 
     if (ctx.screenshot) {

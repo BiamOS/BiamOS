@@ -44,6 +44,11 @@ const ROUTER_PROMPT = `You are the BiamOS Universal Router (Phase 2B). Your job 
 
 You must look for conjunctions ("and", "und", "dann", "then", ",") and separate the intentions.
 
+⚡ CHAT MODE (HIGHEST PRIORITY — check this first):
+If the user is asking a DIRECT QUESTION about you, your capabilities, BiamOS, or general knowledge — with NO instruction to open a browser, navigate, compose, or research — classify as CHAT.
+Examples: "wer bist du?", "was kannst du?", "was ist BiamOS?", "erkläre mir X", "wie funktioniert X", "erzähl mir etwas", "was kann ich hier machen?", "wer hat dich gemacht?", "hast du GPT-4?", "what are you?", "what can you do?", "help me understand X", "explain X".
+CHAT tasks get mode: "CHAT", method: "GET". They are answered directly by Lura without any browser or research.
+
 CRITICAL RULE FOR SPLITTING — READ FIRST:
 If the user requests multiple actions that happen CONSECUTIVELY on the SAME website or platform
 (e.g. "Go to Twitter and post a greeting", "Open Gmail and write an email to Max", "gehe zu X und erstelle einen Post"),
@@ -102,7 +107,7 @@ You MUST return a JSON object containing a "tasks" array.
 Each object in the "tasks" array MUST match this exactly:
 {
   "task": "string (the isolated command)",
-  "mode": "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION",
+  "mode": "CHAT" | "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION",
   "method": "GET" | "POST" | "PUT" | "DELETE"
 }
 
@@ -129,14 +134,30 @@ universalRouter.post("/", async (c) => {
         const headers = await getHeaders("universal-router");
 
         // Build context string for the LLM — be as explicit as possible
-        let contextSuffix: string;
+    const contextSuffix: string = (() => {
         if (hasWebview && currentUrl) {
-            contextSuffix = `\n\nCRITICAL CONTEXT: hasWebview: true | currentUrl: "${currentUrl}"\nThe user has a LIVE WEBPAGE open. Apply the WEBVIEW CONTEXT RULE above. If the user is asking about the content of this page, ALWAYS use CONTEXT_QUESTION.`;
+            return `\n\nCRITICAL CONTEXT: hasWebview: true | currentUrl: "${currentUrl}"\nThe user has a LIVE WEBPAGE open. Apply the WEBVIEW CONTEXT RULE above. If the user is asking about the content of this page, ALWAYS use CONTEXT_QUESTION.`;
         } else if (hasDashboard) {
-            contextSuffix = "\n\nCRITICAL CONTEXT: hasDashboard: true | The user currently has a Research Dashboard or Agent Log in focus. Words like 'this', 'that', 'summarize', 'daraus', 'damit' likely refer to that dashboard. Strongly consider ACTION_WITH_CONTEXT or CONTEXT_QUESTION.";
+            return "\n\nCRITICAL CONTEXT: hasDashboard: true | The user currently has a Research Dashboard or Agent Log in focus. Words like 'this', 'that', 'summarize', 'daraus', 'damit' likely refer to that dashboard. Strongly consider ACTION_WITH_CONTEXT or CONTEXT_QUESTION.";
         } else {
-            contextSuffix = "\n\nCRITICAL CONTEXT: hasWebview: false | hasDashboard: false | The user is on an EMPTY canvas with no active content in focus. Do NOT use CONTEXT_QUESTION or ACTION_WITH_CONTEXT — the user is asking for something entirely new.";
+            return "\n\nCRITICAL CONTEXT: hasWebview: false | hasDashboard: false | The user is on an EMPTY canvas with no active content in focus. Do NOT use CONTEXT_QUESTION or ACTION_WITH_CONTEXT — the user is asking for something entirely new.";
         }
+    })();
+
+    // ── Fast-path: detect obvious chat queries WITHOUT an LLM call ──
+    // These patterns are unambiguous conversational questions. Routing them
+    // immediately avoids one full LLM round-trip and prevents mis-classification.
+    const CHAT_PATTERNS = [
+        /^(wer|was|wie|warum|wozu|womit|wobei|ob|hast|kannst|könntest|bist|gibt|machst|darf|kann ich)(\s|$)/i,
+        /^(who|what|how|why|can you|do you|are you|tell me|explain|describe|what is|what are|what can|help me)(\s|$)/i,
+        /^(erkläre?|erklär|erzähl|zeig mir|hilf mir|sag mir|was bedeutet|was macht|wie work)(\s|$)/i,
+    ];
+    // Only fast-path if there's NO webview and NO dashboard context
+    // (those need the LLM to check for CONTEXT_QUESTION vs CHAT)
+    if (!hasWebview && !hasDashboard && CHAT_PATTERNS.some(p => p.test(query))) {
+        log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}" → CHAT (fast-path, no LLM)`);
+        return c.json([{ task: query, mode: 'CHAT', method: 'GET', allowed_tools: [], forbidden: [] }]);
+    }
 
         const dynamicPrompt = ROUTER_PROMPT + contextSuffix;
 
@@ -166,7 +187,7 @@ universalRouter.post("/", async (c) => {
         if (parsed && Array.isArray(parsed.tasks)) {
             // Map the parsed tasks to include allowed/forbidden tools dynamically
             const fullyHydratedTasks = parsed.tasks.map((t: any) => {
-                const mode = (["RESEARCH", "ACTION", "ACTION_WITH_CONTEXT", "CONTEXT_QUESTION"].includes(t.mode))
+                const mode = (["CHAT", "RESEARCH", "ACTION", "ACTION_WITH_CONTEXT", "CONTEXT_QUESTION"].includes(t.mode))
                     ? t.mode as IntentMode
                     : "ACTION";
                 

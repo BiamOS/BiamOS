@@ -32,6 +32,7 @@ import { researchRoutes } from "./routes/research-routes.js";
 import { classifyRoutes } from "./routes/classify-routes.js";
 import { universalRouter } from "./routes/universal-router.js";
 import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
+import { chatRoutes } from "./routes/chat-routes.js";
 
 import { db } from "./db/db.js";
 import { agents } from "./db/schema.js";
@@ -107,6 +108,7 @@ app.route("/api/changelog", changelogRoutes);
 app.route("/api/history", historyRoutes);
 app.route("/api/research", researchRoutes);
 app.route("/api/prompt-modules", promptModuleRoutes);
+app.route("/api/chat", chatRoutes);
 
 // ─── Start Server ───────────────────────────────────────────
 

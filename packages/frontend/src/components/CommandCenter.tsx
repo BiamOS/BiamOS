@@ -423,9 +423,47 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
             const tasks = await classifyResp.json();
 
             let delayMultiplier = 0;
-            let usedSnapshot = false; // Track if the focused card has been consumed by a task in this batch
+            let usedSnapshot = false;
 
-            for (const t of tasks) {
+            // ── CHAT fast-path: answer inline without spawning any card ──
+            const chatTasks = tasks.filter((t: any) => t.mode === 'CHAT');
+            const actionTasks = tasks.filter((t: any) => t.mode !== 'CHAT');
+
+            for (const ct of chatTasks) {
+                // Show loading bubble immediately
+                const loadingHintId = Date.now();
+                useContextStore.getState().setHints(prev => [
+                    ...prev,
+                    { query: '🧠 Lura', reason: 'system', loading: true, timestamp: loadingHintId }
+                ]);
+                // Call /api/chat backend
+                try {
+                    const chatResp = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: ct.task }),
+                    });
+                    if (!chatResp.ok) throw new Error(`Chat API ${chatResp.status}`);
+                    const chatData = await chatResp.json();
+                    const answer = chatData.answer || '...';
+                    // Replace loading bubble with real answer
+                    useContextStore.getState().setHints(prev =>
+                        prev.map(h => h.timestamp === loadingHintId
+                            ? { ...h, loading: false, data: { summary: answer } }
+                            : h
+                        )
+                    );
+                } catch (chatErr) {
+                    useContextStore.getState().setHints(prev =>
+                        prev.map(h => h.timestamp === loadingHintId
+                            ? { ...h, loading: false, data: { summary: '⚠️ Chat response failed. Try again.' } }
+                            : h
+                        )
+                    );
+                }
+            }
+
+            for (const t of actionTasks) {
                 let targetCardId = snapshotCardId || '';
 
                 // If we have multiple tasks, only the FIRST action should use the focused webview.

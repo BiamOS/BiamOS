@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Allow JIT compilation (needed for V8 / Node.js inside packaged electron) -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- Allow unsigned executable memory (needed for electron's renderer sandboxing) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Allow DYLD environment variables (needed for native modules) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <!-- Network access (for localhost backend + web browsing) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Microphone access (for voice input if needed) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

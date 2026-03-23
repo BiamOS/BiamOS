@@ -82,6 +82,7 @@ let backendProcess: ChildProcess | null = null;
 
 // ─── Config ─────────────────────────────────────────────────
 
+const IS_PACKAGED = app.isPackaged;
 const DEV_FRONTEND_URL = "http://localhost:5173";
 const BACKEND_PORT = 3001;
 
@@ -116,12 +117,30 @@ async function startBackend(): Promise<void> {
     // Kill any leftover process on the backend port
     await killPortProcess(BACKEND_PORT);
 
-    const backendDir = path.resolve(__dirname, "../../backend");
-    console.log("🚀 Starting backend from:", backendDir);
+    let backendDir: string;
+    let spawnCmd: string;
+    let spawnArgs: string[];
 
-    backendProcess = spawn("npx", ["tsx", "src/server.ts"], {
+    if (IS_PACKAGED) {
+        // ── Packaged app (.app / .exe) ────────────────────────
+        // Backend is bundled into <resources>/backend by electron-builder.
+        // It's pre-compiled (npm run build) so we run `node dist/server.js`.
+        backendDir = path.join(process.resourcesPath, "backend");
+        spawnCmd = process.execPath; // use the embedded Node that ships with Electron
+        spawnArgs = [path.join(backendDir, "dist", "server.js")];
+    } else {
+        // ── Development mode ──────────────────────────────────
+        // Backend lives next to electron package, run via tsx for hot-reload.
+        backendDir = path.resolve(__dirname, "../../backend");
+        spawnCmd = "npx";
+        spawnArgs = ["tsx", "src/server.ts"];
+    }
+
+    console.log(`🚀 Starting backend from: ${backendDir} (${IS_PACKAGED ? 'packaged' : 'dev'})`);
+
+    backendProcess = spawn(spawnCmd, spawnArgs, {
         cwd: backendDir,
-        shell: true,
+        shell: !IS_PACKAGED, // shell needed for npx on Windows; not needed for node
         stdio: "pipe",
         env: { ...process.env, PORT: String(BACKEND_PORT) },
     });
@@ -173,7 +192,14 @@ function createWindow(): void {
         },
     });
 
-    console.log("🪟 BrowserWindow created, loading URL:", DEV_FRONTEND_URL);
+    // In packaged mode: load the bundled frontend-dist from resources
+    // In dev mode: connect to Vite dev server
+    const frontendUrl = IS_PACKAGED
+        ? `file://${path.join(process.resourcesPath, 'frontend-dist', 'index.html')}`
+        : DEV_FRONTEND_URL;
+
+    console.log("🪟 BrowserWindow created, loading URL:", frontendUrl);
+    mainWindow.loadURL(frontendUrl);
 
     // Show maximized once DOM is ready (so the native splash screen is visible)
     // NOTE: we use dom-ready instead of ready-to-show, because ready-to-show

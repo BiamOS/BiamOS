@@ -515,6 +515,13 @@ export async function executeAction(
                     }
                 }
 
+                // ─── Wait (for async renders) ─────────────────
+                case "wait": {
+                    const ms = Math.min(Math.max(args.ms ?? 500, 100), 3000); // clamp 100-3000ms
+                    await new Promise(r => setTimeout(r, ms));
+                    return `⏳ Waited ${ms}ms — ${args.reason || 'page settling'}`;
+                }
+
                 default:
                     return `Unknown action: ${action}`;
             }

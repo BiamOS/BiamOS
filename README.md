@@ -141,28 +141,68 @@ When a command is classified as complex research, BiamOS generates **rich, newsp
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js** 18+ and **npm**
-- An **OpenRouter API key** → [Get one here](https://openrouter.ai/keys)
-- *(Optional)* A **Tavily API key** (`TAVILY_API_KEY`) setup in the `.env` file for enhanced Deep Research fidelity.
 
-### Installation
+| | Windows | macOS |
+|---|---|---|
+| **Runtime** | Node.js 18+ & npm | Node.js 18+ & npm |
+| **LLM Key** | OpenRouter API key → [Get one](https://openrouter.ai/keys) | OpenRouter API key → [Get one](https://openrouter.ai/keys) |
+| **Optional** | Tavily API key for Deep Research | Tavily API key for Deep Research |
+
+---
+
+### 🪟 Windows — Run from Source
 
 ```bash
 # Clone the repository
 git clone https://github.com/BiamOS/BiamOS.git
 cd BiamOS
 
-# Setup Environment Variables (crucial for Research / Web Agents)
-cp .env.example .env
+# Setup Environment Variables
+copy .env.example .env
 
-# Install all workspace dependencies (frontend + backend + electron)
+# Install all workspace dependencies
 npm install
 
-# Start the full application environment
+# Start BiamOS
 npm run electron
 ```
 
-On first launch, the Apple Pro Dark **Onboarding Screen** will guide you to input your active LLM API Key.
+---
+
+### 🍎 macOS — Run from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/BiamOS/BiamOS.git
+cd BiamOS
+
+# Setup Environment Variables
+cp .env.example .env
+
+# Install all workspace dependencies
+npm install
+
+# Start BiamOS
+npm run electron
+```
+
+---
+
+### 📦 Build a Distributable (`.dmg` / `.exe`)
+
+```bash
+# macOS → produces dist-electron/BiamOS-*.dmg (arm64 + x64)
+npm run dist:mac
+
+# Windows → produces dist-electron/BiamOS Setup *.exe
+npm run dist:win
+```
+
+> **Note for macOS:** On first launch of the `.dmg`, right-click → Open to bypass Gatekeeper (no Apple Developer certificate required for local use).
+
+---
+
+On first launch, the Apple Pro Dark **Onboarding Screen** will guide you to input your LLM API Key.
 
 > **Zero Cloud Configs:** BiamOS natively spins up the backend Node server, launches the React 19 Vite dev-server, and wraps it cleanly in an Electron window entirely on local-host.
 

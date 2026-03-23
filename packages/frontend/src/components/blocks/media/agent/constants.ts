@@ -115,15 +115,29 @@ export const DOM_SNAPSHOT_SCRIPT = `
             
             somMap[somId] = { x: cx, y: cy, w: Math.round(rect.width), h: Math.round(rect.height), sel: elSel };
             
-            var text = (el.textContent || el.getAttribute('placeholder') || el.getAttribute('alt') || el.getAttribute('title') || '').trim().substring(0, 60);
+            // Safe attribute reads — getAttribute returns null on some elements,
+            // so always fall back to '' to prevent crashes on unsanitized pages.
+            var placeholder = el.getAttribute('placeholder') || '';
+            var title = el.getAttribute('title') || '';
+            var altAttr = el.getAttribute('alt') || '';
+            var text = (el.textContent || placeholder || altAttr || title || '').trim().substring(0, 60);
             var href = el.getAttribute('href') || '';
             
-            var label = ariaLabel || text;
+            // Build semantic annotation: only include non-empty attributes, max 3.
+            // aria-label > placeholder > role — these are what the LLM needs to
+            // distinguish "Search mail" from "To" from "Message Body" without guessing.
+            var semanticParts = [];
+            if (ariaLabel) semanticParts.push('aria-label: "' + ariaLabel.replace(/"/g, "'") + '"');
+            if (placeholder && !ariaLabel) semanticParts.push('placeholder: "' + placeholder.replace(/"/g, "'") + '"');
+            if (role && semanticParts.length < 2) semanticParts.push('role: "' + role + '"');
+            var semantic = semanticParts.length > 0 ? ' (' + semanticParts.join(', ') + ')' : '';
+            
+            var visibleLabel = ariaLabel || placeholder || text;
             var line = '[' + somId + '] ' + tag;
             if (type) line += '[' + type + ']';
-            if (role) line += '[role=' + role + ']';
             if (name) line += '[name=' + name + ']';
-            if (label) line += ' "' + label.replace(/"/g, "'") + '"';
+            if (visibleLabel) line += ' "' + visibleLabel.replace(/"/g, "'").substring(0, 60) + '"';
+            line += semantic;
             if (href) line += ' href="' + href.substring(0, 80) + '"';
             line += ' (x:' + cx + ' y:' + cy + ' w:' + Math.round(rect.width) + ' h:' + Math.round(rect.height) + ')';
             

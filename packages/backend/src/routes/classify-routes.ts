@@ -19,7 +19,7 @@ export const classifyRoutes = new Hono();
 
 // ─── Types ──────────────────────────────────────────────────
 
-export type IntentMode = "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION";
+export type IntentMode = "CHAT" | "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION";
 export type CrudMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 export interface ClassifyResponse {

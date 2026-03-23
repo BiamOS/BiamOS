@@ -6,12 +6,15 @@
     "scripts": {
         "start": "electron .",
         "dev": "tsc && electron .",
-        "build": "tsc"
+        "build": "tsc",
+        "dist:mac": "tsc && electron-builder --mac --config electron-builder.json",
+        "dist:win": "tsc && electron-builder --win --config electron-builder.json"
     },
     "dependencies": {
         "electron": "^33.3.1"
     },
     "devDependencies": {
+        "electron-builder": "^25.1.8",
         "typescript": "^5.7.3"
     }
 }

@@ -21,6 +21,7 @@ import type { PromptModule, PromptPhase, ToolDefinition, AssemblerContext } from
 
 // ── Module Imports ──────────────────────────────────────────
 import { baseModule } from "./base.js";
+import { soulModule } from "./soul.js";
 import { phaseResearchModule } from "./phase-research.js";
 import { phasePresentModule } from "./phase-present.js";
 import { phaseActionModule } from "./phase-action.js";
@@ -185,6 +186,7 @@ export const assembler = new PromptAssembler();
 
 // Register all built-in modules
 assembler.registerAll([
+    soulModule,       // Priority 5  — always first: identity before everything
     baseModule,
     // Legacy phase modules (matched when no CRUD method is set)
     phaseResearchModule,

@@ -1,0 +1,73 @@
+{
+    "appId": "com.biamos.desktop",
+    "productName": "BiamOS",
+    "copyright": "Copyright © 2026 BiamOS Contributors",
+    "directories": {
+        "output": "../../dist-electron",
+        "buildResources": "assets"
+    },
+    "files": [
+        "dist/**/*",
+        "assets/**/*",
+        "!assets/icon.iconset/**/*"
+    ],
+    "extraResources": [
+        {
+            "from": "../backend",
+            "to": "backend",
+            "filter": [
+                "**/*",
+                "!node_modules/.cache/**",
+                "!src/**",
+                "!tests/**",
+                "!*.test.ts",
+                "!drizzle/**"
+            ]
+        },
+        {
+            "from": "../frontend/dist",
+            "to": "frontend-dist",
+            "filter": ["**/*"]
+        }
+    ],
+    "mac": {
+        "target": [
+            { "target": "dmg", "arch": ["arm64", "x64"] }
+        ],
+        "category": "public.app-category.productivity",
+        "icon": "assets/icon.icns",
+        "darkModeSupport": true,
+        "hardenedRuntime": true,
+        "gatekeeperAssess": false,
+        "entitlements": "assets/entitlements.mac.plist",
+        "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "win": {
+        "target": [
+            { "target": "nsis", "arch": ["x64"] }
+        ],
+        "icon": "assets/icon.png"
+    },
+    "linux": {
+        "target": [
+            { "target": "AppImage", "arch": ["x64"] }
+        ],
+        "category": "Office"
+    },
+    "nsis": {
+        "oneClick": false,
+        "allowToChangeInstallationDirectory": true,
+        "installerIcon": "assets/icon.png",
+        "uninstallerIcon": "assets/icon.png"
+    },
+    "dmg": {
+        "title": "BiamOS ${version}",
+        "background": "assets/dmg-background.png",
+        "window": { "width": 660, "height": 400 },
+        "contents": [
+            { "x": 180, "y": 180, "type": "file" },
+            { "x": 480, "y": 180, "type": "link", "path": "/Applications" }
+        ]
+    },
+    "publish": null
+}
