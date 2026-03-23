@@ -58,6 +58,8 @@ export interface BrowserToolbarProps {
     activeTab?: 'web' | 'dashboard';
     /** Called when the user toggles between web and dashboard */
     onToggleTab?: (tab: 'web' | 'dashboard') => void;
+    /** Hide the Web tab — used for pure research/dashboard cards with no webview */
+    hideWebTab?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -87,6 +89,7 @@ export const BrowserToolbar = React.memo(function BrowserToolbar({
     dashboardLoading = false,
     activeTab = 'web',
     onToggleTab,
+    hideWebTab = false,
 }: BrowserToolbarProps) {
     const [urlInput, setUrlInput] = useState(currentUrl);
     const [urlFocused, setUrlFocused] = useState(false);
@@ -198,7 +201,10 @@ export const BrowserToolbar = React.memo(function BrowserToolbar({
                     border: '1px solid rgba(255,255,255,0.1)',
                     overflow: 'hidden', flexShrink: 0, mx: 0.5,
                 }}>
-                    {(['web', 'dashboard'] as const).map((tab) => {
+                    {(['web', 'dashboard'] as const)
+                        // 🔑 CARD TYPE: Skip 'web' tab for pure dashboard cards (no webview)
+                        .filter(tab => !(tab === 'web' && hideWebTab))
+                        .map((tab) => {
                         const isActive = activeTab === tab;
                         const isLoadingTab = tab === 'dashboard' && dashboardLoading && activeTab !== 'dashboard';
                         return (

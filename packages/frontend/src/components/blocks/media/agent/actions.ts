@@ -49,6 +49,69 @@ export async function executeAction(
     const tryExecute = async (attempt: number): Promise<string> => {
         try {
             switch (action) {
+                // ─── Vision Spatial Tools (Canvas Apps) ─
+                // Converts ruler %-coordinates to physical pixels
+                // via devicePixelRatio (Fix 3 — Retina/HiDPI safe).
+                // Fires native Electron mouse events via IPC bridge.
+
+                case "vision_click":
+                case "vision_drag":
+                case "vision_hover": {
+                    const electronAPI = (window as any).electronAPI;
+                    if (!electronAPI?.spatialInput) {
+                        return 'vision_* tools require Electron (spatialInput IPC not available)';
+                    }
+                    if (!wv?.getWebContentsId) {
+                        return 'vision_* tools require a WebContents-backed webview';
+                    }
+
+                    // Fix 3: DPR-corrected pixel mapping
+                    const dimScript = 'JSON.stringify({w:window.innerWidth,h:window.innerHeight,dpr:window.devicePixelRatio||1})';
+                    const { w, h, dpr } = JSON.parse(await wv.executeJavaScript(dimScript));
+                    const toPx = (xPct: number, yPct: number) => ({
+                        x: Math.round((xPct / 100) * w * dpr),
+                        y: Math.round((yPct / 100) * h * dpr),
+                    });
+
+                    const wcId: number = await wv.getWebContentsId();
+
+                    if (action === 'vision_click') {
+                        const px = toPx(args.x_pct, args.y_pct);
+                        await electronAPI.spatialInput(wcId, [
+                            { type: 'mouseMove', x: px.x, y: px.y },
+                            { type: 'mouseDown', x: px.x, y: px.y, button: 'left', clickCount: 1 },
+                            { type: 'mouseUp',   x: px.x, y: px.y, button: 'left', clickCount: 1 },
+                        ]);
+                        debug.log(`🖱️ [Agent] vision_click @ (${args.x_pct}%, ${args.y_pct}%) → px(${px.x},${px.y}) dpr=${dpr}`);
+                        return `✓ vision_click at (${args.x_pct}%, ${args.y_pct}%) — ${args.description}`;
+                    }
+
+                    if (action === 'vision_drag') {
+                        const start = toPx(args.start_x_pct, args.start_y_pct);
+                        const end   = toPx(args.end_x_pct,   args.end_y_pct);
+                        // Smooth lerping happens in main.ts IPC handler (Fix 1)
+                        await electronAPI.spatialInput(wcId, [
+                            { type: 'vision_drag', startX: start.x, startY: start.y, endX: end.x, endY: end.y },
+                        ]);
+                        debug.log(`🖱️ [Agent] vision_drag (${args.start_x_pct}%,${args.start_y_pct}%) → (${args.end_x_pct}%,${args.end_y_pct}%)`);
+                        return `✓ vision_drag complete — ${args.description}`;
+                    }
+
+                    if (action === 'vision_hover') {
+                        const px = toPx(args.x_pct, args.y_pct);
+                        await electronAPI.spatialInput(wcId, [
+                            { type: 'mouseMove', x: px.x, y: px.y },
+                        ]);
+                        // Wait for hover-revealed UI (e.g. n8n connection ports) before
+                        // the agent loop takes its next screenshot
+                        await new Promise(r => setTimeout(r, 1000));
+                        debug.log(`🖱️ [Agent] vision_hover @ (${args.x_pct}%, ${args.y_pct}%) — waiting 1s for hover UI`);
+                        return `✓ vision_hover at (${args.x_pct}%, ${args.y_pct}%) — hidden UI may now be visible`;
+                    }
+
+                    return 'Unknown vision action';
+                }
+
                 // ─── Click at coordinates ───────────────
                 case "click_at": {
                     const cx = args.x ?? 0;
@@ -361,12 +424,30 @@ export async function executeAction(
 
                 // ─── Scroll ─────────────────────────────
                 case "scroll": {
-                    const result = await wv.executeJavaScript(
+                    // Physical Scroll Truth: measure actual pixel movement.
+                    // Allows infinite feeds while detecting page-bottom immediately.
+                    let beforeY = 0;
+                    try { beforeY = await wv.executeJavaScript('window.scrollY', true); } catch { /* */ }
+
+                    const scrollExecResult = await wv.executeJavaScript(
                         buildScrollScript(args.direction || "down", args.amount || 400), true
                     );
-                    const parsed = JSON.parse(result);
-                    return parsed.success ? `Scrolled ${args.direction}` : "Scroll failed";
+                    const scrollExecParsed = JSON.parse(scrollExecResult);
+                    if (!scrollExecParsed.success) return "Scroll failed";
+
+                    // Short wait for lazy-loaded content to render
+                    await new Promise(r => setTimeout(r, 300));
+
+                    let afterY = 0;
+                    try { afterY = await wv.executeJavaScript('window.scrollY', true); } catch { /* */ }
+
+                    if (beforeY === afterY) {
+                        return `STUCK: Scroll executed but page did not move (scrollY stayed at ${beforeY}px). You are at the bottom or a popup is blocking. DO NOT scroll again. Change strategy: use go_back(), navigate() to a different URL, or call done/genui with the data you have.`;
+                    }
+                    const scrollDelta = Math.abs(afterY - beforeY);
+                    return `✓ Scrolled ${args.direction} by ~${scrollDelta}px (position: ${afterY}px). New content may have loaded.`;
                 }
+
 
                 // ─── Navigate ───────────────────────────
                 case "navigate": {
@@ -404,12 +485,21 @@ export async function executeAction(
 
                 // ─── Go back ────────────────────────────
                 case "go_back": {
+                    // Tainted Return Route: capture dead-end URL BEFORE navigating back.
+                    // Embeds warning in result so LLM doesn't click same bad link again.
+                    let deadEndUrl = '';
+                    try { deadEndUrl = await wv.executeJavaScript('window.location.href', true); } catch { /* */ }
+
                     wv.goBack();
                     await waitForPageReady('go_back');
-                    const backUrl = wv.getURL?.() || 'unknown';
-                    console.log(`🧭 Go back: now at ${backUrl}`);
-                    return `✓ Went back to previous page`;
+                    console.log(`🧭 Go back: ${deadEndUrl} → ${wv.getURL?.() || 'unknown'}`);
+
+                    const taintWarning = deadEndUrl
+                        ? ` ⚠️ TAINTED: You just left "${deadEndUrl}" — it was a dead end. Do NOT click that domain again! Choose a DIFFERENT result (prefer: app.*, login.*, docs.*, kb.* subdomains).`
+                        : '';
+                    return `✓ Navigated back to previous page.${taintWarning}`;
                 }
+
 
                 // ─── Search web ─────────────────────────
                 case "search_web": {

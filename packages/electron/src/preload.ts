@@ -23,7 +23,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     /** Autopilot: Get DOM snapshot from a URL for planning */
     getPageSnapshot: (taskId: string, url: string): Promise<{ url: string; text: string; title: string }> =>
         ipcRenderer.invoke("page-snapshot", taskId, url),
+    /** Spatial Agent: Fire native mouse events via Main Process WebContents */
+    spatialInput: (webContentsId: number, events: object[]): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke("spatial-input", webContentsId, events),
 });
+
 
 // ─── Lock main window zoom ──────────────────────────────────
 // The <webview> tags manage their own zoom independently.

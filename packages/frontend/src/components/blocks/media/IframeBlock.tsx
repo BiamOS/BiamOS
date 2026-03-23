@@ -317,13 +317,16 @@ export const IframeBlock = React.memo(function IframeBlock({
         // (e.g. restored from saved state)
         const wv = webviewRef.current;
         if (!wv) return;
-        // Only fire on navigation events — NOT on OS focus (that would change focus on hover)
+        // Fire on navigation events AND on OS-level focus (= user clicked inside webview)
+        // 'focus' fires when the webview gets native focus (NOT on hover — only on click/tab)
         wv.addEventListener("dom-ready", handleCardFocus);
         wv.addEventListener("did-navigate", handleCardFocus);
+        wv.addEventListener("focus", handleCardFocus);
         
         return () => {
             wv.removeEventListener("dom-ready", handleCardFocus);
             wv.removeEventListener("did-navigate", handleCardFocus);
+            wv.removeEventListener("focus", handleCardFocus);
         };
     }, [handleCardFocus]);
 
@@ -420,11 +423,11 @@ export const IframeBlock = React.memo(function IframeBlock({
         // regardless of whether the user clicks the webview, sidebar, or toolbar.
         <Box
             sx={{ overflow: "hidden", display: "flex", flexDirection: "column", height: height || "100%", flex: 1, minHeight: 200 }}
-            onClickCapture={(e: React.MouseEvent) => {
-                // Skip focus update when clicking interactive toolbar elements (URL bar, buttons)
-                // so the URL InputBase can gain focus and be selected normally.
-                const target = e.target as HTMLElement;
-                if (target.closest('.no-drag')) return;
+            onPointerDownCapture={() => {
+                // Fire on EVERY pointer-down in this card — toolbar, webview frame, body.
+                // onPointerDownCapture fires before the browser shifts DOM focus to the URL
+                // bar, so the focus store is always up-to-date for the next Omnibar command.
+                // (Webview interior clicks are caught separately via wv "focus" event.)
                 handleCardFocus();
             }}
         >
@@ -445,6 +448,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                 dashboardLoading={dashboardLoading}
                 activeTab={activeTab}
                 onToggleTab={setActiveTab}
+                hideWebTab={!initialUrl || initialUrl === 'about:blank'}
             />
 
             {/* ── Content: webview + sidebar ── */}

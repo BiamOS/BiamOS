@@ -134,6 +134,7 @@ export const APP_REGISTRY: readonly AppEntry[] = [
     { keywords: ["reddit"], url: "https://www.reddit.com", label: "Reddit", icon: "🔴" },
     { keywords: ["linkedin"], url: "https://www.linkedin.com", label: "LinkedIn", icon: "💼" },
     { keywords: ["wikipedia"], url: "https://www.wikipedia.org", label: "Wikipedia", icon: "📚" },
+    { keywords: ["n8n"], url: "http://localhost:5678", label: "n8n", icon: "⚡" },
 ];
 
 /**

@@ -176,12 +176,27 @@ export function checkActionTypeRepetition(
 
     if (count >= limit) {
         debug.log(`🛑 [ActionType] ${currentAction} called ${count}x since last navigate — forcing progression`);
+
+        // For scroll: recover (not stop) — give agent a chance to use go_back/navigate
+        if (currentAction === 'scroll') {
+            return {
+                action: "recover",
+                recoveryStep: {
+                    action: "system_recovery",
+                    description: `🚨 SCROLL LOOP DETECTED: scroll called ${count}x on this page. The system is forcing a strategy change. You MUST NOT scroll again on this page. Options: 1) call go_back() if you landed on the wrong page, 2) call navigate() to a more specific URL, 3) call done/genui with whatever data you already have.`,
+                    result: "STUCK: Scroll loop terminated. Change strategy immediately.",
+                },
+                statusMessage: `⚠️ Scroll loop (${count}x) — forcing strategy change`,
+            };
+        }
+
         return {
             action: "stop",
             reason: `Stopped: "${currentAction}" called ${count} times on this page without progress. Move to the next page (navigate) or finish (genui/done).`,
             statusMessage: `⚠️ ${currentAction} loop detected (${count}x on this page) — forced progression`,
         };
     }
+
 
     return { action: "continue" };
 }

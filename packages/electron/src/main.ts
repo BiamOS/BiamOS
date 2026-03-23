@@ -7,7 +7,7 @@
 // and starts the backend server automatically.
 // ============================================================
 
-import { app, BrowserWindow, session, ipcMain } from "electron";
+import { app, BrowserWindow, session, ipcMain, webContents } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
@@ -453,12 +453,65 @@ function setupAutopilotIPC(): void {
     console.log("🤖 Autopilot IPC handlers registered");
 }
 
+// ─── Spatial Input: Native Mouse Events for Vision Agent ────
+// sendInputEvent() is WebContents-only (Main Process). The Renderer
+// cannot call it directly on a <webview> tag — this IPC bridge is
+// the ONLY correct path for vision_click / vision_drag / vision_hover.
+
+function setupSpatialInputIPC(): void {
+    const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+    ipcMain.handle('spatial-input', async (_event, wcId: number, events: any[]) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc) return { success: false, error: 'WebContents not found' };
+
+        // Fix 2: Force OS-level focus BEFORE any event — prevents "focus-steal" swallow
+        wc.focus();
+        await delay(50); // Give OS time to activate the webview window
+
+        for (const evt of events) {
+            if (evt.type === 'vision_drag') {
+                // Fix 1: Smooth Drag Lerping — n8n/Figma check vector velocity,
+                // teleporting the mouse is interpreted as bot behavior.
+                const { startX, startY, endX, endY } = evt;
+
+                wc.sendInputEvent({ type: 'mouseMove', x: startX, y: startY });
+                await delay(50);
+                wc.sendInputEvent({ type: 'mouseDown', x: startX, y: startY, button: 'left', clickCount: 1 });
+                await delay(150); // Wait for canvas "grab" animation to register
+
+                const STEPS = 15;
+                for (let i = 1; i <= STEPS; i++) {
+                    const cx = Math.round(startX + (endX - startX) * (i / STEPS));
+                    const cy = Math.round(startY + (endY - startY) * (i / STEPS));
+                    wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
+                    await delay(10); // ~10ms per frame ≈ 60fps movement
+                }
+
+                await delay(100); // Settle at target — allow snap/magnet animations
+                wc.sendInputEvent({ type: 'mouseUp', x: endX, y: endY, button: 'left', clickCount: 1 });
+                await delay(50);
+
+            } else {
+                // Normal events (mouseMove, mouseDown, mouseUp) passed through directly
+                wc.sendInputEvent(evt as Electron.MouseInputEvent);
+                if (evt.type === 'mouseDown') await delay(50);
+            }
+        }
+
+        return { success: true };
+    });
+
+    console.log('🖱️  Spatial Input IPC handler registered');
+}
+
 // ─── App lifecycle ──────────────────────────────────────────
 
 app.whenReady().then(async () => {
     setupWebviewPermissions();
     setupScrapeIPC();
     setupAutopilotIPC();
+    setupSpatialInputIPC();
     // Start backend FIRST, wait for it, THEN show window (splash runs during wait)
     await startBackend().catch((err) => console.error("⚠️ Backend start failed:", err));
     createWindow();

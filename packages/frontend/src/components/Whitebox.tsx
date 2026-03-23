@@ -384,7 +384,13 @@ const IntegrationFrame = React.memo(function IntegrationFrame({
                 </IconButton>
                 <IconButton
                     className="no-drag"
-                    onClick={(e) => { e.stopPropagation(); if (isFocused) clearFocusStore(); onRemove(); }}
+                    onClick={(e) => {
+                            e.stopPropagation();
+                            // Bug 0 fix: always call cardRemoved (clears lastKnownCard* if this card was the anchor)
+                            useFocusStore.getState().cardRemoved(cardId);
+                            onRemove();
+                        }}
+
                     size="small"
                     sx={{
                         p: 0.5,

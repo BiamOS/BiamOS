@@ -154,3 +154,93 @@ RULES:
 - Use TOOL when the user wants to open an interactive tool (calculator, converter, timer, translator)
 - Include the group domain in the entity if it helps routing (e.g. "Charizard" → entity "Pokemon Charizard")`;
 }
+
+// ─── Integration Query Matcher ──────────────────────────────
+
+export interface MatchedIntegration {
+    /** Display name of the integration group, e.g. "Open-Meteo" */
+    groupName: string;
+    /** The raw DB row for the best matching endpoint */
+    endpoint: {
+        id: number;
+        name: string;
+        api_endpoint: string;
+        http_method: string;
+        param_schema: string | null;
+        api_config: string | null;
+        intent_description: string;
+        group_name: string | null;
+    };
+}
+
+/**
+ * Match a user query against installed live integrations by keyword.
+ * Returns the best matching integration group + a representative endpoint,
+ * or null if no integration matches.
+ *
+ * Called at the TOP of the universal router (before the fast-path chat regex)
+ * so queries like "Wie ist das Wetter in Wien?" are correctly routed as RESEARCH
+ * rather than being short-circuited as CHAT.
+ */
+export async function getIntegrationForQuery(query: string): Promise<MatchedIntegration | null> {
+    try {
+        const groups = await loadGroups();
+        if (groups.size === 0) return null;
+
+        const queryLower = query.toLowerCase();
+
+        // Score each group by how many of its trigger keywords appear in the query
+        let bestGroupName: string | null = null;
+        let bestScore = 0;
+
+        for (const [name, g] of groups.entries()) {
+            let score = 0;
+            for (const trigger of g.triggers) {
+                if (queryLower.includes(trigger)) {
+                    // Longer trigger = stronger signal (avoids single-letter false positives)
+                    score += trigger.length;
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestGroupName = name;
+            }
+        }
+
+        // Require a minimum meaningful score (at least one trigger of length ≥ 3 matched)
+        if (bestScore < 3 || !bestGroupName) return null;
+
+        // Load the actual endpoint row from DB for this group
+        const { db } = await import("../db/db.js");
+        const { capsules } = await import("../db/schema.js");
+        const { eq, sql: drizzleSql } = await import("drizzle-orm");
+
+        const rows = await db
+            .select({
+                id: capsules.id,
+                name: capsules.name,
+                api_endpoint: capsules.api_endpoint,
+                http_method: capsules.http_method,
+                param_schema: capsules.param_schema,
+                api_config: capsules.api_config,
+                intent_description: capsules.intent_description,
+                group_name: capsules.group_name,
+            })
+            .from(capsules)
+            .where(drizzleSql`status = 'live' AND (
+                group_name = ${bestGroupName} OR
+                name LIKE ${bestGroupName + '%'}
+            )`)
+            .limit(1);
+
+        if (rows.length === 0) return null;
+
+        log.debug(`  🔌 [IntegrationMatcher] Query matched integration "${bestGroupName}" (score=${bestScore})`);
+
+        return { groupName: bestGroupName, endpoint: rows[0] };
+    } catch (err) {
+        log.warn(`  🔌 [IntegrationMatcher] Error matching query: ${(err as Error).message}`);
+        return null;
+    }
+}
+

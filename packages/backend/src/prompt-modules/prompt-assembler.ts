@@ -33,6 +33,7 @@ import { platformXModule } from "./platform-x.js";
 import { platformYoutubeModule } from "./platform-youtube.js";
 import { platformGmailModule } from "./platform-gmail.js";
 import { platformAmazonModule } from "./platform-amazon.js";
+import { platformN8nModule } from "./platform-n8n.js";
 import { socialReadingModule } from "./social-reading.js";
 import { methodGetModule } from "./method-get.js";
 import { methodPostModule } from "./method-post.js";
@@ -207,6 +208,7 @@ assembler.registerAll([
     platformYoutubeModule,
     platformGmailModule,
     platformAmazonModule,
+    platformN8nModule,
     socialReadingModule,
 ]);
 

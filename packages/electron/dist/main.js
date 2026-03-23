@@ -109,6 +109,7 @@ electron_1.app.on("web-contents-created", (_event, contents) => {
 let mainWindow = null;
 let backendProcess = null;
 // ─── Config ─────────────────────────────────────────────────
+const IS_PACKAGED = electron_1.app.isPackaged;
 const DEV_FRONTEND_URL = "http://localhost:5173";
 const BACKEND_PORT = 3001;
 // ─── Backend auto-start ─────────────────────────────────────
@@ -140,11 +141,28 @@ async function waitForBackend(port, maxWaitMs = 15000) {
 async function startBackend() {
     // Kill any leftover process on the backend port
     await killPortProcess(BACKEND_PORT);
-    const backendDir = path.resolve(__dirname, "../../backend");
-    console.log("🚀 Starting backend from:", backendDir);
-    backendProcess = (0, child_process_1.spawn)("npx", ["tsx", "src/server.ts"], {
+    let backendDir;
+    let spawnCmd;
+    let spawnArgs;
+    if (IS_PACKAGED) {
+        // ── Packaged app (.app / .exe) ────────────────────────
+        // Backend is bundled into <resources>/backend by electron-builder.
+        // It's pre-compiled (npm run build) so we run `node dist/server.js`.
+        backendDir = path.join(process.resourcesPath, "backend");
+        spawnCmd = process.execPath; // use the embedded Node that ships with Electron
+        spawnArgs = [path.join(backendDir, "dist", "server.js")];
+    }
+    else {
+        // ── Development mode ──────────────────────────────────
+        // Backend lives next to electron package, run via tsx for hot-reload.
+        backendDir = path.resolve(__dirname, "../../backend");
+        spawnCmd = "npx";
+        spawnArgs = ["tsx", "src/server.ts"];
+    }
+    console.log(`🚀 Starting backend from: ${backendDir} (${IS_PACKAGED ? 'packaged' : 'dev'})`);
+    backendProcess = (0, child_process_1.spawn)(spawnCmd, spawnArgs, {
         cwd: backendDir,
-        shell: true,
+        shell: !IS_PACKAGED, // shell needed for npx on Windows; not needed for node
         stdio: "pipe",
         env: { ...process.env, PORT: String(BACKEND_PORT) },
     });
@@ -189,7 +207,13 @@ function createWindow() {
             sandbox: false,
         },
     });
-    console.log("🪟 BrowserWindow created, loading URL:", DEV_FRONTEND_URL);
+    // In packaged mode: load the bundled frontend-dist from resources
+    // In dev mode: connect to Vite dev server
+    const frontendUrl = IS_PACKAGED
+        ? `file://${path.join(process.resourcesPath, 'frontend-dist', 'index.html')}`
+        : DEV_FRONTEND_URL;
+    console.log("🪟 BrowserWindow created, loading URL:", frontendUrl);
+    mainWindow.loadURL(frontendUrl);
     // Show maximized once DOM is ready (so the native splash screen is visible)
     // NOTE: we use dom-ready instead of ready-to-show, because ready-to-show
     // fires AFTER React hydrates — by which time the 2.8s splash is already over.
@@ -405,11 +429,56 @@ function setupAutopilotIPC() {
     });
     console.log("🤖 Autopilot IPC handlers registered");
 }
+// ─── Spatial Input: Native Mouse Events for Vision Agent ────
+// sendInputEvent() is WebContents-only (Main Process). The Renderer
+// cannot call it directly on a <webview> tag — this IPC bridge is
+// the ONLY correct path for vision_click / vision_drag / vision_hover.
+function setupSpatialInputIPC() {
+    const delay = (ms) => new Promise(r => setTimeout(r, ms));
+    electron_1.ipcMain.handle('spatial-input', async (_event, wcId, events) => {
+        const wc = electron_1.webContents.fromId(wcId);
+        if (!wc)
+            return { success: false, error: 'WebContents not found' };
+        // Fix 2: Force OS-level focus BEFORE any event — prevents "focus-steal" swallow
+        wc.focus();
+        await delay(50); // Give OS time to activate the webview window
+        for (const evt of events) {
+            if (evt.type === 'vision_drag') {
+                // Fix 1: Smooth Drag Lerping — n8n/Figma check vector velocity,
+                // teleporting the mouse is interpreted as bot behavior.
+                const { startX, startY, endX, endY } = evt;
+                wc.sendInputEvent({ type: 'mouseMove', x: startX, y: startY });
+                await delay(50);
+                wc.sendInputEvent({ type: 'mouseDown', x: startX, y: startY, button: 'left', clickCount: 1 });
+                await delay(150); // Wait for canvas "grab" animation to register
+                const STEPS = 15;
+                for (let i = 1; i <= STEPS; i++) {
+                    const cx = Math.round(startX + (endX - startX) * (i / STEPS));
+                    const cy = Math.round(startY + (endY - startY) * (i / STEPS));
+                    wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
+                    await delay(10); // ~10ms per frame ≈ 60fps movement
+                }
+                await delay(100); // Settle at target — allow snap/magnet animations
+                wc.sendInputEvent({ type: 'mouseUp', x: endX, y: endY, button: 'left', clickCount: 1 });
+                await delay(50);
+            }
+            else {
+                // Normal events (mouseMove, mouseDown, mouseUp) passed through directly
+                wc.sendInputEvent(evt);
+                if (evt.type === 'mouseDown')
+                    await delay(50);
+            }
+        }
+        return { success: true };
+    });
+    console.log('🖱️  Spatial Input IPC handler registered');
+}
 // ─── App lifecycle ──────────────────────────────────────────
 electron_1.app.whenReady().then(async () => {
     setupWebviewPermissions();
     setupScrapeIPC();
     setupAutopilotIPC();
+    setupSpatialInputIPC();
     // Start backend FIRST, wait for it, THEN show window (splash runs during wait)
     await startBackend().catch((err) => console.error("⚠️ Backend start failed:", err));
     createWindow();

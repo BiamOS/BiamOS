@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 BiamOS Contributors
 // ============================================================
-// BiamOS — ContextChip (Focus Indicator)
+// BiamOS — ContextChip (Lura Anchor Indicator)
 // ============================================================
-// Shows which card is currently focused in the Omnibar.
-// Data comes from useFocusStore — never hardcodes card info.
+// Shows which card Lura is mentally bound to.
+// IMPORTANT: reads lastKnownCardMeta (not activeCardMeta) so
+// the chip stays visible even when the card loses live focus.
+// The X button does a HARD RESET — killing the lastKnown anchor
+// completely so Lura is truly detached from the card.
 // ============================================================
 
 import React from "react";
@@ -37,18 +40,34 @@ const closeBtnSx = {
     ml: 0.2,
     color: "rgba(0, 122, 255, 0.5)",
     "&:hover": {
-        color: "rgba(0, 122, 255, 0.9)",
-        bgcolor: "rgba(0, 122, 255, 0.1)",
+        color: "#FF453A",
+        bgcolor: "rgba(255, 69, 58, 0.15)",
     },
+    transition: "all 0.15s ease",
 };
 
 // ─── Component ──────────────────────────────────────────────
 
 export const ContextChip = React.memo(function ContextChip() {
-    const activeCardMeta = useFocusStore((s) => s.activeCardMeta);
-    const clearFocus = useFocusStore((s) => s.clearFocus);
+    // Read the STICKY ANCHOR (lastKnownCardMeta), not the live activeCardMeta.
+    // This keeps the chip visible even when the card loses click-focus,
+    // so the user always sees what Lura is bound to.
+    const anchorMeta = useFocusStore((s) => s.lastKnownCardMeta);
 
-    if (!activeCardMeta) return null;
+    if (!anchorMeta) return null;
+
+    const hardReset = () => {
+        // Kill ALL context — live focus, sticky anchor, and snapshot.
+        // This is the explicit "detach Lura from this card" action.
+        useFocusStore.setState({
+            activeCardId: null,
+            activeCardMeta: null,
+            lastKnownCardId: null,
+            lastKnownCardMeta: null,
+            snapshotCardId: null,
+            snapshotCardMeta: null,
+        });
+    };
 
     return (
         <Box sx={chipSx}>
@@ -66,13 +85,14 @@ export const ContextChip = React.memo(function ContextChip() {
                     textOverflow: "ellipsis",
                 }}
             >
-                {activeCardMeta.label}
+                {anchorMeta.label}
             </Typography>
             <IconButton
                 size="small"
+                title="Detach Lura from this card"
                 onClick={(e) => {
                     e.stopPropagation();
-                    clearFocus();
+                    hardReset();
                 }}
                 sx={closeBtnSx}
             >

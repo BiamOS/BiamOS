@@ -6,10 +6,15 @@
 // Tracks which Whitebox card the user is interacting with.
 // The Omnibar uses this to route commands to the correct card.
 //
-// SNAPSHOT LOGIC: When the Omnibar input is focused, a snapshot
-// of the current targetCardId is taken. All commands submitted
-// refer to this snapshot, even if the user clicks another card
-// while typing. This prevents race conditions.
+// CONTEXT ANCHOR LOGIC:
+//   - activeCard*    = live focus, cleared when user clicks elsewhere
+//   - lastKnownCard* = sticky anchor, ONLY updated when a real card is
+//                      explicitly focused via setFocus(). Clicking the
+//                      CommandCenter input is "neutral ground" and never
+//                      clears it. This ensures Lura stays mentally bound
+//                      to the last active webview even while typing.
+//   - snapshotCard*  = frozen at submit time, prefers lastKnownCard* as
+//                      fallback when activeCard* is null.
 // ============================================================
 
 import { create } from "zustand";
@@ -29,39 +34,76 @@ interface FocusState {
     activeCardId: string | null;
     activeCardMeta: CardMeta | null;
 
-    // ─── Snapshot (frozen on Omnibar focus) ──────
+    // ─── Persistent Context Anchor ───────────────
+    // Sticky - only updated by setFocus(), never by clearFocus().
+    // CommandCenter input clicks are "neutral ground" — they never erase this.
+    lastKnownCardId: string | null;
+    lastKnownCardMeta: CardMeta | null;
+
+    // ─── Snapshot (frozen at submit time) ────────
     snapshotCardId: string | null;
     snapshotCardMeta: CardMeta | null;
 
     // ─── Actions ────────────────────────────────
     setFocus: (cardId: string, meta: CardMeta) => void;
     clearFocus: () => void;
+    /** Call on card DELETE — clears lastKnownCard* to prevent ghost UI. */
+    cardRemoved: (cardId: string) => void;
     takeSnapshot: () => void;
     clearSnapshot: () => void;
 }
+
 
 // ─── Store ──────────────────────────────────────────────────
 
 export const useFocusStore = create<FocusState>((set, get) => ({
     activeCardId: null,
     activeCardMeta: null,
+    lastKnownCardId: null,
+    lastKnownCardMeta: null,
     snapshotCardId: null,
     snapshotCardMeta: null,
 
     setFocus: (cardId, meta) =>
-        set({ activeCardId: cardId, activeCardMeta: meta }),
+        set({
+            activeCardId: cardId,
+            activeCardMeta: meta,
+            // Always update the sticky anchor when a card is explicitly focused
+            lastKnownCardId: cardId,
+            lastKnownCardMeta: meta,
+        }),
 
     clearFocus: () =>
         set({
             activeCardId: null,
             activeCardMeta: null,
-            snapshotCardId: null,
-            snapshotCardMeta: null,
+            // ⚠️ DO NOT clear lastKnownCard* here — that's the whole point.
+            // The user un-focused a card but Lura stays mentally bound to it.
+        }),
+
+    // Bug 0 fix: explicit card delete — must clear lastKnown* to prevent ghost UI
+    cardRemoved: (cardId: string) =>
+        set((state) => {
+            const isAnchor = state.lastKnownCardId === cardId;
+            const isActive = state.activeCardId === cardId;
+            const isSnapshot = state.snapshotCardId === cardId;
+            return {
+                activeCardId: isActive ? null : state.activeCardId,
+                activeCardMeta: isActive ? null : state.activeCardMeta,
+                lastKnownCardId: isAnchor ? null : state.lastKnownCardId,
+                lastKnownCardMeta: isAnchor ? null : state.lastKnownCardMeta,
+                snapshotCardId: isSnapshot ? null : state.snapshotCardId,
+                snapshotCardMeta: isSnapshot ? null : state.snapshotCardMeta,
+            };
         }),
 
     takeSnapshot: () => {
-        const { activeCardId, activeCardMeta } = get();
-        set({ snapshotCardId: activeCardId, snapshotCardMeta: activeCardMeta });
+        const { activeCardId, activeCardMeta, lastKnownCardId, lastKnownCardMeta } = get();
+        // Prefer live active card; fall back to last known anchor
+        set({
+            snapshotCardId: activeCardId ?? lastKnownCardId,
+            snapshotCardMeta: activeCardMeta ?? lastKnownCardMeta,
+        });
     },
 
     clearSnapshot: () =>

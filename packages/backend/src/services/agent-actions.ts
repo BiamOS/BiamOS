@@ -193,6 +193,60 @@ const AGENT_TOOLS = [
             },
         },
     },
+
+    // ── VISION / SPATIAL Tools (for Canvas Apps — n8n, Figma, Webflow) ──
+    // Use these when the page is a visual canvas where DOM SoM is unreliable.
+    // Coordinates are read from the neon-green RULER in the screenshot (0-100%).
+    {
+        type: "function" as const,
+        function: {
+            name: "vision_click",
+            description: "[ACTION · Spatial] Click at a ruler coordinate. Use for canvas-based UIs (n8n, Figma, Webflow) where DOM elements are not in the SoM snapshot. Read X% from the TOP ruler and Y% from the LEFT ruler in the screenshot.",
+            parameters: {
+                type: "object",
+                properties: {
+                    x_pct: { type: "number", description: "Horizontal position from TOP ruler (0.0 – 100.0)" },
+                    y_pct: { type: "number", description: "Vertical position from LEFT ruler (0.0 – 100.0)" },
+                    description: { type: "string", description: "What you are clicking and why" },
+                },
+                required: ["x_pct", "y_pct", "description"],
+            },
+        },
+    },
+    {
+        type: "function" as const,
+        function: {
+            name: "vision_drag",
+            description: "[ACTION · Spatial] Drag from one ruler coordinate to another. Essential for connecting nodes in n8n, moving objects in Figma, or reordering canvas elements. Uses smooth interpolation (15 frames) to avoid bot-detection by physics engines.",
+            parameters: {
+                type: "object",
+                properties: {
+                    start_x_pct: { type: "number", description: "Drag start X (TOP ruler, 0-100)" },
+                    start_y_pct: { type: "number", description: "Drag start Y (LEFT ruler, 0-100)" },
+                    end_x_pct:   { type: "number", description: "Drag end X (TOP ruler, 0-100)" },
+                    end_y_pct:   { type: "number", description: "Drag end Y (LEFT ruler, 0-100)" },
+                    description: { type: "string", description: "What you are dragging and why" },
+                },
+                required: ["start_x_pct", "start_y_pct", "end_x_pct", "end_y_pct", "description"],
+            },
+        },
+    },
+    {
+        type: "function" as const,
+        function: {
+            name: "vision_hover",
+            description: "[ACTION · Spatial] Move the mouse to a ruler coordinate WITHOUT clicking. ALWAYS use this before vision_drag in n8n — connection ports are hidden until hover. Also use for dropdown triggers and tooltip-revealed menus.",
+            parameters: {
+                type: "object",
+                properties: {
+                    x_pct: { type: "number", description: "Hover target X (TOP ruler, 0-100)" },
+                    y_pct: { type: "number", description: "Hover target Y (LEFT ruler, 0-100)" },
+                    description: { type: "string", description: "What you are hovering over and why" },
+                },
+                required: ["x_pct", "y_pct", "description"],
+            },
+        },
+    },
     {
         type: "function" as const,
         function: {
@@ -604,7 +658,10 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
     if (ctx.screenshot) {
         userContent.push({
             type: "image_url",
-            image_url: { url: `data:image/png;base64,${ctx.screenshot}` },
+            image_url: {
+                url: `data:image/png;base64,${ctx.screenshot}`,
+                detail: "high",   // Fix 6: force high-res — prevents OpenRouter downscaling on small n8n nodes
+            },
         });
     }
 

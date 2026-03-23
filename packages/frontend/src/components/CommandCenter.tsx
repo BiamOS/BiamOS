@@ -306,9 +306,9 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
     const tasksMap = useTaskStore(s => s.tasks);
     const allTasks = Object.values(tasksMap);
 
-    const focusedMeta = useFocusStore(s => s.activeCardMeta);
-    const snapshotCardId = useFocusStore(s => s.snapshotCardId);
-    const snapshotCardMeta = useFocusStore(s => s.snapshotCardMeta);
+    // Sticky context anchor — survives card un-focus, only cleared by hard reset (X)
+    const anchorMeta = useFocusStore(s => s.lastKnownCardMeta);
+    const anchorId   = useFocusStore(s => s.lastKnownCardId);
     const takeSnapshot = useFocusStore(s => s.takeSnapshot);
 
     const [input, setInput] = useState('');
@@ -355,23 +355,129 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
         }
     }, [hints]);
 
-    // ─── Submit handler (mirrors FloatingOmnibar logic) ────────
+    // ─── Task dispatch helper (used by both normal flow and slash commands) ────────────────────────
+    const dispatchTasks = useCallback(async (
+        tasks: any[],
+        contextCardId: string | null,
+        contextCardMeta: any,
+    ) => {
+        let delayMultiplier = 0;
+        let usedSnapshot = false;
+
+        const chatTasks = tasks.filter((t: any) => t.mode === 'CHAT');
+        const actionTasks = tasks.filter((t: any) => t.mode !== 'CHAT');
+
+        for (const ct of chatTasks) {
+            const loadingHintId = Date.now();
+            useContextStore.getState().setHints(prev => [
+                ...prev,
+                { query: '🧠 Lura', reason: 'system', loading: true, timestamp: loadingHintId }
+            ]);
+            try {
+                const chatResp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: ct.task }),
+                });
+                if (!chatResp.ok) throw new Error(`Chat API ${chatResp.status}`);
+                const chatData = await chatResp.json();
+                useContextStore.getState().setHints(prev =>
+                    prev.map(h => h.timestamp === loadingHintId
+                        ? { ...h, loading: false, data: { summary: chatData.answer || '...' } }
+                        : h
+                    )
+                );
+            } catch {
+                useContextStore.getState().setHints(prev =>
+                    prev.map(h => h.timestamp === loadingHintId
+                        ? { ...h, loading: false, data: { summary: '⚠️ Chat response failed. Try again.' } }
+                        : h
+                    )
+                );
+            }
+        }
+
+        for (const t of actionTasks) {
+            let targetCardId = contextCardId || '';
+
+            if (targetCardId && t.mode !== 'CONTEXT_QUESTION') {
+                if (usedSnapshot || t.mode === 'RESEARCH') {
+                    targetCardId = '';
+                }
+                // 🔑 CARD TYPE GUARD: Dashboard cards are read-only.
+                // If the focused card has no webview (pure research/GenUI dashboard),
+                // an ACTION task must NEVER reuse it — spawn a fresh web card instead.
+                if (targetCardId && (t.mode === 'ACTION' || t.mode === 'ACTION_WITH_CONTEXT')) {
+                    const focusedMeta = contextCardMeta;
+                    if (focusedMeta && !focusedMeta.hasWebview) {
+                        targetCardId = ''; // Force new web card
+                    }
+                }
+            }
+
+            const needsNewCard = !targetCardId;
+
+            if (needsNewCard) {
+                targetCardId = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const tid = targetCardId;
+                const spawnAt = delayMultiplier * 800;
+                const fireAt = spawnAt + 200;
+                setTimeout(() => {
+                    dispatchBiamosEvent({ type: 'BIAMOS_CREATE_EMPTY_CARD', cardId: tid, title: t.task.slice(0, 30) + '...' });
+                    const isDashboard = t.mode === 'RESEARCH';
+                    useFocusStore.getState().setFocus(tid, { label: t.task.slice(0, 30), icon: '✨', hasWebview: false, hasDashboard: isDashboard });
+                    useContextStore.getState().setActiveCardId(tid);
+                }, spawnAt);
+                setTimeout(() => {
+                    useTaskStore.getState().upsertTask({ id: tid, cardId: tid, label: t.task, type: t.mode === 'RESEARCH' ? 'research' : 'agent', status: 'running', startTime: Date.now() });
+                    const mode = t.mode || 'ACTION';
+                    if (mode === 'RESEARCH') {
+                        dispatchBiamosEvent({ type: 'BIAMOS_RESEARCH', query: t.task, targetCard: tid });
+                    } else if (mode === 'CONTEXT_QUESTION') {
+                        dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
+                    } else {
+                        dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
+                    }
+                }, fireAt);
+                delayMultiplier++;
+            } else {
+                const tid = targetCardId;
+                useTaskStore.getState().upsertTask({ id: tid, cardId: tid, label: t.task, type: t.mode === 'RESEARCH' ? 'research' : 'agent', status: 'running', startTime: Date.now() });
+                if (t.mode !== 'CONTEXT_QUESTION') usedSnapshot = true;
+                const mode = t.mode || 'ACTION';
+                if (mode === 'RESEARCH') {
+                    dispatchBiamosEvent({ type: 'BIAMOS_RESEARCH', query: t.task, targetCard: tid });
+                } else if (mode === 'CONTEXT_QUESTION') {
+                    dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
+                } else {
+                    dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
+                }
+            }
+        }
+    }, []);
+
+    // ─── Submit handler ─────────────────────────────────────
     const handleSubmit = useCallback(async (text: string) => {
         const trimmed = text.trim();
         if (!trimmed || isLoading) return;
         setInput('');
-        // Reset textarea height back to one line
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
         }
 
-        // NEW: Always record the user's raw message in the chat history
+        // 🔑 Always refresh snapshot at submit time — not just on input focus.
+        // This ensures the lastKnownCard* anchor is captured even if the user
+        // never re-clicked the input after switching tabs.
+        useFocusStore.getState().takeSnapshot();
+        const freshMeta = useFocusStore.getState().snapshotCardMeta;
+        const freshCardId = useFocusStore.getState().snapshotCardId;
+
+        // Record the user's raw message in chat history
         useContextStore.getState().setHints(prev => [
             ...prev,
             { query: trimmed, reason: 'user', timestamp: Date.now() }
         ]);
 
-        // Synchronous intercept if we already know the LLM is missing
         if (llmMissing) {
             useContextStore.getState().setHints(prev => [
                 ...prev,
@@ -386,6 +492,31 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
             return;
         }
 
+        // ── Slash Command Fast-Path ──────────────────────────────
+        // /research <query> → forces RESEARCH regardless of context
+        // /act <query>      → forces ACTION POST on current tab
+        const SLASH_RESEARCH = /^\/research\s+(.+)/i;
+        const SLASH_ACT      = /^\/act\s+(.+)/i;
+
+        const matchResearch = trimmed.match(SLASH_RESEARCH);
+        const matchAct      = trimmed.match(SLASH_ACT);
+
+        if (matchResearch || matchAct) {
+            const forcedQuery = (matchResearch?.[1] ?? matchAct?.[1] ?? '').trim();
+            const forcedMode  = matchResearch ? 'RESEARCH' : 'ACTION';
+            const forcedMethod = matchResearch ? 'GET' : 'POST';
+            const toolMapping = forcedMode === 'RESEARCH'
+                ? { allowed: ['click','scroll','search_web','take_notes','read_page','navigate','go_back','done','ask_user','genui'], forbidden: ['type_text'] }
+                : { allowed: ['click','click_at','type_text','scroll','navigate','go_back','search_web','take_notes','done','ask_user'], forbidden: [] };
+
+            setIsLoading(true);
+            const forcedTask = [{ task: forcedQuery, mode: forcedMode, method: forcedMethod, allowed_tools: toolMapping.allowed, forbidden: toolMapping.forbidden }];
+            // Re-use the dispatch logic below by calling with these forced tasks
+            await dispatchTasks(forcedTask, freshCardId, freshMeta);
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
 
         try {
@@ -394,9 +525,9 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: trimmed,
-                    hasDashboard: snapshotCardMeta?.hasDashboard || false,
-                    hasWebview: snapshotCardMeta?.hasWebview || false,
-                    currentUrl: snapshotCardMeta?.url || '',
+                    hasDashboard: freshMeta?.hasDashboard || false,
+                    hasWebview: freshMeta?.hasWebview || false,
+                    currentUrl: freshMeta?.url || '',
                 }),
             });
 
@@ -421,108 +552,13 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 throw new Error('Router failed');
             }
             const tasks = await classifyResp.json();
-
-            let delayMultiplier = 0;
-            let usedSnapshot = false;
-
-            // ── CHAT fast-path: answer inline without spawning any card ──
-            const chatTasks = tasks.filter((t: any) => t.mode === 'CHAT');
-            const actionTasks = tasks.filter((t: any) => t.mode !== 'CHAT');
-
-            for (const ct of chatTasks) {
-                // Show loading bubble immediately
-                const loadingHintId = Date.now();
-                useContextStore.getState().setHints(prev => [
-                    ...prev,
-                    { query: '🧠 Lura', reason: 'system', loading: true, timestamp: loadingHintId }
-                ]);
-                // Call /api/chat backend
-                try {
-                    const chatResp = await fetch('/api/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query: ct.task }),
-                    });
-                    if (!chatResp.ok) throw new Error(`Chat API ${chatResp.status}`);
-                    const chatData = await chatResp.json();
-                    const answer = chatData.answer || '...';
-                    // Replace loading bubble with real answer
-                    useContextStore.getState().setHints(prev =>
-                        prev.map(h => h.timestamp === loadingHintId
-                            ? { ...h, loading: false, data: { summary: answer } }
-                            : h
-                        )
-                    );
-                } catch (chatErr) {
-                    useContextStore.getState().setHints(prev =>
-                        prev.map(h => h.timestamp === loadingHintId
-                            ? { ...h, loading: false, data: { summary: '⚠️ Chat response failed. Try again.' } }
-                            : h
-                        )
-                    );
-                }
-            }
-
-            for (const t of actionTasks) {
-                let targetCardId = snapshotCardId || '';
-
-                // If we have multiple tasks, only the FIRST action should use the focused webview.
-                // Subsequent tasks, or any RESEARCH tasks that shouldn't hijack a webview if we want them parallel, get their own card.
-                // Context questions always use the target card regardless.
-                if (targetCardId && t.mode !== 'CONTEXT_QUESTION') {
-                    if (usedSnapshot || t.mode === 'RESEARCH') {
-                        targetCardId = ''; // Force a new card
-                    }
-                }
-
-                const needsNewCard = !targetCardId;
-
-                if (needsNewCard) {
-                    // Generate a stable card ID for this task
-                    targetCardId = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                    const tid = targetCardId;
-                    const spawnAt = delayMultiplier * 800;
-                    const fireAt = spawnAt + 200; // give the card 200ms to mount before firing the agent
-                    // Step 1: spawn the card
-                    setTimeout(() => {
-                        dispatchBiamosEvent({ type: 'BIAMOS_CREATE_EMPTY_CARD', cardId: tid, title: t.task.slice(0, 30) + '...' });
-                        useFocusStore.getState().setFocus(tid, { label: t.task.slice(0, 30), icon: '✨', hasWebview: false, hasDashboard: true });
-                        useContextStore.getState().setActiveCardId(tid);
-                    }, spawnAt);
-                    // Step 2: register task in store + fire agent event (card is now mounted)
-                    setTimeout(() => {
-                        useTaskStore.getState().upsertTask({ id: tid, cardId: tid, label: t.task, type: t.mode === 'RESEARCH' ? 'research' : 'agent', status: 'running', startTime: Date.now() });
-                        const mode = t.mode || 'ACTION';
-                        if (mode === 'RESEARCH') {
-                            dispatchBiamosEvent({ type: 'BIAMOS_RESEARCH', query: t.task, targetCard: tid });
-                        } else if (mode === 'CONTEXT_QUESTION') {
-                            dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
-                        } else {
-                            dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
-                        }
-                    }, fireAt);
-                    delayMultiplier++;
-                } else {
-                    // For existing cards: register immediately + fire with no delay
-                    const tid = targetCardId;
-                    useTaskStore.getState().upsertTask({ id: tid, cardId: tid, label: t.task, type: t.mode === 'RESEARCH' ? 'research' : 'agent', status: 'running', startTime: Date.now() });
-                    if (t.mode !== 'CONTEXT_QUESTION') usedSnapshot = true;
-                    const mode = t.mode || 'ACTION';
-                    if (mode === 'RESEARCH') {
-                        dispatchBiamosEvent({ type: 'BIAMOS_RESEARCH', query: t.task, targetCard: tid });
-                    } else if (mode === 'CONTEXT_QUESTION') {
-                        dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
-                    } else {
-                        dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
-                    }
-                }
-            }
+            await dispatchTasks(tasks, freshCardId, freshMeta);
         } catch (err) {
             console.error('[CommandCenter] Submit error', err);
         } finally {
             setIsLoading(false);
         }
-    }, [snapshotCardId, snapshotCardMeta, isLoading]);
+    }, [isLoading, dispatchTasks]);
 
     return (
         <Box sx={{
@@ -561,27 +597,31 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 )}
             </Box>
 
-            {/* ── Page Context Pill (mit X zum Un-Fokussieren) ── */}
-            {focusedMeta && activeCardId && (
+            {/* ── Page Context Pill (Lura's mental anchor) ── */}
+            {anchorMeta && anchorId && (
                 <Box sx={{ px: 1.2, py: 0.8, borderBottom: tokens.border, flexShrink: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2, px: 1.2, py: 0.6, border: tokens.border }}>
-                        <Typography sx={{ fontSize: '1rem', flexShrink: 0 }}>{focusedMeta.icon || '🌐'}</Typography>
+                        <Typography sx={{ fontSize: '1rem', flexShrink: 0 }}>{anchorMeta.icon || '🌐'}</Typography>
                         <Box sx={{ flex: 1, overflow: 'hidden' }}>
                             <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: tokens.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {focusedMeta.label}
+                                {anchorMeta.label}
                             </Typography>
-                            {focusedMeta.url && focusedMeta.url !== 'about:blank' && (
+                            {anchorMeta.url && anchorMeta.url !== 'about:blank' && (
                                 <Typography sx={{ fontSize: '0.55rem', color: tokens.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {focusedMeta.url}
+                                    {anchorMeta.url}
                                 </Typography>
                             )}
                         </Box>
-                        {focusedMeta.hasWebview && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#30D158', flexShrink: 0 }} title="Live page" />}
+                        {anchorMeta.hasWebview && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#30D158', flexShrink: 0 }} title="Live page" />}
                         <Box
                             component="button"
-                            onClick={() => useFocusStore.getState().clearFocus?.()}
-                            title="Un-focus card"
-                            sx={{ width: 22, height: 22, borderRadius: 1, border: 'none', bgcolor: 'transparent', color: tokens.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)', color: '#fff' }, transition: 'all 0.2s', ml: 'auto', flexShrink: 0 }}
+                            onClick={() => useFocusStore.setState({
+                                activeCardId: null, activeCardMeta: null,
+                                lastKnownCardId: null, lastKnownCardMeta: null,
+                                snapshotCardId: null, snapshotCardMeta: null,
+                            })}
+                            title="Detach Lura from this card"
+                            sx={{ width: 22, height: 22, borderRadius: 1, border: 'none', bgcolor: 'transparent', color: tokens.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', '&:hover': { bgcolor: 'rgba(255,69,58,0.2)', color: '#FF453A' }, transition: 'all 0.2s', ml: 'auto', flexShrink: 0 }}
                         >
                             <CloseIcon sx={{ fontSize: 14 }} />
                         </Box>

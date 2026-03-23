@@ -14,6 +14,7 @@ import { logTokenUsage } from "../server-utils.js";
 import { safeParseJSON } from "../utils/safe-json.js";
 import { log } from "../utils/logger.js";
 import type { IntentMode, CrudMethod } from "./classify-routes.js";
+import { getIntegrationForQuery } from "../services/integration-context.js";
 
 export const universalRouter = new Hono();
 
@@ -38,83 +39,45 @@ const CRUD_TOOL_MAP: Record<CrudMethod, { allowed: string[]; forbidden: string[]
     },
 };
 
-// ─── Router System Prompt ───────────────────────────────────
+// ─── Zero-Shot JSON Schema Router Prompt ────────────────────
 
-const ROUTER_PROMPT = `You are the BiamOS Universal Router (Phase 2B). Your job is to split complex user queries into an ARRAY of discrete executable tasks.
+const ROUTER_PROMPT = `You are BiamOS Universal Router. Analyse the user query and return ONLY valid JSON.
 
-You must look for conjunctions ("and", "und", "dann", "then", ",") and separate the intentions.
-
-⚡ CHAT MODE (HIGHEST PRIORITY — check this first):
-If the user is asking a DIRECT QUESTION about you, your capabilities, BiamOS, or general knowledge — with NO instruction to open a browser, navigate, compose, or research — classify as CHAT.
-Examples: "wer bist du?", "was kannst du?", "was ist BiamOS?", "erkläre mir X", "wie funktioniert X", "erzähl mir etwas", "was kann ich hier machen?", "wer hat dich gemacht?", "hast du GPT-4?", "what are you?", "what can you do?", "help me understand X", "explain X".
-CHAT tasks get mode: "CHAT", method: "GET". They are answered directly by Lura without any browser or research.
-
-CRITICAL RULE FOR SPLITTING — READ FIRST:
-If the user requests multiple actions that happen CONSECUTIVELY on the SAME website or platform
-(e.g. "Go to Twitter and post a greeting", "Open Gmail and write an email to Max", "gehe zu X und erstelle einen Post"),
-DO NOT split them into multiple tasks.
-Combine them into a SINGLE ACTION task with the full instruction.
-The browser agent is fully capable of executing multi-step tasks on one page in a single run.
-ONLY split tasks if they are on COMPLETELY DIFFERENT websites, or one task is RESEARCH and the other is ACTION.
-Examples of what NOT to split:
-- "gehe zu X und poste eine Begrüßung" → ONE task: ACTION POST
-- "öffne Gmail und schreibe eine Email an Max" → ONE task: ACTION POST
-- "navigate to LinkedIn and like the first post" → ONE task: ACTION POST
-Examples of what TO split:
-- "recherchiere OpenAI UND öffne Gmail" → TWO tasks: RESEARCH + ACTION GET (different sites)
-- "fasse den Artikel zusammen und tweete das" → TWO tasks: CONTEXT_QUESTION + ACTION_WITH_CONTEXT
-
-CRITICAL RULES FOR MODES & METHODS:
-- RESEARCH: Generating dashboards, finding info WITHOUT a specific site mentioned. Method is always GET.
-- ACTION (GET): Reading, checking, finding info ON a specific site (e.g. "go to X and find Y").
-- ACTION (POST/PUT/DELETE): Writing, clicking, sending, submitting, deleting.
-- ACTION_WITH_CONTEXT: Taking data from a previous step and doing something with it (e.g. "post this", "share the results").
-- CONTEXT_QUESTION: Simple question about the visible screen/dashboard OR the currently open webpage. Always GET.
-
-⚠️ WEBVIEW CONTEXT RULE (HIGHEST PRIORITY):
-If the context tells you "hasWebview: true", it means the user has a LIVE WEBPAGE open in their browser.
-In this case, ANY query that asks to summarize, explain, translate, read, describe, or ask questions about
-"this page", "the article", "the site", "this", "das", "die Seite", "den Artikel", "das hier", "davon", "darüber"
-MUST be classified as CONTEXT_QUESTION — NOT as RESEARCH or ACTION.
-
-⚠️ SCREEN VISIBILITY RULE (ALSO HIGHEST PRIORITY):
-Queries asking "what do you see?", "was siehst du?", "was ist im screen?", "describe what's on screen",
-"was ist da?", "was ist das?", "erkläre was du siehst" — ALWAYS classify as CONTEXT_QUESTION.
-These are requests to observe and describe the current screen, never ACTION or RESEARCH.
-
-Examples with hasWebview=true:
-- "Fasse die Seite zusammen" → CONTEXT_QUESTION
-- "Was steht da?" → CONTEXT_QUESTION
-- "Summarize this article" → CONTEXT_QUESTION
-- "Erkläre mir das" → CONTEXT_QUESTION
-- "What is this page about?" → CONTEXT_QUESTION
-- "Translate this" → CONTEXT_QUESTION
-- "was siehst du im screen?" → CONTEXT_QUESTION
-- "was siehst du?" → CONTEXT_QUESTION
-- "was ist auf dem bildschirm?" → CONTEXT_QUESTION
-- "describe what you see" → CONTEXT_QUESTION
-- "what do you see?" → CONTEXT_QUESTION
-
-If the user says: "Recherchiere OpenClaw und öffne Gmail", you output 2 tasks:
-1. mode: RESEARCH, method: GET, task: "Recherchiere OpenClaw"
-2. mode: ACTION, method: GET, task: "öffne Gmail"
-
-If the user says: "Fasse die AI Modelle zusammen und tweete das auf X":
-1. mode: RESEARCH (or CONTEXT_QUESTION), method: GET, task: "Fasse die AI Modelle zusammen"
-2. mode: ACTION_WITH_CONTEXT, method: POST, task: "tweete das auf X"
-
-You MUST return a JSON object containing a "tasks" array.
-Each object in the "tasks" array MUST match this exactly:
+The JSON MUST have this exact structure, with "intent" first:
 {
-  "task": "string (the isolated command)",
-  "mode": "CHAT" | "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION",
-  "method": "GET" | "POST" | "PUT" | "DELETE"
+  "intent": {
+    "language": "<ISO 639-1 code of the user's language>",
+    "requires_browser_interaction": <true if user wants to navigate/click/type/scroll/go to/open/search — in ANY language>,
+    "is_about_current_screen": <true ONLY for passive read-only observation: user wants you to describe/summarize/translate/read what is currently visible — e.g. "was siehst du?", "fasse zusammen", "was steht da?", "describe this". MUST be false if an action verb is present (suche, klick, geh, scroll, type, open, find)>,
+    "is_pure_chat": <true ONLY if this is a meta-question about you/BiamOS/general knowledge with ZERO browser or research intent>,
+    "is_read_only": <true for viewing/reading actions (GET), false for writing/posting/submitting/deleting>,
+    "target": "<detected URL, site name, channel, person or search target — empty string if none>"
+  },
+  "tasks": [
+    {
+      "task": "<exact original user text — NEVER translate>",
+      "mode": "CHAT" | "RESEARCH" | "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION",
+      "method": "GET" | "POST" | "PUT" | "DELETE"
+    }
+  ]
 }
 
-RULE: You MUST keep the 'task' strings in the exact original language the user typed. Do not translate the tasks into English!
+Mode rules (the intent block will guide you):
+- requires_browser_interaction: true  → ACTION (method = GET if read-only, POST/PUT/DELETE if writing)
+- is_about_current_screen: true       → CONTEXT_QUESTION
+- is_pure_chat: true                  → CHAT
+- Neither of the above, no site given → RESEARCH
 
-Respond ONLY with the JSON object. Do not include markdown blocks or extra text. Example output:
-{"tasks": [{"task": "find news", "mode": "RESEARCH", "method": "GET"}, {"task": "open twitter", "mode": "ACTION", "method": "GET"}]}`;
+CRITICAL SPLITTING RULES:
+1. SEQUENTIAL BROWSER ACTIONS = ONE TASK: If tasks are step-by-step actions on the SAME platform/site, they MUST be a single task (not split). Splitting sequential browser tasks causes broken parallel execution.
+   ❌ BAD: ["navigate to x.com", "find mr beast post"] — these run in parallel, breaking the flow
+   ✅ GOOD: ["navigate to x.com and find mr beast's latest post"] — one task, one browser session
+2. SPLIT ONLY for TRULY INDEPENDENT tasks on DIFFERENT platforms (e.g. "check Gmail AND post on Twitter").
+3. CONTEXT PROPAGATION: Every sub-task must be 100% self-contained. If the first task establishes a platform/URL, copy it explicitly into all dependent tasks.
+   ❌ BAD: ["navigate to x.com", "find mr beast's post"]
+   ✅ GOOD: ["navigate to x.com", "on x.com: search for mr beast's latest post"]
+
+Respond ONLY with the JSON. No markdown, no extra text.`;
 
 // ─── POST /api/intent/route ─────────────────────────────────
 
@@ -133,31 +96,30 @@ universalRouter.post("/", async (c) => {
         const chatUrl = await getChatUrl();
         const headers = await getHeaders("universal-router");
 
-        // Build context string for the LLM — be as explicit as possible
-    const contextSuffix: string = (() => {
-        if (hasWebview && currentUrl) {
-            return `\n\nCRITICAL CONTEXT: hasWebview: true | currentUrl: "${currentUrl}"\nThe user has a LIVE WEBPAGE open. Apply the WEBVIEW CONTEXT RULE above. If the user is asking about the content of this page, ALWAYS use CONTEXT_QUESTION.`;
-        } else if (hasDashboard) {
-            return "\n\nCRITICAL CONTEXT: hasDashboard: true | The user currently has a Research Dashboard or Agent Log in focus. Words like 'this', 'that', 'summarize', 'daraus', 'damit' likely refer to that dashboard. Strongly consider ACTION_WITH_CONTEXT or CONTEXT_QUESTION.";
-        } else {
-            return "\n\nCRITICAL CONTEXT: hasWebview: false | hasDashboard: false | The user is on an EMPTY canvas with no active content in focus. Do NOT use CONTEXT_QUESTION or ACTION_WITH_CONTEXT — the user is asking for something entirely new.";
-        }
-    })();
 
-    // ── Fast-path: detect obvious chat queries WITHOUT an LLM call ──
-    // These patterns are unambiguous conversational questions. Routing them
-    // immediately avoids one full LLM round-trip and prevents mis-classification.
-    const CHAT_PATTERNS = [
-        /^(wer|was|wie|warum|wozu|womit|wobei|ob|hast|kannst|könntest|bist|gibt|machst|darf|kann ich)(\s|$)/i,
-        /^(who|what|how|why|can you|do you|are you|tell me|explain|describe|what is|what are|what can|help me)(\s|$)/i,
-        /^(erkläre?|erklär|erzähl|zeig mir|hilf mir|sag mir|was bedeutet|was macht|wie work)(\s|$)/i,
-    ];
-    // Only fast-path if there's NO webview and NO dashboard context
-    // (those need the LLM to check for CONTEXT_QUESTION vs CHAT)
-    if (!hasWebview && !hasDashboard && CHAT_PATTERNS.some(p => p.test(query))) {
-        log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}" → CHAT (fast-path, no LLM)`);
-        return c.json([{ task: query, mode: 'CHAT', method: 'GET', allowed_tools: [], forbidden: [] }]);
+
+    // ── PRE-FAST-PATH: Integration matcher (language-agnostic, runs before LLM) ────
+    if (!hasWebview) {
+        const matched = await getIntegrationForQuery(query);
+        if (matched) {
+            log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}" → RESEARCH (integration fast-path: ${matched.groupName})`);
+            return c.json([{
+                task: query,
+                mode: 'RESEARCH' as IntentMode,
+                method: 'GET' as CrudMethod,
+                allowed_tools: CRUD_TOOL_MAP['GET'].allowed,
+                forbidden: CRUD_TOOL_MAP['GET'].forbidden,
+                _integrationGroup: matched.groupName,
+            }]);
+        }
     }
+
+    // ── Build context suffix: minimal, just facts for the schema ────────────
+    const contextSuffix = hasWebview && currentUrl
+        ? `\n\nCONTEXT: hasWebview=true, currentUrl="${currentUrl}"`
+        : hasDashboard
+        ? `\n\nCONTEXT: hasWebview=false, hasDashboard=true`
+        : `\n\nCONTEXT: hasWebview=false, hasDashboard=false`;
 
         const dynamicPrompt = ROUTER_PROMPT + contextSuffix;
 
@@ -185,21 +147,54 @@ universalRouter.post("/", async (c) => {
         const parsed = safeParseJSON(content);
 
         if (parsed && Array.isArray(parsed.tasks)) {
-            // Map the parsed tasks to include allowed/forbidden tools dynamically
+            const intent = parsed.intent ?? {};
+
+            // ── Hard TypeScript overrides (language-agnostic) ────────────────
+            // These override LLM task-level hallucinations using the intent block.
+            // The LLM reasons about intent first (CoT), we enforce the rules here.
             const fullyHydratedTasks = parsed.tasks.map((t: any) => {
-                const mode = (["CHAT", "RESEARCH", "ACTION", "ACTION_WITH_CONTEXT", "CONTEXT_QUESTION"].includes(t.mode))
+                let mode = (["CHAT", "RESEARCH", "ACTION", "ACTION_WITH_CONTEXT", "CONTEXT_QUESTION"].includes(t.mode))
                     ? t.mode as IntentMode
                     : "ACTION";
-                
+
                 let method = (["GET", "POST", "PUT", "DELETE"].includes(t.method))
                     ? t.method as CrudMethod
                     : "GET";
-                
-                // Safety overrides
-                if (mode === "RESEARCH" || mode === "CONTEXT_QUESTION") method = "GET";
+
+                // 🔒 HARD OVERRIDE 1: Browser interaction + live webview → always ACTION
+                if (intent.requires_browser_interaction && hasWebview && mode === 'CHAT') {
+                    log.info(`  🧭 [Override] CHAT → ACTION (requires_browser_interaction=true, hasWebview=true)`);
+                    mode = 'ACTION';
+                }
+
+                // 🔒 HARD OVERRIDE 1b: Non-empty target + live webview = navigation intent.
+                // Catches polite/question-form navigation ("kannst du kd csapat gehen?")
+                // where LLM sets requires_browser_interaction=false but still detects a target.
+                if (hasWebview && intent.target && intent.target.trim() !== '' && mode === 'CHAT') {
+                    log.info(`  🧭 [Override] CHAT → ACTION (target="${intent.target}", hasWebview=true)`);
+                    mode = 'ACTION';
+                    method = 'GET';
+                }
+
+                // 🔒 HARD OVERRIDE 2: About current screen → always CONTEXT_QUESTION
+                if (intent.is_about_current_screen && hasWebview) {
+                    mode = 'CONTEXT_QUESTION';
+                }
+
+                // 🔒 HARD OVERRIDE 2b: Browser interaction beats screen observation.
+                // "suche hier" = action ON the page, not a description OF the page.
+                if (intent.requires_browser_interaction && mode === 'CONTEXT_QUESTION') {
+                    log.info(`  🧭 [Override] CONTEXT_QUESTION → ACTION (requires_browser_interaction overrides is_about_current_screen)`);
+                    mode = 'ACTION';
+                }
+
+                // 🔒 HARD OVERRIDE 3: RESEARCH/CONTEXT_QUESTION are always GET
+                if (mode === 'RESEARCH' || mode === 'CONTEXT_QUESTION') method = 'GET';
+
+                // 🔒 HARD OVERRIDE 4: is_read_only → cap at GET
+                if (intent.is_read_only && method !== 'GET') method = 'GET';
 
                 const toolMapping = CRUD_TOOL_MAP[method];
-
                 return {
                     task: t.task,
                     mode,
@@ -209,7 +204,8 @@ universalRouter.post("/", async (c) => {
                 };
             });
 
-            log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}..." → Split into ${fullyHydratedTasks.length} tasks!`);
+            const langTag = intent.language ? ` [${intent.language}]` : '';
+            log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}..."${langTag} → Split into ${fullyHydratedTasks.length} tasks!`);
             return c.json(fullyHydratedTasks);
         }
 

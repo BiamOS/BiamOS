@@ -20,6 +20,8 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
     executeAutopilotStep: (taskId, url, script) => electron_1.ipcRenderer.invoke("autopilot-step", taskId, url, script),
     /** Autopilot: Get DOM snapshot from a URL for planning */
     getPageSnapshot: (taskId, url) => electron_1.ipcRenderer.invoke("page-snapshot", taskId, url),
+    /** Spatial Agent: Fire native mouse events via Main Process WebContents */
+    spatialInput: (webContentsId, events) => electron_1.ipcRenderer.invoke("spatial-input", webContentsId, events),
 });
 // ─── Lock main window zoom ──────────────────────────────────
 // The <webview> tags manage their own zoom independently.

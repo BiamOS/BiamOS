@@ -13,6 +13,7 @@ import { getChatUrl, getHeaders } from "../services/llm-provider.js";
 import { MODEL_FAST } from "../config/models.js";
 import { logTokenUsage } from "../server-utils.js";
 import { log } from "../utils/logger.js";
+import { getConciergeContext } from "../services/integration-context.js";
 
 export const chatRoutes = new Hono();
 
@@ -28,11 +29,14 @@ chatRoutes.post("/", async (c) => {
         const chatUrl = await getChatUrl();
         const headers = await getHeaders("chat");
 
-        // Build system prompt directly from soul + base rules
-        // (No full assembler context needed — chat has no URL/phase/history)
+        // Build system prompt: soul + base + live integration awareness
         const { soulModule } = await import("../prompt-modules/soul.js");
         const { baseModule } = await import("../prompt-modules/base.js");
-        const systemPrompt = [soulModule.rules, baseModule.rules].join("\n\n");
+        const integrationContext = await getConciergeContext().catch(() => "");
+        const integrationSection = integrationContext
+            ? `\n\n## INSTALLED INTEGRATIONS\nYou have access to these live API integrations that users can trigger via research queries:\n${integrationContext}`
+            : "";
+        const systemPrompt = [soulModule.rules, baseModule.rules].join("\n\n") + integrationSection;
 
         const resp = await fetch(chatUrl, {
             method: "POST",
