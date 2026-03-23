@@ -404,12 +404,68 @@ export function useAgentActions(
                                 return false;
                             }
 
-                            // Action-type guard: catches scroll/take_notes loops with varying descriptions
+                            // Action-type guard: catches loops — now returns re_observe instead of stop
                             const actionTypeCheck = checkActionTypeRepetition(prevSteps, action);
                             if (actionTypeCheck.action === "stop") {
                                 applySafetyStop(actionTypeCheck.reason, actionTypeCheck.statusMessage);
                                 return false;
                             }
+                            if (actionTypeCheck.action === "re_observe") {
+                                // ═══ CRITICAL RECOVERY: Re-Observe + Blacklist ═══
+                                // Gemini Extension 1: Action Blacklisting
+                                // Gemini Extension 2: Console Log Sneak Peek
+                                // Gemini Extension 3: Escape Hatch (available as press_key tool — NOT auto-fired)
+                                // NOTE: We intentionally do NOT auto-press Escape here because enterprise apps
+                                // (HaloITSM, Salesforce) show "Leave page?" confirmation dialogs on Escape
+                                // which would send the agent back to step 1. Let the LLM decide.
+                                debug.log(`🔄 [ReObserve] Triggered by ${actionTypeCheck.blacklistedAction} loop`);
+                                setAgentState(prev => ({ ...prev, currentAction: "🔄 Re-observing page..." }));
+
+                                // Fresh screenshot + DOM (the "new photo")
+                                const freshScreenshot = await captureScreenshot();
+                                const freshDom = await captureDomSnapshot();
+
+                                // Capture console errors (Extension 2: Console Log Sneak Peek)
+                                let consoleErrors = '';
+                                try {
+                                    const wv = webviewRef.current as any;
+                                    // Inject error logger if not present
+                                    await wv?.executeJavaScript?.(`
+                                        if (!window.__biamos_errors) {
+                                            window.__biamos_errors = [];
+                                            var origErr = console.error.bind(console);
+                                            console.error = function() {
+                                                window.__biamos_errors.push(Array.from(arguments).join(' '));
+                                                if (window.__biamos_errors.length > 10) window.__biamos_errors.shift();
+                                                origErr.apply(console, arguments);
+                                            };
+                                        }
+                                    `, true);
+                                    const errs = await wv?.executeJavaScript?.('JSON.stringify(window.__biamos_errors.slice(-3))', true);
+                                    const errList = JSON.parse(errs || '[]') as string[];
+                                    if (errList.length > 0) {
+                                        consoleErrors = `\n[SYSTEM LOGS] Console errors detected:\n${errList.map((e: string) => `• ${e}`).join('\n')}`;
+                                    }
+                                } catch { /* */ }
+
+                                // Build CRITICAL RECOVERY step with blacklist + console errors
+                                const blacklistedDesc = args.description || `id:${args.id}`;
+                                const recoveryStep: AgentStep = {
+                                    action: 'system_recovery',
+                                    description: `[CRITICAL RECOVERY] You just failed ${actionTypeCheck.blacklistedAction.replace('_', ' ')} (${blacklistedDesc}) multiple times. Fresh page state captured. DO NOT attempt '${actionTypeCheck.blacklistedAction}' on element id:${args.id ?? 'same'} again.\n\nRequired: Choose a DIFFERENT strategy:\n• press_key("Escape") to close modals/popups\n• click somewhere else to drop focus\n• scroll to find the element\n• try vision_click at different coordinates\n• use navigate() if wrong page${consoleErrors}`,
+                                    result: `Fresh observation taken. Blacklisted: ${actionTypeCheck.blacklistedAction}(${blacklistedDesc}). New screenshot and DOM attached to next step.`,
+                                    screenshot: freshScreenshot,
+                                };
+
+                                stepsRef.current = [...stepsRef.current, recoveryStep];
+                                setAgentState(prev => ({
+                                    ...prev,
+                                    steps: stepsRef.current,
+                                    currentAction: actionTypeCheck.statusMessage,
+                                }));
+                                return true; // Continue loop with fresh context
+                            }
+
 
                             const recoveryCount = prevSteps.filter((s: AgentStep) => s.action === 'system_recovery').length;
                             const healCheck = checkSelfHealing(prevSteps, action, args.description || '', recoveryCount);

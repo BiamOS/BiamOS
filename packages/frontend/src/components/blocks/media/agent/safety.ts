@@ -13,7 +13,8 @@ import { MAX_STEPS, MAX_REPEAT } from "./constants";
 export type SafetyResult =
     | { action: "continue" }
     | { action: "stop"; reason: string; statusMessage: string }
-    | { action: "recover"; recoveryStep: AgentStep; statusMessage: string };
+    | { action: "recover"; recoveryStep: AgentStep; statusMessage: string }
+    | { action: "re_observe"; blacklistedAction: string; blacklistedId?: number | string; statusMessage: string };
 
 // ─── Max Step Limit ─────────────────────────────────────────
 // Hard stop at MAX_STEPS. No task should ever need more.
@@ -49,14 +50,15 @@ export function checkRepetition(
 
     if (allRepeat) {
         debug.log(
-            `🛑 [Safety] Repetition guard: "${currentAction}" with same description ${MAX_REPEAT}x — forcing done`,
+            `🔄 [Safety] Repetition guard: "${currentAction}" with same description ${MAX_REPEAT}x — triggering re_observe`,
         );
         return {
-            action: "stop",
-            reason: `Stopped: repeated "${currentDescription || currentAction}" ${MAX_REPEAT} times without progress. The target element may not be responding.`,
-            statusMessage: `⚠️ Stopped — repeated action ${MAX_REPEAT}x`,
+            action: "re_observe",
+            blacklistedAction: currentAction,
+            statusMessage: `🔄 Re-observing: "${currentDescription?.slice(0, 40)}" repeated ${MAX_REPEAT}x`,
         };
     }
+
 
     return { action: "continue" };
 }
@@ -169,13 +171,15 @@ export function checkActionTypeRepetition(
     // Count occurrences of this action TYPE since last page change
     const count = sinceLastNav.filter((s: AgentStep) => s.action === currentAction).length;
 
-    // Limits per page: scroll 3x, take_notes 2x (should only need 1 per page), others 4x
+    // Limits per page: scroll 3x, take_notes 2x, type_text 6x (forms need: focus+type+verify+submit), click 6x (SPAs), others 4x
     const limit = currentAction === 'scroll' ? 3
                 : currentAction === 'take_notes' ? 2
+                : currentAction === 'type_text' ? 6
+                : currentAction === 'click' ? 6
                 : 4;
 
     if (count >= limit) {
-        debug.log(`🛑 [ActionType] ${currentAction} called ${count}x since last navigate — forcing progression`);
+        debug.log(`🛑 [ActionType] ${currentAction} called ${count}x since last navigate — triggering re_observe`);
 
         // For scroll: recover (not stop) — give agent a chance to use go_back/navigate
         if (currentAction === 'scroll') {
@@ -190,10 +194,12 @@ export function checkActionTypeRepetition(
             };
         }
 
+        // For click/type_text and others: re_observe (fresh screenshot + DOM + console errors)
+        // This is the "Anti-Wahnsinn" rule — take a new photo, blacklist the failed action
         return {
-            action: "stop",
-            reason: `Stopped: "${currentAction}" called ${count} times on this page without progress. Move to the next page (navigate) or finish (genui/done).`,
-            statusMessage: `⚠️ ${currentAction} loop detected (${count}x on this page) — forced progression`,
+            action: "re_observe",
+            blacklistedAction: currentAction,
+            statusMessage: `🔄 Re-observing page after ${currentAction} loop (${count}x)`,
         };
     }
 

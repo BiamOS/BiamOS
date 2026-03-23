@@ -157,72 +157,105 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                 }
                 const tasks = await classifyResp.json(); // Returns an ARRAY of tasks!
 
-                // 2. Iteriere über alle generierten Tasks (Parallel Dispatch mit Staggering!)
-                let delayMultiplier = 0; // Hält fest, wie viele NEUE Karten wir spawnen
+                // 2. DAG-aware Dispatch: resolve unique IDs, handle hidden tasks + depends_on
+                // TS generates unique IDs — never the LLM (collision safety for queued queries)
+                const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                const taskResults: Record<string, string> = {}; // taskId → knowledge output
+
+                let delayMultiplier = 0;
 
                 for (let i = 0; i < tasks.length; i++) {
                     const t = tasks[i];
-                    let targetCardId = snapshotCardId || "";
 
-                    // 3. Discover OR Create Card
-                    // For RESEARCH: use existing focused card if one is selected,
-                    // otherwise create a new card on the empty canvas.
+                    // Resolve unique task ID (TS-generated, stable within this run)
+                    const taskId = `${runId}-t${i}`;
+                    const dependsOnId = t.depends_on != null ? `${runId}-t${tasks.findIndex((x: any) => x.id === t.depends_on || x.id === `task_A`)}` : null;
+
+                    // ── Hidden task: Matrix Download (no card, no webview) ──
+                    if (t.hidden === true) {
+                        const platform = t.task.match(/n8n|figma|webflow|salesforce|haloitsm|hubspot|notion|airtable/i)?.[0] || '';
+                        console.log(`🧠 [MatrixDownload] Starting hidden research: "${t.task}"`);
+
+                        (async () => {
+                            try {
+                                const knowledgeResp = await fetch("/api/agents/knowledge", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ task: t.task, platform }),
+                                });
+                                const knowledgeData = await knowledgeResp.json();
+                                taskResults[taskId] = knowledgeData.knowledge || "";
+                                console.log(`🧠 [MatrixDownload] Done (${taskResults[taskId].length} chars)`);
+                            } catch (e) {
+                                taskResults[taskId] = "";
+                                console.error(`🧠 [MatrixDownload] Failed:`, e);
+                            }
+                        })();
+
+                        continue; // No card to spawn, no event to fire
+                    }
+
+                    // ── Normal task: resolve depends_on (wait for upstream knowledge) ──
+                    let targetCardId = snapshotCardId || "";
                     const needsNewCard = !targetCardId || (t.mode === "RESEARCH" && !snapshotCardId);
                     let needsDelay = false;
 
                     if (needsNewCard) {
                         targetCardId = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                         needsDelay = true;
-                        
-                        // Staggered Card Creation!
+
                         const spawnDelay = delayMultiplier * 800;
-                        
                         setTimeout(() => {
                             dispatchBiamosEvent({
                                 type: "BIAMOS_CREATE_EMPTY_CARD",
                                 cardId: targetCardId,
-                                title: t.task.slice(0, 30) + "..."
+                                title: t.task.slice(0, 30) + "...",
                             });
                         }, spawnDelay);
-                        
-                        delayMultiplier++; // Nächste Karte muss warten
+                        delayMultiplier++;
                     }
 
-                    // 4. Register Active Task in Global Store (Sofort, damit UI im Spotlight reagiert)
                     useTaskStore.getState().upsertTask({
                         id: targetCardId!,
                         cardId: targetCardId!,
                         label: t.task,
                         type: t.mode === "RESEARCH" ? "research" : "agent",
                         status: "running",
-                        startTime: Date.now()
+                        startTime: Date.now(),
                     });
 
-                    // Helper Funktion für den Dispatch
-                    const fireAction = () => {
+                    const fireAction = async () => {
                         const mode = t.mode || "ACTION";
                         const method = t.method || "GET";
                         const allowedTools = t.allowed_tools || [];
                         const forbidden = t.forbidden || [];
 
-                        // 🔍 DIAGNOSTIC LOG — remove after debugging
-                        console.log(`🔍 [Omnibar] FIRE mode=${mode} targetCard="${targetCardId}" snapshotCard="${snapshotCardId}" task="${t.task}"`);
+                        // If this task depends on an upstream hidden task, wait for its knowledge
+                        let knowledgeContext = "";
+                        if (dependsOnId) {
+                            console.log(`🧠 [MatrixDownload] Waiting for upstream knowledge (${dependsOnId})...`);
+                            for (let wait = 0; wait < 30; wait++) {
+                                if (taskResults[dependsOnId] !== undefined) {
+                                    knowledgeContext = taskResults[dependsOnId];
+                                    break;
+                                }
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        }
+
+                        // Build task string: append knowledge at the END (avoids Lost-in-Middle)
+                        const taskWithContext = knowledgeContext
+                            ? `${t.task}\n\n---\nPLATFORM_KNOWLEDGE (use this to guide your actions):\n${knowledgeContext}`
+                            : t.task;
+
+                        console.log(`🔍 [Omnibar] FIRE mode=${mode} targetCard="${targetCardId}" task="${t.task.slice(0, 40)}${knowledgeContext ? ' [+knowledge]' : ''}"`);
 
                         switch (mode) {
                             case "RESEARCH":
-                                dispatchBiamosEvent({
-                                    type: "BIAMOS_RESEARCH",
-                                    query: t.task,
-                                    targetCard: targetCardId!,
-                                });
+                                dispatchBiamosEvent({ type: "BIAMOS_RESEARCH", query: taskWithContext, targetCard: targetCardId! });
                                 break;
                             case "CONTEXT_QUESTION":
-                                console.log(`🔍 [Omnibar] Dispatching BIAMOS_CONTEXT_CHAT to card "${targetCardId!}"`);
-                                dispatchBiamosEvent({
-                                    type: "BIAMOS_CONTEXT_CHAT",
-                                    targetCard: targetCardId!,
-                                    query: t.task,
-                                });
+                                dispatchBiamosEvent({ type: "BIAMOS_CONTEXT_CHAT", targetCard: targetCardId!, query: taskWithContext });
                                 break;
                             case "ACTION":
                             case "ACTION_WITH_CONTEXT":
@@ -230,7 +263,7 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                                 dispatchBiamosEvent({
                                     type: "BIAMOS_AGENT_ACTION",
                                     targetCard: targetCardId!,
-                                    task: t.task,
+                                    task: taskWithContext,
                                     method,
                                     tools: { allowed: allowedTools, forbidden },
                                 });
@@ -238,15 +271,14 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                         }
                     };
 
-                    // Die Action muss auf den Spawn warten + 400ms Puffer für den IframeBlock (Boot Zeit!)
-                    // Wenn es KEINE neue Karte ist (needsDelay=false), feuern wir sofort
                     if (needsDelay) {
-                        const actionDelay = ((delayMultiplier - 1) * 800) + 400; 
+                        const actionDelay = ((delayMultiplier - 1) * 800) + 400;
                         setTimeout(fireAction, actionDelay);
                     } else {
                         fireAction();
                     }
                 }
+
             } catch (err) {
                 console.error("Router Dispatch failed:", err);
                 // Fallback, falls der Router offline ist oder Fehler wirft

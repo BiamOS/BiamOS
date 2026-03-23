@@ -800,4 +800,162 @@ agentRoutes.post("/memory/feedback", async (c) => {
     }
 });
 
+
+// ─── POST /agents/knowledge — Matrix Download (Headless Research) ──────────
+// Runs a silent, headless research pass in the backend RAM.
+// Returns a compressed knowledge string for context injection into the
+// ACTION_WITH_CONTEXT agent. No webview involved, no dashboard rendered.
+
+agentRoutes.post("/knowledge", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const { task, platform } = body || {};
+    if (!task) return c.json({ error: "task is required" }, 400);
+
+    const cacheKey = `${platform || 'generic'}::${task.slice(0, 80)}`;
+    log.info(`  🧠 [Matrix Download] Researching: "${task}"`);
+
+    try {
+        const { getChatUrl, getHeaders } = await import("../services/llm-provider.js");
+        const { MODEL_FAST } = await import("../config/models.js");
+
+        const systemPrompt = `You are a knowledge extraction agent. Your ONLY job is to research the given task and return concise, actionable knowledge.
+
+RULES:
+- Use search_web to find documentation, tutorials, or guides
+- Use take_notes to record key facts (parameters, steps, UI elements, API fields)
+- Use done() with a markdown summary when you have enough to guide an AI agent
+- Max 5 steps total — be fast and precise
+- Output: dense markdown, max 600 tokens, NO fluff
+- Focus on: exact UI steps, field names, parameter names, required inputs
+
+TASK: ${task}`;
+
+        // Call LLM with headless research tools (no genui, no browser tools)
+        const chatUrl = await getChatUrl();
+        const headers = await getHeaders();
+
+        const tools = [
+            {
+                type: "function",
+                function: {
+                    name: "search_web",
+                    description: "Search the web for documentation or tutorials",
+                    parameters: {
+                        type: "object",
+                        properties: { query: { type: "string" } },
+                        required: ["query"],
+                    },
+                },
+            },
+            {
+                type: "function",
+                function: {
+                    name: "take_notes",
+                    description: "Record key facts extracted from research",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            context: { type: "string" },
+                            items: { type: "array", items: { type: "string" } },
+                        },
+                        required: ["context", "items"],
+                    },
+                },
+            },
+            {
+                type: "function",
+                function: {
+                    name: "done",
+                    description: "Return the final knowledge summary",
+                    parameters: {
+                        type: "object",
+                        properties: { knowledge: { type: "string", description: "Dense markdown knowledge summary" } },
+                        required: ["knowledge"],
+                    },
+                },
+            },
+        ];
+
+        const messages: any[] = [{ role: "system", content: systemPrompt }];
+        let knowledge = "";
+        const MAX_STEPS = 5;
+
+        for (let step = 0; step < MAX_STEPS; step++) {
+            const resp = await fetch(chatUrl, {
+                method: "POST",
+                headers: { ...headers, "Content-Type": "application/json" },
+                body: JSON.stringify({ model: MODEL_FAST, messages, tools, tool_choice: "auto" }),
+            });
+
+            if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
+            const data = await resp.json();
+            const msg = data.choices?.[0]?.message;
+            if (!msg) break;
+
+            messages.push(msg);
+
+            const toolCalls = msg.tool_calls || [];
+            if (toolCalls.length === 0) {
+                // Text response fallback
+                knowledge = msg.content || "";
+                break;
+            }
+
+            let done = false;
+            const toolResults: any[] = [];
+
+            for (const tc of toolCalls) {
+                const fnName = tc.function?.name;
+                let args: any = {};
+                try { args = JSON.parse(tc.function?.arguments || "{}"); } catch { /* */ }
+
+                let result = "";
+
+                if (fnName === "search_web") {
+                    log.info(`  🧠 [Matrix] search_web: "${args.query}"`);
+                    // Use the existing backend search endpoint
+                    try {
+                        const searchResp = await fetch("http://localhost:3001/api/agents/search", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ query: args.query }),
+                        });
+                        const searchData = await searchResp.json();
+                        result = searchData.results || "No results found";
+                    } catch {
+                        result = "Search unavailable";
+                    }
+                } else if (fnName === "take_notes") {
+                    result = `Notes recorded: ${args.context} — ${(args.items || []).join(", ")}`;
+                } else if (fnName === "done") {
+                    knowledge = args.knowledge || "";
+                    result = "Knowledge extracted.";
+                    done = true;
+                }
+
+                toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: result,
+                });
+            }
+
+            messages.push(...toolResults);
+            if (done) break;
+        }
+
+        if (!knowledge) {
+            knowledge = "Could not extract specific knowledge. Proceed with general AI judgment.";
+        }
+
+        log.info(`  🧠 [Matrix Download] Complete (${knowledge.length} chars)`);
+        return c.json({ knowledge, cacheKey });
+
+    } catch (err) {
+        log.error(`  🧠 [Matrix Download] Error: ${err}`);
+        return c.json({ error: String(err) }, 500);
+    }
+});
+
 export { agentRoutes };
+

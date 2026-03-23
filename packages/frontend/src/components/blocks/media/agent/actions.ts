@@ -309,6 +309,43 @@ export async function executeAction(
 
                     await new Promise(r => setTimeout(r, 300));
 
+                    // ── TinyMCE Early-Return (HaloITSM, Salesforce, enterprise tools) ──
+                    // TinyMCE runs in its own sandboxed iframe — execCommand and char-by-char
+                    // both fail silently. Direct API injection is the only reliable method.
+                    try {
+                        const tinyResult = await wv.executeJavaScript(`(function() {
+                            // Try TinyMCE global API (most enterprise tools)
+                            if (window.tinymce && window.tinymce.activeEditor) {
+                                var ed = window.tinymce.activeEditor;
+                                if (${JSON.stringify(clearFirst || false)}) {
+                                    ed.setContent(${JSON.stringify(typingText)});
+                                } else {
+                                    ed.insertContent(${JSON.stringify(typingText)});
+                                }
+                                ed.save && ed.save();
+                                return 'tinymce-api';
+                            }
+                            // Try Quill editor
+                            var quill = document.querySelector('.ql-editor');
+                            if (quill) {
+                                quill.focus();
+                                document.execCommand('selectAll', false, null);
+                                document.execCommand('insertText', false, ${JSON.stringify(typingText)});
+                                return 'quill-api';
+                            }
+                            // Try CodeMirror
+                            var cm = document.querySelector('.CodeMirror')?.CodeMirror;
+                            if (cm) { cm.setValue(${JSON.stringify(typingText)}); return 'codemirror-api'; }
+                            return 'not-found';
+                        })()`, true);
+                        if (tinyResult === 'tinymce-api' || tinyResult === 'quill-api' || tinyResult === 'codemirror-api') {
+                            debug.log(`📋 [type_text] Rich editor injection via ${tinyResult}`);
+                            await new Promise(r => setTimeout(r, 400));
+                            const preview = typingText.length > 40 ? typingText.substring(0, 30) + '…' : typingText;
+                            return `✓ COMPLETE — typed "${preview}" via ${tinyResult} (rich text editor)`;
+                        }
+                    } catch { /* fall through to standard path */ }
+
                     // ── Duplicate detection: skip if text is already in the field ──
                     // Prevents the LLM from re-typing content across multiple steps
                     if (!clearFirst) {
@@ -409,7 +446,23 @@ export async function executeAction(
                     if (!submitAfter) {
                         try {
                             const snippet = text.substring(0, 20).replace(/['"\\]/g, '');
-                            const vr = await wv.executeJavaScript(`(function(){var el=document.activeElement;if(!el)return'';if(el.tagName==='IFRAME'&&el.contentDocument){el=el.contentDocument.activeElement||el;}if(el.tagName==='INPUT'||el.tagName==='TEXTAREA')return el.value||'';if(el.isContentEditable)return'__CE_SKIP__';return el.innerText||el.textContent||'';})()`, true);
+                            const vr = await wv.executeJavaScript(`(function(){
+                                var el=document.activeElement;
+                                if(!el)return'__CE_SKIP__';
+                                // Rich text editors (TinyMCE, CKEditor, HaloITSM) use contenteditable
+                                // iframes or shadow DOM — always skip verification for these
+                                if(el.isContentEditable)return'__CE_SKIP__';
+                                if(el.tagName==='IFRAME'){
+                                    try{var inner=el.contentDocument&&el.contentDocument.activeElement;
+                                    if(inner&&inner.isContentEditable)return'__CE_SKIP__';}catch(e){}
+                                    return'__CE_SKIP__';
+                                }
+                                if(el.tagName==='INPUT'||el.tagName==='TEXTAREA')return el.value||'';
+                                // Fallback: check any contenteditable in focus path
+                                var node=el;
+                                while(node&&node!==document.body){if(node.isContentEditable)return'__CE_SKIP__';node=node.parentElement;}
+                                return el.innerText||el.textContent||'';
+                            })()`, true);
                             if (vr !== '__CE_SKIP__' && snippet.length > 3 && vr && !vr.includes(snippet)) {
                                 debug.log(`⚠️ [Verify] Expected "${snippet}" got "${(vr as string).substring(0,60)}"${fieldInfo}`);
                                 return `⚠️ Text did not appear${fieldInfo}. Expected "${snippet}..."`;
@@ -612,9 +665,29 @@ export async function executeAction(
                     return `⏳ Waited ${ms}ms — ${args.reason || 'page settling'}`;
                 }
 
+                // ─── press_key (Escape Hatch) ───────────────────
+                // Used by recovery loop to dismiss modals/popups.
+                case "press_key": {
+                    const key = args.key || 'Escape';
+                    const keyMap: Record<string, string> = {
+                        escape: 'Escape', Escape: 'Escape',
+                        enter: 'Return', Enter: 'Return',
+                        tab: 'Tab', Tab: 'Tab',
+                        arrowup: 'Up', arrowdown: 'Down',
+                        arrowleft: 'Left', arrowright: 'Right',
+                    };
+                    const keyCode = keyMap[key] || key;
+                    wv.sendInputEvent({ type: 'keyDown', keyCode });
+                    await new Promise(r => setTimeout(r, 50));
+                    wv.sendInputEvent({ type: 'keyUp', keyCode });
+                    await new Promise(r => setTimeout(r, 300));
+                    return `⌨️ Pressed key: ${keyCode} — ${args.reason || 'dismiss overlay'}`;
+                }
+
                 default:
                     return `Unknown action: ${action}`;
             }
+
         } catch (err) {
             const errStr = String(err);
             if (attempt < 3) {

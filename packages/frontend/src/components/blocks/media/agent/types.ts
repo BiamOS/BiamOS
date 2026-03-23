@@ -8,7 +8,9 @@ export interface AgentStep {
     value?: string;
     description: string;
     result?: string;
+    screenshot?: string; // Optional: fresh screenshot attached to recovery steps
 }
+
 
 export type AgentStatus = "idle" | "running" | "paused" | "done" | "error";
 

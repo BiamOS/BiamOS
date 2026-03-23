@@ -77,7 +77,14 @@ CRITICAL SPLITTING RULES:
    ❌ BAD: ["navigate to x.com", "find mr beast's post"]
    ✅ GOOD: ["navigate to x.com", "on x.com: search for mr beast's latest post"]
 
+RAG PATTERN (Matrix Download): When user asks to BUILD, CREATE, or CONFIGURE something on a specific complex platform, output TWO tasks:
+Task 0: { "task": "Research how to [do X] on [platform]: find parameters, node names, field names, and exact steps", "mode": "RESEARCH", "method": "GET", "hidden": true, "id": "task_A" }
+Task 1: { "task": "[original user task]", "mode": "ACTION_WITH_CONTEXT", "method": "POST", "depends_on": "task_A" }
+Trigger platforms: n8n, Figma, Webflow, Salesforce, HaloITSM, HubSpot, Notion, Airtable, Zapier, Make.com
+Do NOT trigger for: Gmail, YouTube, Twitter/X, Wikipedia — these are well-known and need no research.
+
 Respond ONLY with the JSON. No markdown, no extra text.`;
+
 
 // ─── POST /api/intent/route ─────────────────────────────────
 
