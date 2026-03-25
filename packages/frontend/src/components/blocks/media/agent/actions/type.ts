@@ -173,7 +173,7 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     }
 
                     const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                    return { logMessage: `✅ Typed "${preview}"${submitAfter ? ' + ⏎' : ''} into [${args.id}] "${entry.name}"` };
+                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" — TEXT IS COMPLETE. Do NOT type again. Call done() if task is finished.` };
                 }
 
                 // ── CONTENTEDITABLE path ── 3-tier universal approach ─
@@ -233,7 +233,7 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     }
 
                     const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                    return { logMessage: `✅ Typed "${preview}"${submitAfter ? ' + ⏎' : ''} into [${args.id}] "${entry.name}" (contenteditable, CDP native pipeline)` };
+                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (contenteditable) — ALL TEXT INSERTED. The preview is truncated but the FULL ${text.length} characters were typed. Do NOT type again. Call done() now.` };
                 }
 
                 // Tier 3: execCommand for unknown elements
@@ -246,7 +246,7 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     returnByValue: false, silent: true,
                 });
                 const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                return { logMessage: `✅ Typed "${preview}" into [${args.id}] "${entry.name}" (execCommand fallback)` };
+                return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (execCommand fallback) — TEXT IS COMPLETE. Call done() now.` };
             }
         } catch (e) {
             debug.log(`⚠️ [TYPE] Strategy A failed: ${e} → Strategy B`);

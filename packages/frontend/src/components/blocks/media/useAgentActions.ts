@@ -81,6 +81,31 @@ export function useAgentActions(
         } catch { /* not ready yet */ }
     }, [webviewRef]);
 
+    // ── Wire Cancel button to engine abort ─────────────────────
+    // The Cancel button in CommandCenter fires 'biamos:agent-cancel'.
+    // This effect listens for it and calls stopAgent() to set abortRef.current=true
+    // and abort the in-flight fetch — stopping the engine at the next iteration.
+    useEffect(() => {
+        const handleCancel = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            // Only cancel if this hook's cardId matches (or no cardId = always cancel)
+            if (!detail?.cardId || detail.cardId === cardId) {
+                abortRef.current = true;
+                abortControllerRef.current?.abort();
+                setAgentState(prev => ({
+                    ...prev,
+                    status: 'idle',
+                    currentAction: '',
+                    pauseQuestion: null,
+                    cursorPos: null,
+                }));
+                console.log(`🛑 [Agent] Cancelled via UI button (cardId=${cardId})`);
+            }
+        };
+        window.addEventListener('biamos:agent-cancel', handleCancel);
+        return () => window.removeEventListener('biamos:agent-cancel', handleCancel);
+    }, [cardId]);
+
     // ── Build EngineContext — refs + functional setState only ──
     const buildEngineContext = useCallback((): EngineContext => ({
         wv: webviewRef.current,

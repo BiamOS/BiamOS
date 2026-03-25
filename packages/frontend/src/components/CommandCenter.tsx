@@ -432,6 +432,35 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
     // Chat history ref — persists across renders, doesn't trigger re-renders
     const commandCenterChatHistory = React.useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
+    // Agent task label ref — remember what task was last dispatched for history injection
+    const lastDispatchedTaskRef = React.useRef<string>('');
+    const prevAgentStatusRef = React.useRef<string>('idle');
+
+    // ── Inject agent completion into chat history ────────────────
+    // When an agent task finishes, write a synthetic assistant message into the
+    // chat history so Lura remembers what she just did in subsequent CHAT turns.
+    useEffect(() => {
+        const prev = prevAgentStatusRef.current;
+        const current = agentStatus;
+        prevAgentStatusRef.current = current;
+
+        if (prev === 'running' && current === 'done') {
+            // Find the done step summary (last step with action='done')
+            const doneStep = [...agentSteps].reverse().find((s: any) => s.action === 'done');
+            const summary = doneStep?.description || currentAction?.replace(/^✅\s*/, '') || '';
+            const taskLabel = lastDispatchedTaskRef.current;
+
+            if (taskLabel || summary) {
+                const memoryMsg = `[AGENT COMPLETION] I (Lura) just finished the following task:\nTask: "${taskLabel}"\nResult: ${summary}`;
+                commandCenterChatHistory.current.push({ role: 'assistant' as const, content: memoryMsg });
+                if (commandCenterChatHistory.current.length > 20) {
+                    commandCenterChatHistory.current.splice(0, commandCenterChatHistory.current.length - 20);
+                }
+            }
+        }
+    }, [agentStatus, agentSteps, currentAction]);
+
+
     // ─── Task dispatch helper (used by both normal flow and slash commands) ────────────────────────
     const dispatchTasks = useCallback(async (
         tasks: any[],
@@ -521,6 +550,7 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                     } else if (mode === 'CONTEXT_QUESTION') {
                         dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
                     } else {
+                        lastDispatchedTaskRef.current = t.task; // record for chat history injection
                         dispatchBiamosEvent({ 
                             type: 'BIAMOS_AGENT_ACTION', 
                             task: t.task, 
@@ -543,6 +573,7 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 } else if (mode === 'CONTEXT_QUESTION') {
                     dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
                 } else {
+                    lastDispatchedTaskRef.current = t.task; // record for chat history injection
                     dispatchBiamosEvent({ 
                         type: 'BIAMOS_AGENT_ACTION', 
                         task: t.task, 
@@ -622,7 +653,7 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
 
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const timeoutId = setTimeout(() => controller.abort(), 45000);
 
             const classifyResp = await fetch('/api/intent/route', {
                 method: 'POST',

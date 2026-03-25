@@ -347,6 +347,29 @@ export async function captureDomSnapshot(
     const lines: string[] = [];
     let idCounter = 1;
 
+    // ── Fetch scroll offset AND device pixel ratio FIRST ─────────
+    // DOMSnapshot gives document-absolute coords; sendInputEvent needs viewport-relative.
+    // On Windows 125%/150% DPI, DOMSnapshot coords are in the webview's logical px space
+    // (scaled by DPR), but sendInputEvent uses layout CSS pixels. Dividing by DPR corrects this.
+    let pageScrollX = 0;
+    let pageScrollY = 0;
+    let contentDpr = 1;
+    try {
+        const raw = await wv.executeJavaScript(`JSON.stringify({
+            x: Math.round(window.scrollX),
+            y: Math.round(window.scrollY),
+            dpr: window.devicePixelRatio || 1
+        })`, true);
+        const parsed = JSON.parse(raw);
+        pageScrollX = parsed.x ?? 0;
+        pageScrollY = parsed.y ?? 0;
+        contentDpr = parsed.dpr ?? 1;
+    } catch { /* use defaults */ }
+
+    if (pageScrollX !== 0 || pageScrollY !== 0 || contentDpr !== 1) {
+        debug.log(`📍 [SoM] Corrections: scrollX=${pageScrollX} scrollY=${pageScrollY} DPR=${contentDpr.toFixed(2)}`);
+    }
+
     // ── Phase 1: V3 Aggressive Button Hunter (cursor:pointer harvest) ──
     // Run in parallel while nodes is populated. Caps at 120 extra elements.
     let pointerExtras: PointerElement[] = [];
@@ -359,9 +382,17 @@ export async function captureDomSnapshot(
         if (node.isInteractive) {
             if (idCounter > MAX_ELEMENTS) continue;
             
+            // Apply scroll + DPR correction:
+            // - DOMSnapshot coords are document-absolute (subtract scroll)
+            // - On Windows 125%/150% DPI, DOMSnapshot coords are in the webview's
+            //   content px space (DPR-scaled). Divide by DPR to get layout CSS pixels
+            //   that match sendInputEvent and GhostCursor coordinate systems.
             const entry: SomEntry = {
                 id: idCounter,
-                x: node.x!, y: node.y!, w: node.w!, h: node.h!,
+                x: Math.round(((node.x ?? 0) - pageScrollX) / contentDpr),
+                y: Math.round(((node.y ?? 0) - pageScrollY) / contentDpr),
+                w: Math.round((node.w ?? 0) / contentDpr),
+                h: Math.round((node.h ?? 0) / contentDpr),
                 role: node.role!, name: node.name!, tag: node.tag,
                 nodeId: node.nodeId, paintOrder: node.paintOrder,
             };
@@ -411,7 +442,9 @@ export async function captureDomSnapshot(
     const minimap = `[PAGE RADAR] ${radarBar}\nSoM elements: ${idCounter - 1} (+${pointerExtras.length} cursor:pointer extras)\n⚠️ IDs are EPHEMERAL — only valid for THIS step. Never reuse an ID from a previous step.\n${'─'.repeat(48)}\n`;
 
     return minimap + lines.join('\n');
+
 }
+
 
 function formatSomLine(e: SomEntry): string {
     const roleOrTag = e.role || e.tag?.toLowerCase() || '?';
@@ -419,18 +452,19 @@ function formatSomLine(e: SomEntry): string {
     return `[${e.id}] ${roleOrTag}${nameStr} (x:${e.x} y:${e.y} w:${e.w} h:${e.h})`;
 }
 
-async function getScrollInfo(wv: any): Promise<{ pct: number; atBottom: boolean; pageH: number; viewH: number }> {
+async function getScrollInfo(wv: any): Promise<{ pct: number; atBottom: boolean; pageH: number; viewH: number; scrollX: number; scrollY: number }> {
     try {
         const raw = await wv.executeJavaScript(`JSON.stringify({
+            scrollX: Math.round(window.scrollX),
             scrollY: Math.round(window.scrollY),
             maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
             pageH: document.documentElement.scrollHeight,
             viewH: window.innerHeight,
         })`, true);
-        const { scrollY, maxScroll, pageH, viewH } = JSON.parse(raw);
+        const { scrollX, scrollY, maxScroll, pageH, viewH } = JSON.parse(raw);
         const pct = maxScroll > 0 ? Math.round((scrollY / maxScroll) * 100) : 100;
-        return { pct, atBottom: scrollY >= maxScroll - 10, pageH, viewH };
-    } catch { return { pct: 0, atBottom: false, pageH: 0, viewH: 0 }; }
+        return { pct, atBottom: scrollY >= maxScroll - 10, pageH, viewH, scrollX: scrollX ?? 0, scrollY: scrollY ?? 0 };
+    } catch { return { pct: 0, atBottom: false, pageH: 0, viewH: 0, scrollX: 0, scrollY: 0 }; }
 }
 
 // ─── captureVisionFrame (Ghost-Compositing) ──────────────────

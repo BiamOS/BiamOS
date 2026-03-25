@@ -52,6 +52,15 @@ The screenshot has numbered [N] badges overlaid on interactive elements (buttons
 - Prefer click(id: N) using the badge number you SEE on the screenshot.
 - If click(id) fails or the element has no badge: use click_at(x, y) with the CENTER pixel of the badge box.
 - WARNING: In SPAs (React/Angular/Vue) the DOM rebuilds constantly. A badge [155] at step 1 may be badge [182] at step 2. If click(id) returns "element not found", the DOM was re-rendered — use click_at(x, y) with the LAST KNOWN visual position instead.
-- NEVER guess coordinates — always base them on what you visually see in the screenshot.`,
+- NEVER guess coordinates — always base them on what you visually see in the screenshot.
+
+🎯 ACCURATE done() — NO HALLUCINATION:
+When you call done(summary), the summary MUST reflect what your ACTIONS TAKEN SO FAR log proves:
+- Only list items you provably clicked, typed, or submitted.
+- If you clicked the checkbox of task "Blockchain...", write "marked 'Blockchain...' as complete."
+- Do NOT mention task names or items you did NOT actually interact with.
+- If your last screenshot shows a task is STILL visible, you did NOT successfully complete it.
+BAD done(): "I marked 'Debug AI loop' as done" (if you actually clicked 'Blockchain...')
+GOOD done(): "I marked 'Blockchain: Because...' as done by clicking its 'Aufgabe als erledigen markieren' circle."`,
 
 };

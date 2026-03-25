@@ -209,6 +209,23 @@ export const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string
 
         React.useEffect(() => {
             const wv = localRef.current;
+            if (!wv) return;
+            // Track CSS layout size for DPR computation in captureVisionFrame.
+            // On Windows 125%/150% DPI, capturePage() returns physical pixels but
+            // CDP coordinates are in CSS pixels. Without this, dpr defaults to 1.
+            const obs = new ResizeObserver((entries) => {
+                for (const e of entries) {
+                    const { width, height } = e.contentRect;
+                    (wv as any).__cssWidth = Math.round(width);
+                    (wv as any).__cssHeight = Math.round(height);
+                }
+            });
+            obs.observe(wv);
+            return () => obs.disconnect();
+        }, []);
+
+        React.useEffect(() => {
+            const wv = localRef.current;
             if (!wv || listenersAttachedRef.current) return;
             listenersAttachedRef.current = true;
 
@@ -345,6 +362,7 @@ export const WebviewWithLogging = React.memo(React.forwardRef<any, { src: string
                 partition="persist:lura"
                 // @ts-ignore
                 allowpopups="true"
+                style={{ width: '100%', height: '100%', display: 'flex', flex: 1 }}
             />
         );
     }

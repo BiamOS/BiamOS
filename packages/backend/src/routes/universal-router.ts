@@ -103,6 +103,39 @@ universalRouter.post("/", async (c) => {
 
     try {
 
+    // ── FAST-PATH #0: Screen-Reading Guard (runs BEFORE muscle memory) ────
+    // "was siehst du?", "was ist auf dem screen?", "beschreib den screen" etc.
+    // MUST route to CONTEXT_QUESTION — never ACTION. 
+    // This runs before muscle memory because muscle memory would incorrectly
+    // return ACTION (with steps) for these passive observation queries.
+    {
+        const qLower = query.toLowerCase().trim();
+        const screenReadingPatterns = [
+            // German
+            /was siehst du/i, /was ist (auf|im) (dem |den |)screen/i, /beschreib (den |den |)screen/i,
+            /was (steht|zeigt|ist) (da|dort|hier|gerade)/i, /fasse (das|den|die|es|zusammen)/i,
+            /was (kannst|siehst|erkennst) du/i, /was passiert (gerade|hier|da)/i,
+            /schau dir (den|die|das|mal)/i, /checke den screen/i,
+            /was (ist|wird|sehe ich) (auf dem|im) (screen|bildschirm|bild)/i,
+            // English
+            /what (do you|can you) see/i, /describe (the |this |)(screen|page|view)/i,
+            /what('s| is) (on|in) the (screen|page|browser)/i,
+            /what (is|are) (visible|showing|displayed)/i, /summarize (the|this|what)/i,
+        ];
+        const hasActionVerb = /\b(klick|click|navigate|geh|open|search|suche|scroll|type|tippe|schreib|erstell|lösch|delete|post|send)\b/i.test(qLower);
+        
+        if (!hasActionVerb && screenReadingPatterns.some(p => p.test(qLower))) {
+            log.info(`  🧭 [UniversalRouter] SCREEN-READ-GUARD: "${query.substring(0, 40)}" → CONTEXT_QUESTION (passive observation, skipping muscle memory)`);
+            return c.json([{
+                task: query,
+                mode: 'CONTEXT_QUESTION' as IntentMode,
+                method: 'GET' as CrudMethod,
+                allowed_tools: CRUD_TOOL_MAP['GET'].allowed,
+                forbidden: CRUD_TOOL_MAP['GET'].forbidden,
+            }]);
+        }
+    }
+
     // ── PRE-FAST-PATH: Muscle Memory (Trajectory Replay) ──────────
     if (hasWebview && currentUrl) {
         const domain = extractDomain(currentUrl);
@@ -141,24 +174,23 @@ universalRouter.post("/", async (c) => {
     }
 
     // ── PRE-FAST-PATH: Pronoun follow-up guard ────────────────
-    // Detects queries like "kannst du es erledigen?", "mach das", "do it for me"
-    // that are AMBIGUOUS FOLLOW-UPS — they have no self-contained action noun.
-    // These MUST stay in CHAT because the agent has zero context about what "it" is.
-    // Without this guard, the agent spawns blindly and makes destructive mistakes.
+    // Detects queries like "mach das" / "do it for me" that are AMBIGUOUS FOLLOW-UPS.
+    // BUT: If the user has an active webview on a known interactive site,
+    // these phrases mean "perform the action we just discussed on that page".
+    // We only route to CHAT if there's truly no context at all.
     if (hasWebview) {
         const qLower = query.toLowerCase().trim();
-        // Matches short queries (≤12 words) that are primarily pronouns/verbs without a concrete target
         const wordCount = qLower.split(/\s+/).length;
         const pronounPatterns = /\b(es|das|dies|it|this|that|ihm|ihr|die sache|die|das ding|den rest|das gleiche)\b/;
         const abstractVerbs = /\b(erledige|erledigen|mach|mache|tup|tu|do it|do that|schick|schicke|send|sende|ausführ|ausführen|proceed|weiter|weitermach|go ahead|fahr fort)\b/i;
-        // Also catches "kannst du X?" / "kannst du es X?" style queries with no concrete object
         const politeRequest = /^(kannst du|könntest du|bitte|please|can you|could you|würdest du|magst du)/i;
 
         if (wordCount <= 12 && pronounPatterns.test(qLower) && (abstractVerbs.test(qLower) || politeRequest.test(qLower))) {
-            // Check if there's NO concrete action noun (URL, app name, specific task noun)
             const hasConcreteTarget = /\b(ticket|note|notiz|email|mail|message|nachricht|linkedin|twitter|facebook|gmail|haloitsm|form|workflow|report|bericht|https?:\/\/)\b/i.test(qLower);
-            if (!hasConcreteTarget) {
-                log.info(`  🧭 [UniversalRouter] PRONOUN-GUARD: "${query.substring(0, 40)}" → CHAT (ambiguous follow-up, no concrete target)`);
+            // If there's an active interactive page, the pronoun refers to the task on THAT page — route as ACTION
+            const hasActivePage = currentUrl && currentUrl.length > 10 && !currentUrl.includes('about:blank');
+            if (!hasConcreteTarget && !hasActivePage) {
+                log.info(`  🧭 [UniversalRouter] PRONOUN-GUARD: "${query.substring(0, 40)}" → CHAT (no webview + ambiguous follow-up)`);
                 return c.json([{
                     task: query,
                     mode: 'CHAT' as IntentMode,
@@ -286,6 +318,44 @@ universalRouter.post("/", async (c) => {
                     }
                 });
             }
+
+            // ── CONSOLIDATION GUARD: Merge same-domain sequential tasks ──────
+            // The LLM sometimes splits a compound sequential task into many sub-tasks.
+            // If we have >1 ACTION tasks and they all target the same domain, they MUST
+            // be a single sequential agent — not parallel agents that race and conflict.
+            // We restore the original user query as the single merged task.
+            const actionTasks = fullyHydratedTasks.filter((t: any) => t.mode === 'ACTION' || t.mode === 'ACTION_WITH_CONTEXT');
+            if (actionTasks.length > 1) {
+                // Detect if all action tasks reference the same domain/platform
+                const taskTexts = actionTasks.map((t: any) => t.task.toLowerCase()).join(' ');
+                
+                // Extract site mentions from all task texts
+                const siteMatches = taskTexts.match(/\b(todoist|gmail|twitter|x\.com|youtube|linkedin|github|notion|slack|trello|asana|jira|shopify|figma|n8n|airtable|google|amazon|instagram|facebook|reddit|discord|whatsapp|telegram|spotify|netflix|shrib|wikipedia|stackoverflow)\b/gi) ?? [];
+                const uniqueSites = new Set(siteMatches.map((s: string) => s.toLowerCase()));
+
+                if (uniqueSites.size <= 1 || actionTasks.length >= 3) {
+                    // Same-domain sequential tasks OR 3+ tasks (almost certainly a sequence)
+                    // Collapse ALL action tasks into ONE using the original user query
+                    const mergedMethod = actionTasks.some((t: any) => ['POST', 'PUT', 'DELETE'].includes(t.method)) ? 'POST' : 'GET';
+                    const mergedTools = CRUD_TOOL_MAP[mergedMethod as CrudMethod];
+                    const nonActionTasks = fullyHydratedTasks.filter((t: any) => t.mode !== 'ACTION' && t.mode !== 'ACTION_WITH_CONTEXT');
+                    
+                    const mergedTask = {
+                        task: query, // Use original full user query — it's already self-contained
+                        mode: 'ACTION' as IntentMode,
+                        method: mergedMethod as CrudMethod,
+                        allowed_tools: mergedTools.allowed,
+                        forbidden: mergedTools.forbidden,
+                    };
+                    
+                    log.info(`  🧭 [CONSOLIDATION] Merged ${actionTasks.length} fragmented ACTION tasks → 1 task (sites: ${[...uniqueSites].join(', ') || 'same'}) for: "${query.substring(0, 50)}"`);
+                    
+                    // Return: any non-action tasks (RESEARCH etc.) + 1 merged action
+                    const finalTasks = [...nonActionTasks, mergedTask];
+                    return c.json(finalTasks);
+                }
+            }
+            // ── END CONSOLIDATION GUARD ──────────────────────────────────────
 
             const langTag = intent.language ? ` [${intent.language}]` : '';
             log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}..."${langTag} → Split into ${fullyHydratedTasks.length} tasks!`);

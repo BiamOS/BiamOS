@@ -273,12 +273,42 @@ export async function lookupWorkflow(
 
 /**
  * Parse a raw DB row into a WorkflowMatch.
+ * Includes quality filtering to reject bad/dangerous replays.
  */
 function parseWorkflowMatch(wf: any, matchType: string): WorkflowMatch | null {
     let steps: WorkflowMatch['steps'] = [];
     try {
         steps = JSON.parse(wf.steps_json);
     } catch {
+        return null;
+    }
+
+    // ── Quality guard: reject replays with clearly broken steps ──
+    // These patterns indicate a workflow was recorded incorrectly (e.g. agent
+    // said "I will now close the browser" as a final step and it got saved).
+    const BAD_STEP_PATTERNS = [
+        /close the browser/i,
+        /i will now close/i,
+        /closing the browser/i,
+        /closing browser/i,
+        /browser closed/i,
+        /session ended/i,
+        /shutting down/i,
+    ];
+    const hasBadStep = steps.some(s => {
+        const text = `${s.description || ''} ${s.action || ''}`;
+        return BAD_STEP_PATTERNS.some(p => p.test(text));
+    });
+    if (hasBadStep) {
+        log.warn(`  🧠 Memory: workflow #${wf.id} REJECTED — contains invalid step (e.g. 'close browser'). Marking as failed.`);
+        // Mark as unverified so it won't be a first-choice match next time
+        db.run(sql`UPDATE agent_workflows SET verified = 0, fail_count = fail_count + 1 WHERE id = ${wf.id}`).catch(() => {});
+        return null;
+    }
+
+    // ── Minimum steps guard: single-step replays are usually noise ──
+    if (steps.length < 2) {
+        log.debug(`  🧠 Memory: workflow #${wf.id} skipped — only ${steps.length} step(s), too short to be reliable`);
         return null;
     }
 
