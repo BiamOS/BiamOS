@@ -22,14 +22,94 @@ import React from 'react';
 
 // ─── Constants ───────────────────────────────────────────────
 
-const INTERACTIVE_TAGS = new Set(['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT']);
+const INTERACTIVE_TAGS = new Set(['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT', 'SUMMARY']);
 
 // AX roles that indicate interactivity (used in AXTree fallback)
 const INTERACTIVE_ROLES = new Set([
     'button', 'link', 'textbox', 'searchbox', 'combobox', 'checkbox',
-    'radio', 'menuitem', 'tab', 'listbox', 'option', 'slider',
-    'spinbutton', 'switch', 'treeitem',
+    'radio', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
+    'tab', 'listbox', 'option', 'slider', 'spinbutton', 'switch',
+    'treeitem', 'columnheader', 'rowheader',
 ]);
+
+// ─── V3: Harvest cursor:pointer Elements (Aggressive Button Hunter) ─
+// CDP DOMSnapshot gives no computed CSS — we run a tiny JS injection
+// in parallel to capture any element with `cursor: pointer` that the
+// DOM phase would miss (React fake-buttons, styled divs, etc.).
+
+export interface PointerElement {
+    x: number; y: number; w: number; h: number;
+    role: string; name: string;
+    iconHint?: string; // Phase 3: Mute Icon Scraper
+}
+
+export async function harvestClickablePointerElements(
+    wv: any,
+): Promise<PointerElement[]> {
+    try {
+        const raw = await wv.executeJavaScript(`
+            (function() {
+                var MAX = 120;
+                var results = [];
+                var all = document.querySelectorAll('*');
+                for (var i = 0; i < all.length && results.length < MAX; i++) {
+                    var el = all[i];
+                    try {
+                        var tag = el.tagName || '';
+                        // Skip tags already captured by DOMSnapshot
+                        if (['BUTTON','A','INPUT','TEXTAREA','SELECT','SUMMARY','SCRIPT','STYLE','SVG','IMG'].includes(tag)) continue;
+                        // Skip invisible elements
+                        var style = window.getComputedStyle(el);
+                        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) < 0.05) continue;
+                        // Must have cursor:pointer
+                        if (style.cursor !== 'pointer') continue;
+                        var r = el.getBoundingClientRect();
+                        if (r.width < 4 || r.height < 4) continue;
+                        // Skip elements already covered by a native button ancestor
+                        var par = el.parentElement;
+                        var hasNativeParent = false;
+                        while (par && par !== document.body) {
+                            var pt = par.tagName;
+                            if (pt === 'BUTTON' || pt === 'A' || (par.getAttribute && par.getAttribute('role') === 'button')) {
+                                hasNativeParent = true; break;
+                            }
+                            par = par.parentElement;
+                        }
+                        if (hasNativeParent) continue;
+                        // Build label
+                        var name = el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent.trim().slice(0, 80);
+                        // Phase 3: Icon Hint extraction
+                        var iconHint = '';
+                        var children = el.querySelectorAll('i, svg, span');
+                        for (var ci = 0; ci < children.length; ci++) {
+                            var cls = children[ci].className || '';
+                            if (typeof cls === 'string') {
+                                var match = cls.match(/(fa-[\w-]+|mdi-[\w-]+|icon-[\w-]+|bi-[\w-]+)/i);
+                                if (match) { iconHint = match[1]; break; }
+                            }
+                            // SVG title fallback
+                            var svgTitle = children[ci].querySelector && children[ci].querySelector('title');
+                            if (svgTitle && svgTitle.textContent.trim()) { iconHint = svgTitle.textContent.trim(); break; }
+                        }
+                        results.push({
+                            x: Math.round(r.left + r.width / 2),
+                            y: Math.round(r.top + r.height / 2),
+                            w: Math.round(r.width),
+                            h: Math.round(r.height),
+                            role: el.getAttribute('role') || 'div',
+                            name: name || '',
+                            iconHint: iconHint,
+                        });
+                    } catch(e) {}
+                }
+                return JSON.stringify(results);
+            })()
+        `, true);
+        return JSON.parse(raw) as PointerElement[];
+    } catch {
+        return [];
+    }
+}
 
 type ParsedDomNode = {
     isInteractive: boolean;
@@ -267,12 +347,18 @@ export async function captureDomSnapshot(
     const lines: string[] = [];
     let idCounter = 1;
 
+    // ── Phase 1: V3 Aggressive Button Hunter (cursor:pointer harvest) ──
+    // Run in parallel while nodes is populated. Caps at 120 extra elements.
+    let pointerExtras: PointerElement[] = [];
+    try {
+        pointerExtras = await harvestClickablePointerElements(wv);
+        debug.log(`🎯 [SoM V3] cursor:pointer harvest: ${pointerExtras.length} extra clickable elements discovered`);
+    } catch { /* non-fatal */ }
+
     for (const node of nodes) {
         if (node.isInteractive) {
-            // Sort occlusion-style rendering for interactive ones if necessary, but here we just process in DFS order
-            if (idCounter > MAX_ELEMENTS) continue; // skip assigning more interactive nodes, but keep reading text
+            if (idCounter > MAX_ELEMENTS) continue;
             
-            // We know it has all SomEntry fields
             const entry: SomEntry = {
                 id: idCounter,
                 x: node.x!, y: node.y!, w: node.w!, h: node.h!,
@@ -292,9 +378,37 @@ export async function captureDomSnapshot(
         }
     }
 
-    // ── Minimap header ───────────────────────────────────────
+    // ── Inject cursor:pointer extras, deduplicating by spatial proximity ──
+    const DEDUP_RADIUS = 20; // px — if a pointer-div is within 20px of an existing SoM element, skip it
+    for (const extra of pointerExtras) {
+        if (idCounter > MAX_ELEMENTS) break;
+        // Check if an existing element in the SoM map is nearby
+        let isDuplicate = false;
+        for (const existing of stepSomRef.current.values()) {
+            if (Math.abs(existing.x - extra.x) < DEDUP_RADIUS && Math.abs(existing.y - extra.y) < DEDUP_RADIUS) {
+                isDuplicate = true;
+                break;
+            }
+        }
+        if (isDuplicate) continue;
+
+        const name = extra.iconHint ? `${extra.name || ''}[icon:${extra.iconHint}]`.trim() : extra.name;
+        const entry: SomEntry = {
+            id: idCounter,
+            x: extra.x, y: extra.y, w: extra.w, h: extra.h,
+            role: extra.role, name: name.substring(0, 150),
+        };
+        stepSomRef.current.set(idCounter, entry);
+        lines.push(`[${idCounter}] ${entry.role} "${entry.name}" (x:${entry.x} y:${entry.y} w:${entry.w} h:${entry.h}) [cursor:pointer]`);
+        idCounter++;
+    }
+
+    // ── Minimap header (Viewport Radar) ─────────────────────
     const scrollInfo = await getScrollInfo(wv);
-    const minimap = `[PAGE MINIMAP] Scroll: ${scrollInfo.pct}% | AtBottom: ${scrollInfo.atBottom ? 'YES — do NOT scroll more' : 'NO'} | SoM elements: ${lines.length}\n⚠️ IDs are EPHEMERAL — only valid for THIS step. Never reuse an ID from a previous step.\n${'─'.repeat(48)}\n`;
+    const radarBar = scrollInfo.atBottom 
+        ? `[ SCROLL: ${scrollInfo.pct}% | AT BOTTOM — do NOT scroll more ]`
+        : `[ SCROLL: ${scrollInfo.pct}% | PAGE HEIGHT: ${scrollInfo.pageH}px | VIEWPORT: ${scrollInfo.viewH}px | MORE CONTENT BELOW — scroll down to see it ]`;
+    const minimap = `[PAGE RADAR] ${radarBar}\nSoM elements: ${idCounter - 1} (+${pointerExtras.length} cursor:pointer extras)\n⚠️ IDs are EPHEMERAL — only valid for THIS step. Never reuse an ID from a previous step.\n${'─'.repeat(48)}\n`;
 
     return minimap + lines.join('\n');
 }
@@ -305,16 +419,18 @@ function formatSomLine(e: SomEntry): string {
     return `[${e.id}] ${roleOrTag}${nameStr} (x:${e.x} y:${e.y} w:${e.w} h:${e.h})`;
 }
 
-async function getScrollInfo(wv: any): Promise<{ pct: number; atBottom: boolean }> {
+async function getScrollInfo(wv: any): Promise<{ pct: number; atBottom: boolean; pageH: number; viewH: number }> {
     try {
         const raw = await wv.executeJavaScript(`JSON.stringify({
             scrollY: Math.round(window.scrollY),
-            maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+            maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+            pageH: document.documentElement.scrollHeight,
+            viewH: window.innerHeight,
         })`, true);
-        const { scrollY, maxScroll } = JSON.parse(raw);
-        const pct = maxScroll > 0 ? Math.round((scrollY / maxScroll) * 100) : 0;
-        return { pct, atBottom: scrollY >= maxScroll - 10 };
-    } catch { return { pct: 0, atBottom: false }; }
+        const { scrollY, maxScroll, pageH, viewH } = JSON.parse(raw);
+        const pct = maxScroll > 0 ? Math.round((scrollY / maxScroll) * 100) : 100;
+        return { pct, atBottom: scrollY >= maxScroll - 10, pageH, viewH };
+    } catch { return { pct: 0, atBottom: false, pageH: 0, viewH: 0 }; }
 }
 
 // ─── captureVisionFrame (Ghost-Compositing) ──────────────────
@@ -352,37 +468,56 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                 const dpr = img.width / cssWidth;
 
                 if (somMap.size > 0) {
-                    ctx.lineWidth = 2 * dpr;
-                    ctx.font = `bold ${12 * dpr}px monospace`;
+                    ctx.font = `bold ${11 * dpr}px monospace`;
                     ctx.textBaseline = 'top';
 
+                    // ── Phase 2: Anti-Occlusion Badge Positioning ──
+                    // Track occupied badge zones to offset collisions
+                    const occupiedBadges: { bx: number; by: number; bw: number; bh: number }[] = [];
+
                     for (const [id, entry] of somMap.entries()) {
-                        const x = entry.x * dpr;
-                        const y = entry.y * dpr;
+                        const cx = entry.x * dpr;
+                        const cy = entry.y * dpr;
                         const w = entry.w * dpr;
                         const h = entry.h * dpr;
 
                         // Bounding box — magenta for max LLM contrast
-                        ctx.strokeStyle = '#FF00FF';
-                        ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+                        ctx.lineWidth = 2 * dpr;
+                        ctx.strokeStyle = lastFailedId === id ? '#FF3333' : '#FF00FF';
+                        ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
 
-                        // ID badge
-                        const badgeW = 26 * dpr;
-                        const badgeH = 18 * dpr;
+                        // Badge: anchor to top-left of element (anti-occlusion)
+                        const badgeW = (String(id).length * 8 + 6) * dpr;
+                        const badgeH = 16 * dpr;
+                        let badgeX = cx - w / 2;
+                        let badgeY = cy - h / 2 - badgeH;
+
+                        // Collision detection: shift right if overlapping a previous badge
+                        let attempts = 0;
+                        while (attempts < 8) {
+                            const collision = occupiedBadges.some(ob =>
+                                badgeX < ob.bx + ob.bw && badgeX + badgeW > ob.bx &&
+                                badgeY < ob.by + ob.bh && badgeY + badgeH > ob.by
+                            );
+                            if (!collision) break;
+                            badgeX += badgeW + 2 * dpr; // shift right to avoid collision
+                            attempts++;
+                        }
+                        occupiedBadges.push({ bx: badgeX, by: badgeY, bw: badgeW, bh: badgeH });
 
                         if (lastFailedId === id) {
                             ctx.fillStyle = '#FF0000';
-                            ctx.fillRect(x - w / 2, y - h / 2 - badgeH, badgeW, badgeH);
-                            ctx.strokeStyle = '#8B0000'; // Dark red border for contrast
-                            ctx.lineWidth = 4 * dpr;
-                            ctx.strokeRect(x - w / 2, y - h / 2 - badgeH, badgeW, badgeH);
+                            ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+                            ctx.lineWidth = 3 * dpr;
+                            ctx.strokeStyle = '#8B0000';
+                            ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
                             ctx.fillStyle = '#FFFFFF';
                         } else {
-                            ctx.fillStyle = '#FF00FF';
-                            ctx.fillRect(x - w / 2, y - h / 2 - badgeH, badgeW, badgeH);
+                            ctx.fillStyle = '#CC00CC';
+                            ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
                             ctx.fillStyle = '#FFFFFF';
                         }
-                        ctx.fillText(String(id), x - w / 2 + 3 * dpr, y - h / 2 - badgeH + 2 * dpr);
+                        ctx.fillText(String(id), badgeX + 3 * dpr, badgeY + 2 * dpr);
                     }
                 }
 
