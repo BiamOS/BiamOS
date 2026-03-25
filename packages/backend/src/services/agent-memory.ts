@@ -187,10 +187,10 @@ export async function lookupWorkflow(
     if (exactResults.length > 0) {
         const wf = exactResults[0];
         log.debug(`  🧠 Memory: exact hash match found #${wf.id} verified=${wf.verified} success=${wf.success_count}`);
-        if (wf.verified || wf.success_count >= 2) {
+        if (wf.verified) {
             return parseWorkflowMatch(wf, 'exact hash');
         }
-        log.debug(`  🧠 Memory: exact match not qualified (needs verified or success>=2)`);
+        log.debug(`  🧠 Memory: exact match not qualified (needs verified)`);
     }
 
     // ── Step 1b: Exact hash match on ANY domain (cross-domain) ──
@@ -204,7 +204,7 @@ export async function lookupWorkflow(
         if (crossDomainResults.length > 0) {
             const wf = crossDomainResults[0];
             log.debug(`  🧠 Memory: cross-domain hash match #${wf.id} on ${wf.domain} verified=${wf.verified} success=${wf.success_count}`);
-            if (wf.verified || wf.success_count >= 2) {
+            if (wf.verified) {
                 return parseWorkflowMatch(wf, `exact hash (cross-domain: ${wf.domain})`);
             }
         } else {
@@ -233,8 +233,8 @@ export async function lookupWorkflow(
         log.debug(`  🧠 Memory: ${allWorkflows.length} total workflows, searching semantically...`);
 
         for (const wf of allWorkflows) {
-            // Skip unqualified workflows
-            if (!wf.verified && wf.success_count < 2) continue;
+            // Skip unqualified workflows — STRICT ZERO TRUST: must be verified by human
+            if (!wf.verified) continue;
 
             // Get stored embedding
             const embB64 = wf.intent_embedding;

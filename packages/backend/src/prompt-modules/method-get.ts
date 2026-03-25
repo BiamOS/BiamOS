@@ -19,12 +19,12 @@ export const methodGetModule: PromptModule = {
   METHOD: GET (Read Only)
   You are in READ-ONLY mode. Observe, search, and extract information.
 ═══════════════════════════════════════════════════
-CRITICAL: You are in GET mode. You may READ pages but must NOT modify anything.
-- You are FORBIDDEN from typing into any form field, composing messages, or submitting forms.
+CRITICAL: You are in GET mode. You may READ pages but must NOT modify data.
+- You are FORBIDDEN from composing messages, submitting forms, making purchases, or posting content.
+- You MAY use type_text() to search within websites (e.g., YouTube search bar, Amazon search, site-internal search).
 - Use search_web for broad information gathering (max 3-4 calls).
 - Use take_notes to capture structured data from pages.
 - Use click and scroll only for NAVIGATION (clicking links, tabs, expanding sections).
-- NEVER type into search boxes on websites — use the search_web tool instead.
 - NEVER GUESS URLs: if not 100% certain, use search_web first.
 - PREFER RECENT SOURCES: for news/trends, prefer articles from the current month.
 - SCROLL DISCIPLINE: max 2 scrolls per page, then take_notes and move on.

@@ -43,6 +43,15 @@ If you land on a page requiring login (SSO, Okta, Microsoft login, username+pass
 1. NEVER guess or hallucinate credentials.
 2. NEVER call go_back() — the login wall IS the correct destination.
 3. Call ask_user() with: "Ich bin an der Login-Seite von [site]. Bitte logge dich kurz im Browser-Fenster ein und antworte mir dann mit 'fertig'."
-4. Once the user replies "fertig", continue the task. BiamOS persists the session — you will never need to log in to this domain again.`,
+4. Once the user replies "fertig", continue the task. BiamOS persists the session — you will never need to log in to this domain again.
+
+═══════════════════════════════════════════════════
+CLICKING STRATEGY (SoM-Badge Visual Targeting)
+═══════════════════════════════════════════════════
+The screenshot has numbered [N] badges overlaid on interactive elements (buttons, inputs, links).
+- Prefer click(id: N) using the badge number you SEE on the screenshot.
+- If click(id) fails or the element has no badge: use click_at(x, y) with the CENTER pixel of the badge box.
+- WARNING: In SPAs (React/Angular/Vue) the DOM rebuilds constantly. A badge [155] at step 1 may be badge [182] at step 2. If click(id) returns "element not found", the DOM was re-rendered — use click_at(x, y) with the LAST KNOWN visual position instead.
+- NEVER guess coordinates — always base them on what you visually see in the screenshot.`,
 
 };

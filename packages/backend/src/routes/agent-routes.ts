@@ -443,6 +443,10 @@ agentRoutes.post("/act", async (c) => {
                 history: body.history || [],
                 step_number: body.step_number ?? undefined,
                 max_steps: body.max_steps ?? undefined,
+                method: body.method || undefined,
+                allowed_tools: body.allowed_tools || [],
+                forbidden: body.forbidden || [],
+                system_context: body.system_context || null,
             },
             (event) => {
                 s.write(event);
@@ -450,6 +454,7 @@ agentRoutes.post("/act", async (c) => {
         );
     });
 });
+
 
 // ─── POST /agents/search — Web search for AI agent ──────────
 // Fetches web search results so the agent doesn't need to navigate away.
@@ -777,6 +782,39 @@ agentRoutes.post("/memory/save", async (c) => {
     } catch (err) {
         log.error(`  🧠 Memory save error: ${err}`);
         return c.json({ error: "Failed to save workflow" }, 500);
+    }
+});
+
+// ─── GET /agents/memory/match — Find matching workflow ──────
+
+agentRoutes.get("/memory/match", async (c) => {
+    const q = c.req.query("q");
+    const domain = c.req.query("domain");
+
+    if (!q || !domain) {
+        return c.json({ error: "q (task) and domain are required" }, 400);
+    }
+
+    try {
+        const { lookupWorkflow } = await import("../services/agent-memory.js");
+        const match = await lookupWorkflow(domain, q);
+
+        if (match) {
+            return c.json({
+                biam_protocol: "2.0",
+                action: "memory_match",
+                match,
+            });
+        } else {
+            return c.json({
+                biam_protocol: "2.0",
+                action: "memory_nomatch",
+                match: null,
+            });
+        }
+    } catch (err) {
+        log.error(`  🧠 Memory match error: ${err}`);
+        return c.json({ error: "Failed to lookup workflow" }, 500);
     }
 });
 

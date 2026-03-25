@@ -22,9 +22,8 @@ import type { PromptModule, PromptPhase, ToolDefinition, AssemblerContext } from
 // ── Module Imports ──────────────────────────────────────────
 import { baseModule } from "./base.js";
 import { soulModule } from "./soul.js";
-import { phaseResearchModule } from "./phase-research.js";
-import { phasePresentModule } from "./phase-present.js";
-import { phaseActionModule } from "./phase-action.js";
+// Legacy phase modules removed — superseded by method-* CRUD modules
+import { phaseActionModule } from "./phase-action.js"; // kept for backward compat during transition
 import { safetyModule } from "./safety.js";
 import { interactionModule } from "./interaction.js";
 import { formsModule } from "./forms.js";
@@ -189,18 +188,17 @@ export const assembler = new PromptAssembler();
 assembler.registerAll([
     soulModule,       // Priority 5  — always first: identity before everything
     baseModule,
-    // Legacy phase modules (matched when no CRUD method is set)
-    phaseResearchModule,
-    phasePresentModule,
+    // CRUD method modules (matched via detectPhase → CRUD mapping)
+    // Legacy phase-research + phase-present removed (superseded by method-*)
+    // phase-action kept for edge cases where method detection fails
     phaseActionModule,
-    // New CRUD method modules (matched via detectPhase → CRUD mapping)
     methodGetModule,
     methodPostModule,
     methodPutModule,
     methodDeleteModule,
     // Always-on modules
     safetyModule,
-    interactionModule,
+    interactionModule,  // ← includes Golden ID Rule
     formsModule,
     cookiesModule,
     // Platform-specific modules

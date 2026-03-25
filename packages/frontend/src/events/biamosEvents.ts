@@ -17,6 +17,9 @@ export type BiamosEvent =
         task: string;
         method: string;
         tools: { allowed: string[]; forbidden: string[] };
+        system_context?: string | null;
+        muscle_memory?: any[];
+        memory_id?: number;
     }
     | { type: 'BIAMOS_CONTEXT_CHAT'; targetCard: string; query: string }
     | { type: 'BIAMOS_GLOBAL_INTENT'; query: string }

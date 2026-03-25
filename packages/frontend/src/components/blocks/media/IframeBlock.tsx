@@ -29,6 +29,7 @@ import { useResearchStream } from "./hooks/useResearchStream";
 import { useContextChat } from "./hooks/useContextChat";
 import { useWebviewLifecycle, useWebviewZoom } from "./hooks/useWebviewLifecycle";
 import { BrowserToolbar } from "./components/BrowserToolbar";
+import { GhostCursor } from "./agent/components/GhostCursor";
 import { useFocusStore } from "../../../stores/useFocusStore";
 import { useTaskStore } from "../../../stores/useTaskStore";
 
@@ -75,9 +76,9 @@ export const IframeBlock = React.memo(function IframeBlock({
     }, [onRequestResize, width]);
 
     // ─── Hooks ──────────────────────────────────────────────
-    const agent = useAgentActions(webviewRef, isElectron);
-    const { researchState, startResearch, hasResearchDashboard } = useResearchStream();
     const cardCtx = useCardContext();
+    const agent = useAgentActions(webviewRef, isElectron, cardCtx?.cardId);
+    const { researchState, startResearch, hasResearchDashboard } = useResearchStream();
 
     // useLatest ref for handleCardFocus — lets the Global Task Sync effect below
     // call the freshest version without a forward-declaration lint error.
@@ -471,6 +472,7 @@ export const IframeBlock = React.memo(function IframeBlock({
                         <Box sx={{ display: activeTab === 'dashboard' ? 'none' : 'flex', flex: 1, position: 'relative', minHeight: 0, flexDirection: 'column' }}>
                             <WebviewWithLogging ref={webviewRef} src={initialUrl} />
                             {currentUrl === 'about:blank' && BiamOSEngineSkeleton}
+                            <GhostCursor cursorPos={agent.agentState.cursorPos} />
                         </Box>
                     ) : (
                         activeTab !== 'dashboard' && (

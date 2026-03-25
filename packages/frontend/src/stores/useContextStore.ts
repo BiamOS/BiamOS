@@ -70,6 +70,9 @@ interface ContextStoreState {
 
     /** Reset store to idle state (called when card loses focus) */
     resetToIdle: () => void;
+
+    /** Explicitly clear all hints (e.g. user clicks "New Chat") */
+    clearHints: () => void;
 }
 
 // ─── Store ───────────────────────────────────────────────────
@@ -109,10 +112,14 @@ export const useContextStore = create<ContextStoreState>((set) => ({
 
     resetToIdle: () =>
         set({
-            hints: [],
+            // ✅ hints[] intentionally NOT cleared here — conversation history persists
+            // across card focus changes and agent completions. Call clearHints() explicitly
+            // if you need a full reset (e.g. user clicks "New Chat").
             agentStatus: 'idle',
             agentSteps: [],
             pauseQuestion: null,
             currentAction: '',
         }),
+
+    clearHints: () => set({ hints: [] }),
 }));

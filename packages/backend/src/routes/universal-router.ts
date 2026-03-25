@@ -15,11 +15,12 @@ import { safeParseJSON } from "../utils/safe-json.js";
 import { log } from "../utils/logger.js";
 import type { IntentMode, CrudMethod } from "./classify-routes.js";
 import { getIntegrationForQuery } from "../services/integration-context.js";
+import { matchCartridge } from "../data/platform-cartridges.js";
+import { lookupWorkflow, extractDomain } from "../services/agent-memory.js";
 
 export const universalRouter = new Hono();
 
 // ─── CRUD → Tool Mapping ────────────────────────────────────
-
 const CRUD_TOOL_MAP: Record<CrudMethod, { allowed: string[]; forbidden: string[] }> = {
     GET: {
         allowed: ["click", "scroll", "search_web", "take_notes", "read_page", "navigate", "go_back", "done", "ask_user", "genui"],
@@ -85,7 +86,6 @@ Do NOT trigger for: Gmail, YouTube, Twitter/X, Wikipedia — these are well-know
 
 Respond ONLY with the JSON. No markdown, no extra text.`;
 
-
 // ─── POST /api/intent/route ─────────────────────────────────
 
 universalRouter.post("/", async (c) => {
@@ -99,11 +99,30 @@ universalRouter.post("/", async (c) => {
     const hasWebview = !!body.hasWebview;
     const currentUrl = typeof body.currentUrl === 'string' ? body.currentUrl : '';
 
+    log.info(`  🧭 [UniversalRouter] query="${query.substring(0, 40)}" hasWebview=${hasWebview} currentUrl="${currentUrl.substring(0, 60)}"`);
+
     try {
-        const chatUrl = await getChatUrl();
-        const headers = await getHeaders("universal-router");
 
+    // ── PRE-FAST-PATH: Muscle Memory (Trajectory Replay) ──────────
+    if (hasWebview && currentUrl) {
+        const domain = extractDomain(currentUrl);
+        const memoryMatch = await lookupWorkflow(domain, query);
+        if (memoryMatch) {
+            log.info(`  🧭 [UniversalRouter] 🧠 Muscle Memory Hit! Replaying ${memoryMatch.steps.length} steps for "${query}" on ${domain}`);
+            return c.json([{
+                task: query,
+                mode: 'ACTION' as IntentMode,
+                method: 'GET' as CrudMethod, 
+                allowed_tools: CRUD_TOOL_MAP['GET'].allowed,
+                forbidden: CRUD_TOOL_MAP['GET'].forbidden,
+                muscle_memory: memoryMatch.steps,
+                memory_id: memoryMatch.id,
+            }]);
+        }
+    }
 
+    const chatUrl = await getChatUrl();
+    const headers = await getHeaders("universal-router");
 
     // ── PRE-FAST-PATH: Integration matcher (language-agnostic, runs before LLM) ────
     if (!hasWebview) {
@@ -118,6 +137,36 @@ universalRouter.post("/", async (c) => {
                 forbidden: CRUD_TOOL_MAP['GET'].forbidden,
                 _integrationGroup: matched.groupName,
             }]);
+        }
+    }
+
+    // ── PRE-FAST-PATH: Pronoun follow-up guard ────────────────
+    // Detects queries like "kannst du es erledigen?", "mach das", "do it for me"
+    // that are AMBIGUOUS FOLLOW-UPS — they have no self-contained action noun.
+    // These MUST stay in CHAT because the agent has zero context about what "it" is.
+    // Without this guard, the agent spawns blindly and makes destructive mistakes.
+    if (hasWebview) {
+        const qLower = query.toLowerCase().trim();
+        // Matches short queries (≤12 words) that are primarily pronouns/verbs without a concrete target
+        const wordCount = qLower.split(/\s+/).length;
+        const pronounPatterns = /\b(es|das|dies|it|this|that|ihm|ihr|die sache|die|das ding|den rest|das gleiche)\b/;
+        const abstractVerbs = /\b(erledige|erledigen|mach|mache|tup|tu|do it|do that|schick|schicke|send|sende|ausführ|ausführen|proceed|weiter|weitermach|go ahead|fahr fort)\b/i;
+        // Also catches "kannst du X?" / "kannst du es X?" style queries with no concrete object
+        const politeRequest = /^(kannst du|könntest du|bitte|please|can you|could you|würdest du|magst du)/i;
+
+        if (wordCount <= 12 && pronounPatterns.test(qLower) && (abstractVerbs.test(qLower) || politeRequest.test(qLower))) {
+            // Check if there's NO concrete action noun (URL, app name, specific task noun)
+            const hasConcreteTarget = /\b(ticket|note|notiz|email|mail|message|nachricht|linkedin|twitter|facebook|gmail|haloitsm|form|workflow|report|bericht|https?:\/\/)\b/i.test(qLower);
+            if (!hasConcreteTarget) {
+                log.info(`  🧭 [UniversalRouter] PRONOUN-GUARD: "${query.substring(0, 40)}" → CHAT (ambiguous follow-up, no concrete target)`);
+                return c.json([{
+                    task: query,
+                    mode: 'CHAT' as IntentMode,
+                    method: 'GET' as CrudMethod,
+                    allowed_tools: CRUD_TOOL_MAP['GET'].allowed,
+                    forbidden: CRUD_TOOL_MAP['GET'].forbidden,
+                }]);
+            }
         }
     }
 
@@ -188,11 +237,19 @@ universalRouter.post("/", async (c) => {
                     mode = 'CONTEXT_QUESTION';
                 }
 
-                // 🔒 HARD OVERRIDE 2b: Browser interaction beats screen observation.
-                // "suche hier" = action ON the page, not a description OF the page.
+                // 🔒 HARD OVERRIDE 2b: Browser interaction beats screen observation —
+                // BUT only when the query contains HARD action verbs (click/type/fill/send/delete).
+                // Visual-inspection verbs (schau/look/check/zeig/analyze) stay as CONTEXT_QUESTION.
                 if (intent.requires_browser_interaction && mode === 'CONTEXT_QUESTION') {
-                    log.info(`  🧭 [Override] CONTEXT_QUESTION → ACTION (requires_browser_interaction overrides is_about_current_screen)`);
-                    mode = 'ACTION';
+                    const query_lower = query.toLowerCase();
+                    const hardActionVerbs = /\b(click|klick|press|drück|type|tipp|fill|ausfüll|send|schick|submit|absend|delete|lösch|create|erstell|add|hinzufüg|open a new|navigate to|gehe zu|go to)\b/i;
+                    const visualVerbs = /\b(schau|look|check|prüf|zeig|show|analyze|analysier|what do you see|was siehst|lese|read|scan|inspect|inspizier|verify if|ist das|is this)\b/i;
+                    if (hardActionVerbs.test(query_lower) && !visualVerbs.test(query_lower)) {
+                        log.info(`  🧭 [Override] CONTEXT_QUESTION → ACTION (hard action verb detected, no visual verb)`);
+                        mode = 'ACTION';
+                    } else {
+                        log.info(`  🧭 [Override 2b BLOCKED] kept CONTEXT_QUESTION — visual/inspection query or no hard action verb`);
+                    }
                 }
 
                 // 🔒 HARD OVERRIDE 3: RESEARCH/CONTEXT_QUESTION are always GET
@@ -208,8 +265,27 @@ universalRouter.post("/", async (c) => {
                     method,
                     allowed_tools: toolMapping.allowed,
                     forbidden: toolMapping.forbidden,
+                    // ✅ Bug 1 fix: pass through DAG fields so frontend respects pipeline ordering
+                    ...(t.id        !== undefined && { id: t.id }),
+                    ...(t.depends_on !== undefined && { depends_on: t.depends_on }),
+                    ...(t.hidden    !== undefined && { hidden: t.hidden }),
                 };
             });
+
+            // ── Platform Cartridge injection ──────────────────────────────
+            // Match query + currentUrl against known enterprise platforms.
+            // Inject domain knowledge at END of system prompt (Lost-in-Middle fix).
+            const cartridge = matchCartridge(query, currentUrl);
+            if (cartridge) {
+                log.info(`  🗂️ [Cartridge] Matched platform for "${query.substring(0, 30)}" — injecting ${cartridge.editor_type} profile`);
+                fullyHydratedTasks.forEach((t: any) => {
+                    // ✅ Bug 2 fix: inject UI knowledge ONLY into tasks that actually interact with the platform
+                    // RESEARCH tasks run on DuckDuckGo/web — don't confuse them with platform UI rules
+                    if (t.mode === 'ACTION' || t.mode === 'ACTION_WITH_CONTEXT' || t.mode === 'CONTEXT_QUESTION') {
+                        t.system_context = cartridge.system_prompt_injection;
+                    }
+                });
+            }
 
             const langTag = intent.language ? ` [${intent.language}]` : '';
             log.info(`  🧭 [UniversalRouter] "${query.substring(0, 40)}..."${langTag} → Split into ${fullyHydratedTasks.length} tasks!`);

@@ -24,6 +24,8 @@ chatRoutes.post("/", async (c) => {
     }
 
     const query = String(body.query).trim();
+    const history: { role: 'user' | 'assistant'; content: string }[] =
+        Array.isArray(body.history) ? body.history.slice(-10) : [];
 
     try {
         const chatUrl = await getChatUrl();
@@ -44,8 +46,9 @@ chatRoutes.post("/", async (c) => {
             body: JSON.stringify({
                 model: MODEL_FAST,
                 messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: query },
+                    { role: "system", content: systemPrompt }, // 1. Identität
+                    ...history,                                  // 2. Kurzzeitgedächtnis (last 10 turns)
+                    { role: "user", content: query },           // 3. Aktuelle Frage
                 ],
                 temperature: 0.7,
                 max_tokens: 600,

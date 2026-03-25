@@ -461,40 +461,38 @@ function setupAutopilotIPC(): void {
 function setupSpatialInputIPC(): void {
     const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+    // Accept only wcId + events. No dpr — sendInputEvent uses CSS pixels (DIPs).
+    // Chromium handles OS DPI scaling internally.
     ipcMain.handle('spatial-input', async (_event, wcId: number, events: any[]) => {
         const wc = webContents.fromId(wcId);
         if (!wc) return { success: false, error: 'WebContents not found' };
 
-        // Fix 2: Force OS-level focus BEFORE any event — prevents "focus-steal" swallow
-        wc.focus();
-        await delay(50); // Give OS time to activate the webview window
-
         for (const evt of events) {
             if (evt.type === 'vision_drag') {
-                // Fix 1: Smooth Drag Lerping — n8n/Figma check vector velocity,
-                // teleporting the mouse is interpreted as bot behavior.
                 const { startX, startY, endX, endY } = evt;
 
                 wc.sendInputEvent({ type: 'mouseMove', x: startX, y: startY });
-                await delay(50);
+                await delay(40); // hover-frame: let SPA :hover listeners fire
                 wc.sendInputEvent({ type: 'mouseDown', x: startX, y: startY, button: 'left', clickCount: 1 });
-                await delay(150); // Wait for canvas "grab" animation to register
+                await delay(150);
 
                 const STEPS = 15;
                 for (let i = 1; i <= STEPS; i++) {
                     const cx = Math.round(startX + (endX - startX) * (i / STEPS));
                     const cy = Math.round(startY + (endY - startY) * (i / STEPS));
                     wc.sendInputEvent({ type: 'mouseMove', x: cx, y: cy });
-                    await delay(10); // ~10ms per frame ≈ 60fps movement
+                    await delay(10);
                 }
 
-                await delay(100); // Settle at target — allow snap/magnet animations
+                await delay(100);
                 wc.sendInputEvent({ type: 'mouseUp', x: endX, y: endY, button: 'left', clickCount: 1 });
                 await delay(50);
 
             } else {
-                // Normal events (mouseMove, mouseDown, mouseUp) passed through directly
+                // Pass events through with CSS pixel coordinates (no DPR scaling)
                 wc.sendInputEvent(evt as Electron.MouseInputEvent);
+                // hover-frame after mouseMove — SPA apps bind click listeners on :hover
+                if (evt.type === 'mouseMove') await delay(40);
                 if (evt.type === 'mouseDown') await delay(50);
             }
         }
@@ -505,13 +503,215 @@ function setupSpatialInputIPC(): void {
     console.log('🖱️  Spatial Input IPC handler registered');
 }
 
+// ─── WORMHOLE: Network Sandbox IPC ──────────────────────────
+// Provides Fetch interception capability to the renderer.
+// When a webview's network request is paused, the debugger 'message' event
+// fires in the main process. We forward it to the renderer window as a
+// CustomEvent so NetworkSandbox.ts can hear it without extra IPC round-trips.
+
+function setupFetchInterceptIPC(): void {
+    // Map wcId → handler teardown function (to avoid memory leaks on detach)
+    const debuggerListeners = new Map<number, () => void>();
+
+    ipcMain.handle('cdp-fetch-enable', async (_event, wcId: number, patterns: any[]) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+
+        // Attach debugger if not already attached (cdp-send auto-attaches, but be explicit)
+        try {
+            wc.debugger.attach('1.3');
+        } catch { /* already attached — fine */ }
+
+        // Forward Fetch.requestPaused events to the renderer
+        // The renderer's NetworkSandbox listens for 'wormhole:fetch-event' CustomEvents
+        const msgHandler = (_: Electron.Event, method: string, params: any) => {
+            if (method !== 'Fetch.requestPaused') return;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('wormhole-fetch-event', { wcId, params });
+            }
+        };
+        wc.debugger.on('message', msgHandler);
+
+        // Store teardown
+        const prev = debuggerListeners.get(wcId);
+        if (prev) prev(); // remove old listener if re-attaching
+        debuggerListeners.set(wcId, () => wc.debugger.removeListener?.('message', msgHandler));
+
+        try {
+            await wc.debugger.sendCommand('Fetch.enable', { patterns });
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: String(e) };
+        }
+    });
+
+    ipcMain.handle('cdp-fetch-disable', async (_event, wcId: number) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: true };
+        // Remove listener
+        const teardown = debuggerListeners.get(wcId);
+        if (teardown) { teardown(); debuggerListeners.delete(wcId); }
+        try {
+            await wc.debugger.sendCommand('Fetch.disable', {});
+        } catch { /* already disabled */ }
+        return { ok: true };
+    });
+
+    ipcMain.handle('cdp-fetch-continue', async (_event, wcId: number, requestId: string) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+        try {
+            await wc.debugger.sendCommand('Fetch.continueRequest', { requestId });
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: String(e) };
+        }
+    });
+
+    ipcMain.handle('cdp-fetch-fail', async (_event, wcId: number, requestId: string, errorReason: string) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+        try {
+            await wc.debugger.sendCommand('Fetch.failRequest', { requestId, errorReason: errorReason ?? 'AccessDenied' });
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: String(e) };
+        }
+    });
+
+    console.log('🛡️  [WORMHOLE] Network Sandbox IPC handlers registered (cdp-fetch-enable/continue/fail)');
+}
+
+// ─── WORMHOLE: Perception Batch IPC ─────────────────────────
+// Death Trap 1 Fix: instead of N×ipcMain.invoke roundtrips (one per node),
+// the renderer sends ONE array of backendNodeIds. The main process resolves
+// them all via Promise.all (native C++-level CDP) and returns only the IDs
+// that have 'click' or 'mousedown' V8 event listeners attached.
+
+function setupWormholeIPC(): void {
+    /**
+     * cdp-get-listeners-batch
+     * @param wcId      - WebContentsId of the target webview
+     * @param nodeIds   - Array of backendNodeIds to check (candidates from AXTree)
+     * @returns         - Array of backendNodeIds that have click/mousedown listeners
+     */
+    ipcMain.handle('cdp-get-listeners-batch', async (_event, wcId: number, nodeIds: number[]) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return [];
+
+        const CLICK_EVENTS = new Set(['click', 'mousedown']);
+
+        // Resolve all nodeIds in parallel — one C++-level call per node, but all concurrent
+        const results = await Promise.all(
+            nodeIds.map(async (backendNodeId) => {
+                try {
+                    // Step 1: backendNodeId → JS objectId
+                    const resolveResp = await wc.debugger.sendCommand('DOM.resolveNode', { backendNodeId });
+                    const objectId = resolveResp?.object?.objectId;
+                    if (!objectId) return null;
+
+                    // Step 2: query V8 for event listeners on that JS object
+                    const listenersResp = await wc.debugger.sendCommand('DOMDebugger.getEventListeners', {
+                        objectId,
+                        depth: 1,
+                        pierce: false,
+                    });
+                    const listeners: any[] = listenersResp?.listeners ?? [];
+                    const hasClickable = listeners.some(l => CLICK_EVENTS.has(l.type));
+                    return hasClickable ? backendNodeId : null;
+                } catch {
+                    // Node may have been GC'd between AXTree scan and this call — skip silently
+                    return null;
+                }
+            })
+        );
+
+        // Return only the IDs with matching listeners (filter nulls)
+        return results.filter((id): id is number => id !== null);
+    });
+
+    console.log('🔭 [WORMHOLE] Perception IPC handlers registered (cdp-get-listeners-batch)');
+}
+
 // ─── App lifecycle ──────────────────────────────────────────
 
+// ─── CDP Bridge: Chrome DevTools Protocol ───────────────────
+// Gives the renderer full CDP access to any webview's WebContents
+// from the privileged main process. Zero JS injection into guest pages.
+// CSP cannot block it. React cannot interfere. It cannot crash.
+
+function setupCdpIPC(): void {
+    // Track attached debugger wcIds to prevent double-attach errors
+    const attached = new Set<number>();
+
+    ipcMain.handle('cdp-attach', async (_event, wcId: number) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+        if (attached.has(wcId)) return { ok: true };
+        try {
+            wc.debugger.attach('1.3');
+            attached.add(wcId);
+            wc.once('destroyed', () => attached.delete(wcId));
+            return { ok: true };
+        } catch (e: any) {
+            // Already attached by DevTools or another caller — treat as success
+            if (String(e).includes('already')) {
+                attached.add(wcId);
+                return { ok: true };
+            }
+            return { ok: false, error: String(e) };
+        }
+    });
+
+    ipcMain.handle('cdp-detach', async (_event, wcId: number) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || !attached.has(wcId)) return { ok: true };
+        try { wc.debugger.detach(); } catch { /* already detached */ }
+        attached.delete(wcId);
+        return { ok: true };
+    });
+
+    ipcMain.handle('cdp-send', async (_event, wcId: number, method: string, params?: object) => {
+        const wc = webContents.fromId(wcId);
+        if (!wc || wc.isDestroyed()) return { ok: false, error: 'WebContents not found' };
+        // Auto-attach if not already attached
+        if (!attached.has(wcId)) {
+            try {
+                wc.debugger.attach('1.3');
+                attached.add(wcId);
+                wc.once('destroyed', () => attached.delete(wcId));
+            } catch (e: any) {
+                if (!String(e).includes('already')) {
+                    return { ok: false, error: `CDP attach failed: ${e}` };
+                }
+                attached.add(wcId);
+            }
+        }
+        try {
+            const result = await wc.debugger.sendCommand(method, params ?? {});
+            return { ok: true, result };
+        } catch (e: any) {
+            return { ok: false, error: String(e) };
+        }
+    });
+
+    console.log('🔌 CDP Bridge IPC handlers registered (attach/detach/send)');
+}
+
 app.whenReady().then(async () => {
+    // Allow Chrome DevTools to connect on port 9222 without conflicting
+    // with the agent's debugger.attach() — two debuggers cannot share one WebContents.
+    // Dev: open chrome://inspect in Chrome to debug any webview live.
+    if (!app.isPackaged) {
+        app.commandLine.appendSwitch('remote-debugging-port', '9222');
+    }
     setupWebviewPermissions();
     setupScrapeIPC();
     setupAutopilotIPC();
     setupSpatialInputIPC();
+    setupCdpIPC();
+    setupFetchInterceptIPC();
+    setupWormholeIPC();
     // Start backend FIRST, wait for it, THEN show window (splash runs during wait)
     await startBackend().catch((err) => console.error("⚠️ Backend start failed:", err));
     createWindow();

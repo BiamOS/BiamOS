@@ -40,12 +40,14 @@ export interface AgentRequest {
     dom_snapshot: string;      // Simplified DOM with selectors
     screenshot?: string;       // Base64 PNG
     history?: AgentStep[];     // Previous actions in this session
+    trajectory?: string;       // Condensed tracking of latest results
     step_number?: number;      // Current step (from frontend SSOT)
     max_steps?: number;        // Max steps limit (from frontend SSOT)
     contextData?: string;      // Injected dashboard data for ACTION_WITH_CONTEXT
     method?: string;           // CRUD method from Manager-Agent (GET/POST/PUT/DELETE)
     allowed_tools?: string[];  // Tools the agent may use (from classifier)
     forbidden?: string[];      // Tools physically removed (from classifier)
+    system_context?: string | null; // Platform Cartridge injection (appended at end of system prompt)
 }
 
 export interface AgentStep {
@@ -285,7 +287,7 @@ const AGENT_TOOLS = [
                         description: "Brief description of what you're typing and why",
                     },
                 },
-                required: ["id", "text", "description"],
+                required: ["text", "description"],
             },
         },
     },
@@ -421,9 +423,9 @@ const AGENT_TOOLS = [
 // last RECENT_WINDOW steps in full detail. Older steps become
 // compact 1-line summaries. Result strings are always capped.
 
-const RECENT_WINDOW = 5;
-const RESULT_CAP_FULL = 200;
-const RESULT_CAP_SUMMARY = 50;
+const RECENT_WINDOW = 12;      // Expanded short-term memory for Enterprise deep-work
+const RESULT_CAP_FULL = 400;   // ✅ Fix 4: raised from 200 — preserves ✅/❌ feedback messages
+const RESULT_CAP_SUMMARY = 150; // ✅ Fix 4: raised from 50 — keeps crucial error context
 
 export function compressHistory(history: AgentStep[]): string {
     if (history.length === 0) return '';
@@ -534,23 +536,56 @@ function detectPhase(task: string, history: AgentStep[], method?: string): Promp
 // Principle of Least Privilege: physically remove forbidden tools
 // from the API call so the LLM cannot use them.
 
+// Tools that are ALWAYS allowed regardless of CRUD method.
+// type_text is required even in GET/research tasks for website search bars
+// (e.g. YouTube search, Amazon search). The prompt rule in method-get.ts
+// already instructs the LLM not to fill forms — the hard filter was too aggressive.
+const ALWAYS_ALLOWED_TOOLS = new Set(['type_text', 'click', 'click_at', 'navigate', 'go_back', 'scroll', 'wait', 'done', 'ask_user']);
+
 function filterToolsByCrud(
     tools: typeof AGENT_TOOLS,
     allowedTools?: string[],
     forbiddenTools?: string[],
 ): typeof AGENT_TOOLS {
-    if (!allowedTools?.length && !forbiddenTools?.length) return tools;
+    let filtered = tools;
+    if (allowedTools?.length || forbiddenTools?.length) {
+        filtered = tools.filter(tool => {
+            const name = tool.function.name;
+            // Never remove core interaction tools regardless of CRUD method
+            if (ALWAYS_ALLOWED_TOOLS.has(name)) return true;
+            // If forbidden list exists, remove any tool in it (except always-allowed)
+            if (forbiddenTools?.length && forbiddenTools.includes(name)) {
+                log.debug(`  🚫 Tool filtered out: ${name} (forbidden by CRUD method)`);
+                return false;
+            }
+            return true;
+        });
+    }
 
-    return tools.filter(tool => {
-        const name = tool.function.name;
-        // If forbidden list exists, remove any tool in it
-        if (forbiddenTools?.length && forbiddenTools.includes(name)) {
-            log.debug(`  🚫 Tool filtered out: ${name} (forbidden by CRUD method)`);
-            return false;
+    // Inject Analysis field into interactive tools to build Chain-of-Thought
+    const ACTION_TOOLS = new Set(['click', 'click_at', 'vision_click', 'vision_drag', 'vision_hover', 'type_text', 'scroll', 'navigate']);
+    
+    return filtered.map(tool => {
+        if (ACTION_TOOLS.has(tool.function.name)) {
+            const cloned = JSON.parse(JSON.stringify(tool));
+            cloned.function.parameters.properties.analysis = {
+                type: "object",
+                properties: {
+                    past: { type: "string", description: "What action you took in the last step and its result (Success/Fail)." },
+                    present: { type: "string", description: "What changed in the DOM/Image. If the last action failed, explain why." },
+                    future: { type: "string", description: "Your logical plan. If ID X failed previously, EXPLICITLY state you will NOT try X again." }
+                },
+                required: ["past", "present", "future"]
+            };
+            if (!cloned.function.parameters.required.includes("analysis")) {
+                cloned.function.parameters.required.unshift("analysis");
+            }
+            return cloned;
         }
-        return true;
+        return tool;
     });
 }
+
 
 // ─── System Prompt ──────────────────────────────────────────
 
@@ -646,6 +681,17 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         log.debug(`  🧠 Memory: DISABLED (USE_MEMORY=false)`);
     }
 
+    // ── Platform Cartridge injection (always at END to avoid Lost-in-Middle) ──
+    if (ctx.system_context) {
+        systemPrompt += `\n\n${'═'.repeat(50)}\n${ctx.system_context}\n${'═'.repeat(50)}`;
+        log.debug(`  🗂️ [Cartridge] Injected ${ctx.system_context.length} chars of platform knowledge`);
+    }
+
+    // ── Add Trajectory as Context Prepender ──
+    if (ctx.trajectory) {
+        systemPrompt = `═══════════════════════════════════════════════════\nAGENT TRAJECTORY (Your recent history & results):\n═══════════════════════════════════════════════════\n${ctx.trajectory}\n\n` + systemPrompt;
+    }
+
     const messages: { role: string; content: any }[] = [
         { role: "system", content: systemPrompt },
     ];
@@ -691,6 +737,8 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
                 tools: filteredTools,
                 tool_choice: "required",  // Force a tool call
                 temperature: 0.2,         // Low temp for precise actions
+                frequency_penalty: 0.3,   // Prevent LLM text-generation loops
+                presence_penalty: 0.1,    // Encourage new tokens over repetition
                 max_tokens: 5000,         // Plenty of room for full email composition
             }),
         });

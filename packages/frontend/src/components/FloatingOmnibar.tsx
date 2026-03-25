@@ -99,6 +99,11 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
     const [isLoading, setIsLoading] = useState(false);
     const [integrations, setIntegrations] = useState<IntegrationInfo[]>([]);
 
+    // ─── Multi-turn Chat History ─────────────────────────────
+    // Persists the last 10 user/assistant turns across queries.
+    // Sent to /api/chat so Lura remembers the conversation.
+    const chatHistoryRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+
     // Focus store (snapshot approach)
     const snapshotCardId = useFocusStore((s) => s.snapshotCardId);
     const snapshotCardMeta = useFocusStore((s) => s.snapshotCardMeta);
@@ -251,6 +256,46 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                         console.log(`🔍 [Omnibar] FIRE mode=${mode} targetCard="${targetCardId}" task="${t.task.slice(0, 40)}${knowledgeContext ? ' [+knowledge]' : ''}"`);
 
                         switch (mode) {
+                            case "CHAT": {
+                                // ─── Direct chat with history ───────────────
+                                // Call /api/chat with the last 10 turns so Lura
+                                // remembers the conversation across messages.
+                                try {
+                                    chatHistoryRef.current = [
+                                        ...chatHistoryRef.current,
+                                        { role: 'user' as const, content: taskWithContext },
+                                    ].slice(-10);
+
+                                    const chatResp = await fetch('/api/chat', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            query: taskWithContext,
+                                            history: chatHistoryRef.current.slice(0, -1), // send all but current
+                                        }),
+                                    });
+                                    const chatData = await chatResp.json();
+                                    const answer = chatData.answer || '';
+
+                                    if (answer) {
+                                        // Add assistant reply to history
+                                        chatHistoryRef.current = [
+                                            ...chatHistoryRef.current,
+                                            { role: 'assistant' as const, content: answer },
+                                        ].slice(-20); // keep max 20 entries (10 turns)
+
+                                        // Show answer in chat thread via existing event
+                                        dispatchBiamosEvent({
+                                            type: 'BIAMOS_CONTEXT_CHAT',
+                                            targetCard: targetCardId || snapshotCardId || '',
+                                            query: taskWithContext,
+                                        });
+                                    }
+                                } catch (chatErr) {
+                                    console.error('[CHAT] Direct chat failed:', chatErr);
+                                }
+                                break;
+                            }
                             case "RESEARCH":
                                 dispatchBiamosEvent({ type: "BIAMOS_RESEARCH", query: taskWithContext, targetCard: targetCardId! });
                                 break;
@@ -266,6 +311,7 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                                     task: taskWithContext,
                                     method,
                                     tools: { allowed: allowedTools, forbidden },
+                                    system_context: t.system_context || null,
                                 });
                                 break;
                         }

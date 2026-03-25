@@ -14,7 +14,12 @@ export const interactionModule: PromptModule = {
     name: "Interaction Rules",
     priority: 30,
     match: { always: true },
-    rules: `═══════════════════════════════════════════════════
+    rules: `⚠️ CRITICAL ID RULE (GOLDEN RULE):
+The element IDs [1], [2], [3]… shown in the DOM snapshot and on the screenshot are EPHEMERAL.
+They are generated fresh at the start of EVERY step and are ONLY valid for THIS step.
+NEVER use an ID from a previous step. If you want to interact with the same element again,
+look it up in the CURRENT snapshot and use its NEW ID.
+═══════════════════════════════════════════════════
 INTERACTION RULES:
 ═══════════════════════════════════════════════════
 22. **CHECK HISTORY FIRST**: Before ANY action, read ACTIONS TAKEN SO FAR. If you already performed an action, do NOT repeat it.

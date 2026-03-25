@@ -87,6 +87,8 @@ export function useBiamOSEventOrchestrator(
                         method: event.method,
                         allowed_tools: event.tools.allowed,
                         forbidden: event.tools.forbidden,
+                        muscle_memory: event.muscle_memory,
+                        memory_id: event.memory_id,
                     });
                     break;
 

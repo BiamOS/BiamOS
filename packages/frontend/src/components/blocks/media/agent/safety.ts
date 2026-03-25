@@ -82,7 +82,8 @@ export function checkSelfHealing(
             const isSameSig = `${s.action}|${s.description}` === currentSig;
             const wasSuccessful = s.result?.includes("✓ COMPLETE") ||
                                   s.result?.includes("already present") ||
-                                  s.result?.includes("✓ Clicking");
+                                  s.result?.includes("✓ Clicking") ||
+                                  s.result?.includes("✅ SUCCESS");
             const hasErrorFlag = s.result?.includes("NO DOM CHANGE") ||
                                  s.result?.includes("No element") ||
                                  s.result?.includes("failed") ||
@@ -132,7 +133,8 @@ export function checkStuckDetection(steps: AgentStep[]): SafetyResult {
         // Successful actions should NOT count as "stuck"
         const wasSuccessful = s.result?.includes("✓ COMPLETE") ||
                               s.result?.includes("already present") ||
-                              s.result?.includes("✓ Clicking");
+                              s.result?.includes("✓ Clicking") ||
+                              s.result?.includes("✅ SUCCESS");
         return hasNoDomChange && !wasSuccessful;
     });
 
@@ -159,24 +161,26 @@ export function checkActionTypeRepetition(
 ): SafetyResult {
     if (steps.length < 3) return { action: "continue" };
 
-    // Find the steps SINCE the last page change (navigate or search_web)
-    // Scrolls on different pages are independent — don't count together
-    const pageChangeActions = new Set(['navigate', 'search_web']);
+    // Find the steps SINCE the last page change.
+    // Page-change actions: navigate, search_web, go_back, AND click/click_at that actually navigated.
+    // This ensures a successful thumbnail click resets the scroll counter for the new page.
+    const pageChangeActions = new Set(['navigate', 'search_web', 'go_back']);
     let sinceLastNav: AgentStep[] = [];
     for (let i = steps.length - 1; i >= 0; i--) {
-        if (pageChangeActions.has(steps[i].action)) break;
-        sinceLastNav.unshift(steps[i]);
+        const s = steps[i];
+        if (pageChangeActions.has(s.action) || s.didNavigate === true) break;
+        sinceLastNav.unshift(s);
     }
 
     // Count occurrences of this action TYPE since last page change
     const count = sinceLastNav.filter((s: AgentStep) => s.action === currentAction).length;
 
-    // Limits per page: scroll 3x, take_notes 2x, type_text 6x (forms need: focus+type+verify+submit), click 6x (SPAs), others 4x
-    const limit = currentAction === 'scroll' ? 3
-                : currentAction === 'take_notes' ? 2
-                : currentAction === 'type_text' ? 6
-                : currentAction === 'click' ? 6
-                : 4;
+    // Limits per page: scaled for Enterprise Builder SPAs
+    const limit = currentAction === 'scroll' ? 15
+                : currentAction === 'take_notes' ? 5
+                : currentAction === 'type_text' ? 20
+                : currentAction === 'click' ? 20
+                : 10;
 
     if (count >= limit) {
         debug.log(`🛑 [ActionType] ${currentAction} called ${count}x since last navigate — triggering re_observe`);
@@ -203,6 +207,60 @@ export function checkActionTypeRepetition(
         };
     }
 
+
+    return { action: "continue" };
+}
+
+// ─── Action Fingerprint Guard ────────────────────────────
+// Fix 2: Catches same action+target repeated with different descriptions.
+// Checks action:id / action:url / action:direction — not the LLM description.
+// Fires after 3 consecutive identical physical fingerprints.
+
+export function checkActionFingerprint(
+    steps: AgentStep[],
+    currentAction: string,
+    currentArgs: Record<string, any>,
+): SafetyResult {
+    if (steps.length < 3) return { action: "continue" };
+
+    const toFp = (action: string, a: Record<string, any> | undefined): string => {
+        const args = a ?? {};
+        if (action === 'click' || action === 'type_text') return `${action}:${args.id ?? ''}`;
+        if (action === 'click_at') {
+            // Bucket to nearest 50px to catch same-area repeats, allow different areas
+            const bx = Math.round((args.x ?? 0) / 50) * 50;
+            const by = Math.round((args.y ?? 0) / 50) * 50;
+            return `${action}:${bx},${by}`;
+        }
+        if (action === 'navigate') return `${action}:${(args.url ?? '').substring(0, 80)}`;
+        if (action === 'scroll') return `${action}:${args.direction ?? ''}`;
+        if (action === 'vision_click') return `${action}:${args.x_pct ?? ''},${args.y_pct ?? ''}`;
+        return `${action}:_`;
+    };
+
+    const currentFp = toFp(currentAction, currentArgs);
+    let streak = 0;
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const s = steps[i] as any;
+        if (toFp(s.action, s.arguments ?? s.args ?? {}) === currentFp) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+
+    if (streak >= 3) {
+        debug.log(`🔴 [FingerprintGuard] "${currentFp}" repeated ${streak + 1}x — forcing strategy change`);
+        return {
+            action: "recover",
+            recoveryStep: {
+                action: "system_recovery",
+                description: `🚨 FINGERPRINT LOOP: "${currentFp}" attempted ${streak + 1}x without progress. DO NOT repeat. Element may be disabled, missing, or needs a prerequisite. Change strategy completely.`,
+                result: `STUCK: Do NOT repeat ${currentFp}. Change approach.`,
+            },
+            statusMessage: `⚠️ Loop (${streak + 1}x on same target) — forcing new strategy`,
+        };
+    }
 
     return { action: "continue" };
 }

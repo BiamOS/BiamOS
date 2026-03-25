@@ -108,11 +108,12 @@ function AgentBubble({
     pauseQuestion: string | null; onConfirm: () => void;
     onCancel: () => void; currentAction: string;
 }) {
-    const isDone = status === 'done' || status === 'error';
+    const isDone = status === 'done';
+    const isError = status === 'error';
     const isPaused = status === 'paused';
     const isRunning = status === 'running';
     // Auto-collapse when done so the list reads as a clean activity log
-    const [expanded, setExpanded] = useState(!isDone);
+    const [expanded, setExpanded] = useState(!(isDone || isError));
 
     return (
         <Box sx={{ mb: 0.5, bgcolor: tokens.aiBubble, borderRadius: 2, border: tokens.border, overflow: 'hidden' }}>
@@ -121,10 +122,11 @@ function AgentBubble({
                 onClick={() => setExpanded(e => !e)}
                 sx={{ display: 'flex', alignItems: 'center', gap: 0.8, px: 1.5, py: 1.2, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}
             >
-                {isRunning && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: tokens.agentAccent, animation: 'pulse 1.5s infinite', '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } }, flexShrink: 0 }} />}
-                {isDone && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#30D158', flexShrink: 0 }} />}
+                {isRunning && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#30D158', animation: 'pulse 1.5s infinite', '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } }, flexShrink: 0 }} />}
+                {isDone && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: tokens.muted, flexShrink: 0 }} />}
+                {isError && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#FF453A', flexShrink: 0 }} />}
                 {isPaused && <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#FFD60A', animation: 'pulse 1s infinite', '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } }, flexShrink: 0 }} />}
-                <Typography sx={{ flex: 1, fontSize: '0.72rem', fontWeight: 700, color: tokens.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Typography sx={{ flex: 1, fontSize: '0.72rem', fontWeight: 700, color: (isDone || isError) ? tokens.muted : tokens.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 0.3s' }}>
                     🤖 {task.replace('🤖 Agent: ', '')}
                 </Typography>
                 {steps.length > 0 && (
@@ -233,6 +235,77 @@ function ResearchBubble({ query, steps, status, phase }: { query: string; steps:
 
 // ─── Chat Bubble ─────────────────────────────────────────────
 
+// Inline markdown parser for chat bubble text.
+// Recognizes ```copy and ```code blocks — renders a box with clipboard button.
+// Also renders **bold** text. Keeps it self-contained so no import cycle.
+function parseAndRenderText(text: string) {
+    const re = /```([a-zA-Z0-9_+\-#]*)\n?([\s\S]*?)```/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let key = 0;
+
+    const renderInline = (s: string, k: number): React.ReactNode => {
+        // Bold: **text**
+        const bold = s.split(/\*\*(.*?)\*\*/g);
+        return (
+            <span key={k}>
+                {bold.map((seg, i) =>
+                    i % 2 === 1 ? <strong key={i}>{seg}</strong> : seg
+                )}
+            </span>
+        );
+    };
+
+    // eslint-disable-next-line no-cond-assign
+    while ((match = re.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push(renderInline(text.slice(lastIndex, match.index), key++));
+        }
+        const lang = match[1].toLowerCase();
+        const code = match[2].trim();
+        const isCopy = lang === 'copy';
+        parts.push(
+            <CopyBlock key={key++} code={code} isCopy={isCopy} />
+        );
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+        parts.push(renderInline(text.slice(lastIndex), key++));
+    }
+    return parts;
+}
+
+// Tiny inline copy block component
+function CopyBlock({ code, isCopy }: { code: string; isCopy: boolean }) {
+    const [copied, setCopied] = React.useState(false);
+    const handleCopy = () => {
+        try {
+            if (navigator.clipboard) { navigator.clipboard.writeText(code); }
+            else { (window as any).electron?.clipboard?.writeText?.(code); }
+        } catch { /* */ }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <Box sx={{ mt: 0.8, mb: 0.3, borderRadius: 1.5, overflow: 'hidden', border: isCopy ? '1px solid rgba(130,90,255,0.35)' : '1px solid rgba(255,255,255,0.12)' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.2, py: 0.5, bgcolor: isCopy ? 'rgba(130,90,255,0.18)' : 'rgba(255,255,255,0.06)' }}>
+                <Typography sx={{ fontSize: '0.6rem', color: isCopy ? '#b39dff' : 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {isCopy ? '📋 Kopiervorlage' : 'code'}
+                </Typography>
+                <Box component="button" onClick={handleCopy} sx={{ fontSize: '0.62rem', px: 1, py: 0.2, borderRadius: 1, bgcolor: copied ? 'rgba(48,209,88,0.25)' : 'rgba(255,255,255,0.08)', color: copied ? '#30D158' : 'rgba(255,255,255,0.6)', border: copied ? '1px solid rgba(48,209,88,0.4)' : '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                    {copied ? '✓ Kopiert!' : '⎘ Kopieren'}
+                </Box>
+            </Box>
+            <Box sx={{ px: 1.2, py: 0.8, bgcolor: 'rgba(0,0,0,0.3)' }}>
+                <Typography component="pre" sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', m: 0, fontFamily: isCopy ? 'inherit' : 'monospace', lineHeight: 1.6 }}>
+                    {code}
+                </Typography>
+            </Box>
+        </Box>
+    );
+}
+
 function ChatBubble({ hint, isNew }: { hint: any; isNew?: boolean }) {
     const isUser = !hint.query.startsWith('🤖') && !hint.query.startsWith('📊') && !hint.query.startsWith('📋') && !hint.query.startsWith('⏳') && !hint.query.startsWith('📊');
     const isLoading = hint.loading;
@@ -263,8 +336,9 @@ function ChatBubble({ hint, isNew }: { hint: any; isNew?: boolean }) {
                                 ))}
                             </Box>
                         ) : (
-                            <Typography sx={{ fontSize: tokens.fontSize, color: tokens.text, lineHeight: tokens.lineHeight, whiteSpace: 'pre-wrap' }}>
-                                {hint.data?.summary}
+                            <Typography component="div" sx={{ fontSize: tokens.fontSize, color: tokens.text, lineHeight: tokens.lineHeight, whiteSpace: 'pre-wrap' }}>
+                                {/* ✅ Parse markdown: renders ```copy blocks with copy button, **bold**, etc */}
+                                {parseAndRenderText(hint.data?.summary || '')}
                             </Typography>
                         )}
                     </Box>
@@ -355,6 +429,9 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
         }
     }, [hints]);
 
+    // Chat history ref — persists across renders, doesn't trigger re-renders
+    const commandCenterChatHistory = React.useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+
     // ─── Task dispatch helper (used by both normal flow and slash commands) ────────────────────────
     const dispatchTasks = useCallback(async (
         tasks: any[],
@@ -374,16 +451,24 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 { query: '🧠 Lura', reason: 'system', loading: true, timestamp: loadingHintId }
             ]);
             try {
+                commandCenterChatHistory.current.push({ role: 'user' as const, content: ct.task });
+                const historyToSend = commandCenterChatHistory.current.slice(-11, -1);
+
                 const chatResp = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: ct.task }),
+                    body: JSON.stringify({ query: ct.task, history: historyToSend }),
                 });
                 if (!chatResp.ok) throw new Error(`Chat API ${chatResp.status}`);
                 const chatData = await chatResp.json();
+                const answer = chatData.answer || '...';
+
+                commandCenterChatHistory.current.push({ role: 'assistant' as const, content: answer });
+                if (commandCenterChatHistory.current.length > 20) commandCenterChatHistory.current.splice(0, commandCenterChatHistory.current.length - 20);
+
                 useContextStore.getState().setHints(prev =>
                     prev.map(h => h.timestamp === loadingHintId
-                        ? { ...h, loading: false, data: { summary: chatData.answer || '...' } }
+                        ? { ...h, loading: false, data: { summary: answer } }
                         : h
                     )
                 );
@@ -436,7 +521,15 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                     } else if (mode === 'CONTEXT_QUESTION') {
                         dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
                     } else {
-                        dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
+                        dispatchBiamosEvent({ 
+                            type: 'BIAMOS_AGENT_ACTION', 
+                            task: t.task, 
+                            targetCard: tid, 
+                            method: t.method || 'GET', 
+                            tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] },
+                            muscle_memory: t.muscle_memory,
+                            memory_id: t.memory_id
+                        });
                     }
                 }, fireAt);
                 delayMultiplier++;
@@ -450,7 +543,15 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                 } else if (mode === 'CONTEXT_QUESTION') {
                     dispatchBiamosEvent({ type: 'BIAMOS_CONTEXT_CHAT', query: t.task, targetCard: tid });
                 } else {
-                    dispatchBiamosEvent({ type: 'BIAMOS_AGENT_ACTION', task: t.task, targetCard: tid, method: t.method || 'GET', tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] } });
+                    dispatchBiamosEvent({ 
+                        type: 'BIAMOS_AGENT_ACTION', 
+                        task: t.task, 
+                        targetCard: tid, 
+                        method: t.method || 'GET', 
+                        tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] },
+                        muscle_memory: t.muscle_memory,
+                        memory_id: t.memory_id
+                    });
                 }
             }
         }
@@ -520,6 +621,9 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
         setIsLoading(true);
 
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
             const classifyResp = await fetch('/api/intent/route', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -529,7 +633,8 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                     hasWebview: freshMeta?.hasWebview || false,
                     currentUrl: freshMeta?.url || '',
                 }),
-            });
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
 
             if (!classifyResp.ok) {
                 // If the backend router returns a 401 because the OpenRouter token is invalid/missing
@@ -553,12 +658,18 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
             }
             const tasks = await classifyResp.json();
             await dispatchTasks(tasks, freshCardId, freshMeta);
-        } catch (err) {
+        } catch (err: any) {
             console.error('[CommandCenter] Submit error', err);
+            if (err.name === 'AbortError') {
+                useContextStore.getState().setHints(prev => [
+                    ...prev,
+                    { query: '🤖 Lura', reason: 'system', loading: false, data: { summary: "⚠️ Backend is not responding (Timeout). Please check if your terminal crashed or paused." }, timestamp: Date.now() }
+                ]);
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [isLoading, dispatchTasks]);
+    }, [isLoading, dispatchTasks, llmMissing]);
 
     return (
         <Box sx={{
