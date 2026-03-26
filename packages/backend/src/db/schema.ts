@@ -39,3 +39,5 @@ export type { AgentWorkflow, NewAgentWorkflow } from "./schema/agent-memory.sche
 export { userPromptModules } from "./schema/prompt-modules.schema.js";
 export type { UserPromptModule, NewUserPromptModule } from "./schema/prompt-modules.schema.js";
 
+export { domainKnowledge, KNOWLEDGE_TYPE_PRIORITY } from "./schema/domain-knowledge.schema.js";
+export type { DomainKnowledgeEntry, NewDomainKnowledgeEntry } from "./schema/domain-knowledge.schema.js";

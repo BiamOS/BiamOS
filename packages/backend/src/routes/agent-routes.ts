@@ -14,6 +14,8 @@ import { SEED_AGENTS } from "../agents/agent-defaults.js";
 import { log } from "../utils/logger.js";
 import { streamAgentStep } from "../services/agent-actions.js";
 import { saveWorkflowTrace, feedbackWorkflow, extractDomain } from "../services/agent-memory.js";
+import { analyzeAndDistillTrajectory } from "../services/librarian.service.js";
+
 
 const agentRoutes = new Hono();
 
@@ -447,6 +449,7 @@ agentRoutes.post("/act", async (c) => {
                 allowed_tools: body.allowed_tools || [],
                 forbidden: body.forbidden || [],
                 system_context: body.system_context || null,
+                domain_knowledge: body.domain_knowledge || null,
             },
             (event) => {
                 s.write(event);
@@ -774,6 +777,21 @@ agentRoutes.post("/memory/save", async (c) => {
 
     try {
         const id = await saveWorkflowTrace(body.domain, body.task, body.steps);
+
+        // V3 Librarian: Fire-and-forget distillation when the agent
+        // struggled (recoverySteps > 0) but ultimately succeeded.
+        // Non-blocking — never delays the agent response.
+        const recoverySteps: number = body.recoverySteps ?? 0;
+        const url: string = body.url ?? body.domain;
+        if (recoverySteps > 0 && body.steps?.length > 0) {
+            analyzeAndDistillTrajectory(
+                body.steps,
+                url,
+                body.task,
+                recoverySteps
+            ).catch(() => { /* Librarian failure is non-critical */ });
+        }
+
         return c.json({
             biam_protocol: "2.0",
             action: "memory_saved",

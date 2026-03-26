@@ -97,6 +97,8 @@ export interface ActionContext {
     cdpClick: (x: number, y: number) => Promise<void>;
     /** Send any CDP command via the main-process bridge */
     cdpSend: (method: string, params?: object) => Promise<{ ok: boolean; result?: any; error?: string }>;
+    /** Updates the UI GhostCursor in real-time with live coordinates */
+    updateCursorPos?: (x: number, y: number) => void;
 }
 
 // ─── EngineContext ───────────────────────────────────────────

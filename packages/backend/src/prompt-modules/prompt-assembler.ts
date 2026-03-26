@@ -22,23 +22,15 @@ import type { PromptModule, PromptPhase, ToolDefinition, AssemblerContext } from
 // ── Module Imports ──────────────────────────────────────────
 import { baseModule } from "./base.js";
 import { soulModule } from "./soul.js";
-// Legacy phase modules removed — superseded by method-* CRUD modules
-import { phaseActionModule } from "./phase-action.js"; // kept for backward compat during transition
+import { phaseActionModule } from "./phase-action.js";
 import { safetyModule } from "./safety.js";
 import { interactionModule } from "./interaction.js";
 import { formsModule } from "./forms.js";
-import { cookiesModule } from "./cookies.js";
-import { platformXModule } from "./platform-x.js";
-import { platformYoutubeModule } from "./platform-youtube.js";
-import { platformGmailModule } from "./platform-gmail.js";
-import { platformAmazonModule } from "./platform-amazon.js";
-import { platformN8nModule } from "./platform-n8n.js";
-import { platformTodoistModule } from "./platform-todoist.js";
-import { socialReadingModule } from "./social-reading.js";
 import { methodGetModule } from "./method-get.js";
 import { methodPostModule } from "./method-post.js";
 import { methodPutModule } from "./method-put.js";
 import { methodDeleteModule } from "./method-delete.js";
+
 
 // ── Prompt Assembler ────────────────────────────────────────
 
@@ -150,9 +142,10 @@ export class PromptAssembler {
     assemble(ctx: AssemblerContext): string {
         const activeModules = this.resolve(ctx.url, ctx.task, ctx.phase);
 
-        // Log which modules are active (for debugging)
-        const moduleIds = activeModules.map(m => m.id);
-        log.debug(`  🧩 Prompt modules: [${moduleIds.join(", ")}]`);
+        // Log which modules are active — info level so always visible
+        const platformMods = activeModules.filter(m => m.id.startsWith('platform-')).map(m => m.name);
+        const otherMods = activeModules.filter(m => !m.id.startsWith('platform-')).map(m => m.id);
+        log.info(`  🧩 [Assembler] ${ctx.url?.substring(0, 50) ?? '?'} | Platform=[${platformMods.join(', ') || 'none'}] | Base=[${otherMods.length} modules]`);
 
         // ── Build header ────────────────────────────────────
         const stepsRemaining = Math.max(0, ctx.maxSteps - ctx.stepNumber);
@@ -187,30 +180,20 @@ export const assembler = new PromptAssembler();
 
 // Register all built-in modules
 assembler.registerAll([
-    soulModule,       // Priority 5  — always first: identity before everything
+    soulModule,
     baseModule,
-    // CRUD method modules (matched via detectPhase → CRUD mapping)
-    // Legacy phase-research + phase-present removed (superseded by method-*)
-    // phase-action kept for edge cases where method detection fails
     phaseActionModule,
     methodGetModule,
     methodPostModule,
     methodPutModule,
     methodDeleteModule,
-    // Always-on modules
     safetyModule,
-    interactionModule,  // ← includes Golden ID Rule
+    interactionModule,
     formsModule,
-    cookiesModule,
-    // Platform-specific modules
-    platformXModule,
-    platformYoutubeModule,
-    platformGmailModule,
-    platformAmazonModule,
-    platformN8nModule,
-    platformTodoistModule,
-    socialReadingModule,
+    // Platform rules are now DB-managed (V4). No hardcoded cartridges.
+    // Seeded by seedDefaultCartridges() in bootstrap.ts on first launch.
 ]);
+
 
 // ── Load User Modules from DB ───────────────────────────────
 

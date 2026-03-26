@@ -122,6 +122,7 @@ export async function runStep(task: string, ctx: EngineContext): Promise<boolean
                 allowed_tools: crudPlanRef.current.allowed_tools,
                 forbidden: crudPlanRef.current.forbidden,
                 system_context: crudPlanRef.current.system_context || null,
+                domain_knowledge: crudPlanRef.current.domain_knowledge || null,
             }),
         };
         if (ctx.abortController?.signal) {
@@ -191,28 +192,40 @@ export async function runStep(task: string, ctx: EngineContext): Promise<boolean
                             const isLoopAbort = summary.includes('got stuck') || summary.includes('maximum step limit') || summary.includes('different approach');
                             if (!isLoopAbort) {
                                 try {
-                                    const url = await wv?.executeJavaScript?.('location.href', true) ?? '';
-                                    const domain = url ? new URL(url).hostname.replace(/^www\./, '') : '';
+                                    const pageUrlFinal = await wv?.executeJavaScript?.('location.href', true) ?? '';
+                                    const domain = pageUrlFinal ? new URL(pageUrlFinal).hostname.replace(/^www\./, '') : '';
                                     if (domain && currentTaskRef.current) {
+                                        // Count recovery steps so Librarian knows if it struggled
+                                        const recoverySteps = stepsRef.current.filter(
+                                            (s: AgentStep) => s.action === 'system_recovery'
+                                        ).length;
+
                                         const controller = new AbortController();
                                         const timeoutId = setTimeout(() => controller.abort(), 5000);
                                         const resp = await fetch('/api/agents/memory/save', {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ domain, task: currentTaskRef.current, steps: stepsRef.current }),
+                                            body: JSON.stringify({
+                                                domain,
+                                                task: currentTaskRef.current,
+                                                steps: stepsRef.current,
+                                                url: pageUrlFinal,          // V3: full URL for path-scoping
+                                                recoverySteps,              // V3: triggers Librarian if > 0
+                                            }),
                                             signal: controller.signal
                                         }).finally(() => clearTimeout(timeoutId));
                                         
                                         const data = await resp.json();
                                         if (data.workflow_id > 0) {
                                             setAgentState(prev => ({ ...prev, lastWorkflowId: data.workflow_id }));
-                                            debug.log(`🧠 [Memory] Saved workflow #${data.workflow_id}`);
+                                            debug.log(`🧠 [Memory] Saved workflow #${data.workflow_id} (recovery=${recoverySteps})`);
                                         }
                                     }
                                 } catch (e) {
                                     debug.log('🧠 [Memory] Save error (non-fatal):', e);
                                 }
                             }
+
 
                             // Post summary to chat log
                             useContextStore.getState().setHints(prev => [
@@ -389,6 +402,9 @@ export async function runStep(task: string, ctx: EngineContext): Promise<boolean
                             },
                             cdpSend: async (method: string, params?: object) =>
                                 electronAPI?.cdpSend ? electronAPI.cdpSend(wcId, method, params) : { ok: false, error: 'no cdp' },
+                            updateCursorPos: (x: number, y: number) => {
+                                setAgentState(prev => ({ ...prev, cursorPos: { x, y } }));
+                            },
                         };
 
                         // ── Execute action ──

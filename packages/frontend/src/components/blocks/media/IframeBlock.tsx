@@ -473,6 +473,63 @@ export const IframeBlock = React.memo(function IframeBlock({
                             <WebviewWithLogging ref={webviewRef} src={initialUrl} />
                             {currentUrl === 'about:blank' && BiamOSEngineSkeleton}
                             <GhostCursor cursorPos={agent.agentState.cursorPos} />
+
+                            {/* ── Agent Input Shield ── */}
+                            {/* Blocks human scroll/click while agent is active, */}
+                            {/* but stays fully transparent so user can watch. */}
+                            {(agent.agentState.status === 'running' || agent.agentState.status === 'paused') && (
+                                <Box
+                                    sx={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        zIndex: 9000,
+                                        // Block ALL pointer events from reaching the webview
+                                        pointerEvents: 'all',
+                                        cursor: 'not-allowed',
+                                        // Subtle visual cue — scanline + cyan vignette
+                                        background: `
+                                            linear-gradient(
+                                                to bottom,
+                                                rgba(0, 229, 255, 0.03) 0%,
+                                                transparent 30%,
+                                                transparent 70%,
+                                                rgba(0, 229, 255, 0.03) 100%
+                                            )
+                                        `,
+                                        // Thin animated border to reinforce the "agent owns this" state
+                                        outline: '2px solid rgba(0, 229, 255, 0.25)',
+                                        outlineOffset: '-2px',
+                                        transition: 'opacity 0.3s ease',
+                                    }}
+                                    // Still allow right-click to be inspected if needed
+                                    onContextMenu={(e) => e.preventDefault()}
+                                >
+                                    {/* Lock badge */}
+                                    <Box sx={{
+                                        position: 'absolute',
+                                        top: 8,
+                                        left: 8,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 0.6,
+                                        px: 1,
+                                        py: 0.4,
+                                        borderRadius: '6px',
+                                        bgcolor: 'rgba(0,0,0,0.55)',
+                                        backdropFilter: 'blur(6px)',
+                                        border: '1px solid rgba(0, 229, 255, 0.3)',
+                                        color: 'rgba(0, 229, 255, 0.85)',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        letterSpacing: '0.04em',
+                                        userSelect: 'none',
+                                        pointerEvents: 'none',
+                                    }}>
+                                        🔒 {agent.agentState.status === 'paused' ? 'Waiting for you...' : 'Agent active'}
+                                    </Box>
+                                </Box>
+                            )}
+
                         </Box>
                     ) : (
                         activeTab !== 'dashboard' && (

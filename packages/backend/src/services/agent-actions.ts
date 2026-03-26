@@ -48,6 +48,7 @@ export interface AgentRequest {
     allowed_tools?: string[];  // Tools the agent may use (from classifier)
     forbidden?: string[];      // Tools physically removed (from classifier)
     system_context?: string | null; // Platform Cartridge injection (appended at end of system prompt)
+    domain_knowledge?: string | null; // D8 Domain Brain RAG injection (<domain_knowledge> XML block)
 }
 
 export interface AgentStep {
@@ -685,6 +686,15 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
     if (ctx.system_context) {
         systemPrompt += `\n\n${'═'.repeat(50)}\n${ctx.system_context}\n${'═'.repeat(50)}`;
         log.debug(`  🗂️ [Cartridge] Injected ${ctx.system_context.length} chars of platform knowledge`);
+    }
+
+    // ── D8: Domain Brain Knowledge Injection ─────────────────
+    // Retrieved by the RAG interceptor in universal-router.ts.
+    // Injected AFTER the Cartridge so domain-specific user rules
+    // are always the final context before the LLM acts.
+    if (ctx.domain_knowledge) {
+        systemPrompt += `\n\n${'═'.repeat(50)}\nDOMAIN KNOWLEDGE (what you know about this site):\n${ctx.domain_knowledge}\n${'═'.repeat(50)}`;
+        log.debug(`  🧠 [DomainBrain] Injected ${ctx.domain_knowledge.length} chars of domain knowledge`);
     }
 
     // ── Add Trajectory as Context Prepender ──

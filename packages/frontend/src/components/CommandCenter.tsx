@@ -557,6 +557,8 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                             targetCard: tid, 
                             method: t.method || 'GET', 
                             tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] },
+                            system_context: t.system_context || null,
+                            domain_knowledge: t.domain_knowledge || null,
                             muscle_memory: t.muscle_memory,
                             memory_id: t.memory_id
                         });
@@ -580,6 +582,8 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                         targetCard: tid, 
                         method: t.method || 'GET', 
                         tools: { allowed: t.allowed_tools || [], forbidden: t.forbidden || [] },
+                        system_context: t.system_context || null,
+                        domain_knowledge: t.domain_knowledge || null,
                         muscle_memory: t.muscle_memory,
                         memory_id: t.memory_id
                     });
@@ -646,6 +650,74 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
             // Re-use the dispatch logic below by calling with these forced tasks
             await dispatchTasks(forcedTask, freshCardId, freshMeta);
             setIsLoading(false);
+            return;
+        }
+
+        // ── /teach Slash Command ─────────────────────────────────
+        // /teach <text>   → ingest knowledge for the current domain
+        // /lern <text>    → same (German alias)
+        // /remember <text>→ English alias
+        // /merke <text>   → German alias
+        // Requires an active page (anchorMeta.url) to determine the domain.
+        const SLASH_TEACH = /^\/(teach|lern(?:e?)|remember|merke?)\s+(.+)/is;
+        const matchTeach = trimmed.match(SLASH_TEACH);
+        if (matchTeach) {
+            const knowledge = matchTeach[2].trim();
+            const pageUrl = freshMeta?.url || '';
+
+            // Show loading indicator
+            const loadingId = Date.now();
+            useContextStore.getState().setHints(prev => [
+                ...prev,
+                { query: '🧠 Domain Brain', reason: 'system', loading: true, timestamp: loadingId },
+            ]);
+            setIsLoading(true);
+
+            try {
+                if (!pageUrl || pageUrl === 'about:blank') {
+                    useContextStore.getState().setHints(prev =>
+                        prev.map(h => h.timestamp === loadingId
+                            ? { ...h, loading: false, data: { summary: '⚠️ Kein aktiver Browser-Tab. Öffne eine Seite, dann `/teach` erneut.' } }
+                            : h
+                        )
+                    );
+                    return;
+                }
+
+                const resp = await fetch('/api/context/teach', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: knowledge, page_url: pageUrl }),
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok && data.data) {
+                    useContextStore.getState().setHints(prev =>
+                        prev.map(h => h.timestamp === loadingId
+                            ? { ...h, loading: false, data: { summary: data.data.message || '✅ Wissen gespeichert!' } }
+                            : h
+                        )
+                    );
+                } else {
+                    const errMsg = data.error || 'Unbekannter Fehler';
+                    useContextStore.getState().setHints(prev =>
+                        prev.map(h => h.timestamp === loadingId
+                            ? { ...h, loading: false, data: { summary: `❌ Fehler: ${errMsg}` } }
+                            : h
+                        )
+                    );
+                }
+            } catch (err) {
+                useContextStore.getState().setHints(prev =>
+                    prev.map(h => h.timestamp === loadingId
+                        ? { ...h, loading: false, data: { summary: '❌ Backend nicht erreichbar.' } }
+                        : h
+                    )
+                );
+            } finally {
+                setIsLoading(false);
+            }
             return;
         }
 

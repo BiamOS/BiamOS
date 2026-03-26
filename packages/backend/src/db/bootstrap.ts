@@ -362,6 +362,27 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "fix", text: "Intent hash now strips /act prefix before hashing — prevents command artifacts from interfering with workflow matching" },
             ]),
         },
+        {
+            version: "5.0.0",
+            date: "2026-03-25",
+            entries: JSON.stringify([
+                { type: "feature", text: "Domain Brain: Zero-hardcoded 4-Tier RAG Semantic Memory for injecting context and hints perfectly per-domain and per-path." },
+                { type: "feature", text: "The Librarian: Negative reinforcement learning system that observes agent mistakes, distills 'Avoid Rules', and prevents recursive agent failure loops." },
+                { type: "feature", text: "Learned Tab UI: Unified interface for managing Domain Brain rules, viewing auto-distilled knowledge, and manual overrides." },
+                { type: "breaking", text: "Deprecated all hardcoded website scripts (e.g. YouTube & Todoist cartridges) in favor of Autonomous Librarian Learning." },
+            ]),
+        },
+        {
+            version: "5.1.0",
+            date: "2026-03-26",
+            entries: JSON.stringify([
+                { type: "feature", text: "WORMHOLE StealthExecutor: Live 4D raycasting for finding exact element positions right before clicking, defeating lazy-loading layout shifts." },
+                { type: "feature", text: "GhostCursor Sync: Agent's visual cursor now mathematically tethers to the StealthExecutor's live-raycast, perfectly matching the physical click coordinate with the visual animation." },
+                { type: "feature", text: "Bézier Human Trajectories: Automated mouse movements now perfectly simulate human cursor acceleration and cubic-bezier paths to bypass bot-detection." },
+                { type: "feature", text: "Agent Input Shield: Transparent overlay blocks human interference while the agent is executing action pipelines." },
+                { type: "improvement", text: "Universal Typing (V5): Replaced brittle React input event forcing with comprehensive 3-tier browser native Input.insertText + KeyEvents + fallback strategy." },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {
@@ -433,4 +454,76 @@ export async function bootstrapDatabase(): Promise<void> {
         updated_at TEXT NOT NULL
       );
     `);
+
+    // ─── D8: Domain Brain — Knowledge Engine ────────────────
+    // Single-table RAG store. Isolation via domain metadata filter.
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS domain_knowledge (
+        id TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('user_instruction','selector_rule','auto_trajectory','api_doc')),
+        content TEXT NOT NULL,
+        embedding TEXT,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        source TEXT NOT NULL DEFAULT 'user',
+        version INTEGER NOT NULL DEFAULT 1,
+        subdomain TEXT,
+        path_pattern TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT
+      );
+    `);
+
+    // Index on domain for the hard pre-filter (most critical query path)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_dk_domain ON domain_knowledge(domain);`);
+    // Index on expires_at for efficient TTL pruning
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_dk_expires ON domain_knowledge(expires_at) WHERE expires_at IS NOT NULL;`);
+    // Index on type for priority-ordered retrieval
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_dk_type ON domain_knowledge(type);`);
+
+    // ─── V3: Hierarchical Scope Migrations ──────────────────
+    // Safe — fails silently if column already exists (existing DBs).
+    try { await db.run(sql.raw(`ALTER TABLE domain_knowledge ADD COLUMN subdomain TEXT`)); } catch { }
+    try { await db.run(sql.raw(`ALTER TABLE domain_knowledge ADD COLUMN path_pattern TEXT`)); } catch { }
+    try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN subdomain TEXT`)); } catch { }
+    try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN path_pattern TEXT`)); } catch { }
+
+    // ─── V4: Drop source CHECK constraint migration ──────────
+    // SQLite can't ALTER a CHECK constraint — must recreate the table.
+    // Strategy: RENAME old → CREATE new → INSERT all → DROP old.
+    // The RENAME fails silently if migration already ran (old table gone).
+    try {
+        await db.run(sql.raw(`ALTER TABLE domain_knowledge RENAME TO domain_knowledge_pre_v4`));
+        // Recreate without CHECK on source
+        await db.run(sql.raw(`
+            CREATE TABLE domain_knowledge (
+                id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL,
+                type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                embedding TEXT,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                source TEXT NOT NULL DEFAULT 'user',
+                version INTEGER NOT NULL DEFAULT 1,
+                subdomain TEXT,
+                path_pattern TEXT,
+                created_at TEXT NOT NULL,
+                expires_at TEXT
+            )
+        `));
+        await db.run(sql.raw(`INSERT INTO domain_knowledge SELECT * FROM domain_knowledge_pre_v4`));
+        await db.run(sql.raw(`DROP TABLE domain_knowledge_pre_v4`));
+        // Recreate indexes
+        await db.run(sql.raw(`CREATE INDEX IF NOT EXISTS idx_dk_domain ON domain_knowledge(domain)`));
+        await db.run(sql.raw(`CREATE INDEX IF NOT EXISTS idx_dk_expires ON domain_knowledge(expires_at) WHERE expires_at IS NOT NULL`));
+        await db.run(sql.raw(`CREATE INDEX IF NOT EXISTS idx_dk_type ON domain_knowledge(type)`));
+        console.info(`  ✅ [Bootstrap] V4 migration: source CHECK constraint removed`);
+    } catch {
+        // Migration already ran or table doesn't need it — safe to ignore
+    }
 }
+
+
+
+
+

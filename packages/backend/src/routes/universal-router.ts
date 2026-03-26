@@ -17,6 +17,7 @@ import type { IntentMode, CrudMethod } from "./classify-routes.js";
 import { getIntegrationForQuery } from "../services/integration-context.js";
 import { matchCartridge } from "../data/platform-cartridges.js";
 import { lookupWorkflow, extractDomain } from "../services/agent-memory.js";
+import { retrieveKnowledge, formatKnowledgeBlock } from "../services/domain-knowledge.service.js";
 
 export const universalRouter = new Hono();
 
@@ -317,6 +318,60 @@ universalRouter.post("/", async (c) => {
                         t.system_context = cartridge.system_prompt_injection;
                     }
                 });
+            }
+
+            // ── D8: Domain Brain RAG Interceptor ─────────────────────────
+            // Retrieve domain-specific knowledge and inject as <domain_knowledge>
+            // block into each task that will interact with the page.
+            //
+            // Two-path domain detection:
+            //   Path A: webview already open → use currentUrl domain (precise)
+            //   Path B: fresh navigation   → extract domain from task text itself
+            //           e.g. "öffne todoist.com" → "app.todoist.com"
+            // This ensures RAG fires even for "navigate AND do X" tasks.
+
+            const DOMAIN_HINTS: [RegExp, string][] = [
+                [/\btodoist\.com\b|\btodoist\b/i,   'app.todoist.com'],
+                [/\bn8n\.io\b|\bn8n\b/i,            'n8n.io'],
+                [/\bgmail\b/i,                      'mail.google.com'],
+                [/\byoutube\b/i,                    'www.youtube.com'],
+                [/\bnotion\b/i,                     'www.notion.so'],
+                [/\bslack\b/i,                      'app.slack.com'],
+                [/\bgithub\b/i,                     'github.com'],
+                [/\blinear\b/i,                     'linear.app'],
+                [/\bjira\b/i,                       'jira.atlassian.com'],
+                [/\bfigma\b/i,                      'www.figma.com'],
+                [/\bairtable\b/i,                   'airtable.com'],
+                [/\btrello\b/i,                     'trello.com'],
+            ];
+
+            const ragDomain: string | null = (() => {
+                // Path A: webview open
+                if (hasWebview && currentUrl) return extractDomain(currentUrl);
+                // Path B: extract from query text
+                for (const [re, domain] of DOMAIN_HINTS) {
+                    if (re.test(query)) return domain;
+                }
+                return null;
+            })();
+
+            if (ragDomain) {
+                try {
+                    const ragChunks = await retrieveKnowledge(ragDomain, query);
+                    if (ragChunks.length > 0) {
+                        const knowledgeBlock = formatKnowledgeBlock(ragDomain, ragChunks);
+                        log.info(`  🧠 [DomainBrain] Injecting ${ragChunks.length} chunk(s) for "${ragDomain}" into task context`);
+                        fullyHydratedTasks.forEach((t: any) => {
+                            if (t.mode === 'ACTION' || t.mode === 'ACTION_WITH_CONTEXT' || t.mode === 'CONTEXT_QUESTION') {
+                                // Append after cartridge context so both sources stack cleanly
+                                t.domain_knowledge = knowledgeBlock;
+                            }
+                        });
+                    }
+                } catch (ragErr) {
+                    // Non-fatal: missing domain knowledge never blocks execution
+                    log.debug(`  🧠 [DomainBrain] RAG lookup skipped (non-fatal): ${ragErr}`);
+                }
             }
 
             // ── CONSOLIDATION GUARD: Merge same-domain sequential tasks ──────

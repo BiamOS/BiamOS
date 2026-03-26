@@ -36,7 +36,7 @@ export async function click(args: Record<string, any>, ctx: ActionContext): Prom
         const ipcInvoker = (channel: string, ...args2: any[]) =>
             api.spatialInput ? api.spatialInput(args2[0], args2[1]) : Promise.resolve({ success: false });
 
-        const executor = new StealthExecutor(cdpSender, ipcInvoker, ctx.wcId);
+        const executor = new StealthExecutor(cdpSender, ipcInvoker, ctx.wcId, new Map(), ctx.updateCursorPos);
 
         try {
             await executor.physicalClick(entry.nodeId, undefined, entry.x, entry.y);

@@ -33,6 +33,7 @@ import { classifyRoutes } from "./routes/classify-routes.js";
 import { universalRouter } from "./routes/universal-router.js";
 import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
 import { chatRoutes } from "./routes/chat-routes.js";
+import { knowledgeRoutes } from "./routes/knowledge-routes.js";
 
 import { db } from "./db/db.js";
 import { agents } from "./db/schema.js";
@@ -109,6 +110,7 @@ app.route("/api/history", historyRoutes);
 app.route("/api/research", researchRoutes);
 app.route("/api/prompt-modules", promptModuleRoutes);
 app.route("/api/chat", chatRoutes);
+app.route("/api/knowledge", knowledgeRoutes);
 
 // ─── Start Server ───────────────────────────────────────────
 
@@ -128,6 +130,10 @@ bootstrapDatabase()
     // Load user-created prompt modules from DB into the assembler
     const { loadUserModules } = await import("./prompt-modules/prompt-assembler.js");
     await loadUserModules();
+
+    // D8: Prune expired domain knowledge entries on every startup
+    const { pruneExpiredKnowledge } = await import("./services/domain-knowledge.service.js");
+    pruneExpiredKnowledge().catch(() => {});
   })
   .then(() => {
     serve(

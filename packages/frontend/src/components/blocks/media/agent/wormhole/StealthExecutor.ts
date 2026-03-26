@@ -64,6 +64,7 @@ export class StealthExecutor {
     private readonly ipc: IpcInvoker;
     private readonly wcId: number;
     private readonly frameRegistry: FrameRegistry;
+    private readonly onTargetUpdate?: (x: number, y: number) => void;
 
     /**
      * @param cdp           - CDP sender for the target webview
@@ -71,17 +72,20 @@ export class StealthExecutor {
      * @param wcId          - WebContentsId
      * @param frameRegistry - Map of frameId → absolute {x, y} in main viewport
      *                        (Death Trap 2: IFrame coordinate offsets)
+     * @param onTargetUpdate - Reports live raycasted physical click coordinates back to UI
      */
     constructor(
         cdp: CdpSender,
         ipc: IpcInvoker,
         wcId: number,
         frameRegistry: FrameRegistry = new Map(),
+        onTargetUpdate?: (x: number, y: number) => void,
     ) {
         this.cdp = cdp;
         this.ipc = ipc;
         this.wcId = wcId;
         this.frameRegistry = frameRegistry;
+        this.onTargetUpdate = onTargetUpdate;
     }
 
     // ─── Sichtbarkeit erzwingen ───────────────────────────────
@@ -224,6 +228,9 @@ export class StealthExecutor {
 
         // 2. Pre-flight raycasting
         const { x: targetX, y: targetY } = await this.checkVisibility(backendNodeId, frameId);
+
+        // Notify UI to gracefully animate GhostCursor to the exact live target
+        if (this.onTargetUpdate) this.onTargetUpdate(targetX, targetY);
 
         // 3. Human trajectory
         await this.simulateHumanTrajectory(fromX, fromY, targetX, targetY);

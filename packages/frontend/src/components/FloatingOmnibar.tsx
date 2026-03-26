@@ -312,6 +312,7 @@ export const FloatingOmnibar = React.memo(function FloatingOmnibar({
                                     method,
                                     tools: { allowed: allowedTools, forbidden },
                                     system_context: t.system_context || null,
+                                    domain_knowledge: t.domain_knowledge || null,
                                 });
                                 break;
                         }

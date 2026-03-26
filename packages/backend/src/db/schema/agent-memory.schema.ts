@@ -22,6 +22,12 @@ export const agentWorkflows = sqliteTable("agent_workflows", {
     /** Hostname of the site, e.g. "youtube.com" */
     domain: text("domain").notNull(),
 
+    /** V3: Optional exact subdomain e.g. "app.haloitsm.com" */
+    subdomain: text("subdomain"),
+
+    /** V3: URL path prefix this workflow was recorded on, e.g. "/workflows" */
+    path_pattern: text("path_pattern"),
+
     /** Normalized hash of the user's task intent */
     intent_hash: text("intent_hash").notNull(),
 

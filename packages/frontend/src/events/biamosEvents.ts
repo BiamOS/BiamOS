@@ -18,6 +18,7 @@ export type BiamosEvent =
         method: string;
         tools: { allowed: string[]; forbidden: string[] };
         system_context?: string | null;
+        domain_knowledge?: string | null;
         muscle_memory?: any[];
         memory_id?: number;
     }

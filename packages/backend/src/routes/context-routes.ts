@@ -11,6 +11,8 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { analyzePageContext } from "../services/context-engine.js";
 import { answerPageQuestion, streamPageQuestion } from "../services/context-chat.js";
+import { ingestKnowledge } from "../services/domain-knowledge.service.js";
+import { extractDomain } from "../services/agent-memory.js";
 
 export const contextRoutes = new Hono();
 
@@ -124,4 +126,69 @@ contextRoutes.post("/ask/stream", async (c) => {
             },
         );
     });
+});
+
+// ─── POST /teach — Domain Brain Knowledge Ingestion ──────────
+// User-facing "teach" endpoint. Called from the sidebar /teach
+// slash command. Parses the text, infers type from keywords,
+// and ingests into the Domain Brain under the current domain.
+//
+// Body: { text, page_url, type? }
+// Returns: { domain, type, accepted }
+
+contextRoutes.post("/teach", async (c) => {
+    try {
+        const body = await c.req.json().catch(() => null);
+        if (!body || !body.text || !body.page_url) {
+            return c.json({ error: "Missing required fields: text, page_url" }, 400);
+        }
+
+        const rawText: string = String(body.text).trim();
+        const pageUrl: string = String(body.page_url).trim();
+
+        // Strip /teach prefix if the frontend passes it through
+        const content = rawText.replace(/^\/(teach|lern|remember|merke?)\s*/i, "").trim();
+
+        if (!content) {
+            return c.json({ error: "Knowledge content cannot be empty" }, 400);
+        }
+
+        const domain = extractDomain(pageUrl);
+        if (!domain || domain === "unknown") {
+            return c.json({ error: "Cannot extract domain from page_url" }, 400);
+        }
+
+        // ── Auto-detect type from content keywords ─────────────
+        // Explicit type override from client always wins.
+        let type: "user_instruction" | "selector_rule" | "api_doc" = "user_instruction";
+
+        if (body.type && ["user_instruction", "selector_rule", "api_doc"].includes(body.type)) {
+            type = body.type;
+        } else {
+            // Heuristic: selector/keyboard/DOM hints → selector_rule
+            const selectorKeywords = /\b(css|xpath|selector|ctrl\+|cmd\+|alt\+|shortcut|keyboard|hotkey|class|id|button|div|span|#[a-z]|\.[a-z]|data-|aria-)\b/i;
+            if (selectorKeywords.test(content)) {
+                type = "selector_rule";
+            }
+        }
+
+        const id = await ingestKnowledge({
+            domain,
+            type,
+            content,
+            source: "user",
+        });
+
+        return c.json({
+            data: {
+                id,
+                domain,
+                type,
+                accepted: id !== null,
+                message: `✅ Gespeichert für ${domain} (${type})`,
+            },
+        }, 201);
+    } catch (err) {
+        return c.json({ error: "Failed to ingest knowledge" }, 500);
+    }
 });

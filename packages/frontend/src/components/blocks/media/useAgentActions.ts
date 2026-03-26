@@ -30,6 +30,7 @@ export interface CrudPlan {
     allowed_tools: string[];
     forbidden: string[];
     system_context?: string | null;
+    domain_knowledge?: string | null;
     muscle_memory?: any[];
     memory_id?: number;
 }
