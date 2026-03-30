@@ -727,6 +727,13 @@ agentRoutes.post("/genui", async (c) => {
         let raw = result.choices?.[0]?.message?.content || "";
         log.debug(`  🎨 GenUI raw (first 300): ${raw.substring(0, 300)}`);
 
+        // Record usage for the layout architect dashboard
+        const usage = result.usage ?? {};
+        await import("../server-utils.js").then(({ logTokenUsage, incrementAgentUsage }) => {
+            logTokenUsage("agent:layout-architect", MODEL_FAST, usage).catch(() => {});
+            incrementAgentUsage("layout-architect", usage).catch(() => {});
+        });
+
         // Use safeParseJSON — handles markdown fences, prose wrapping, embedded JSON
         const parsed = safeParseJSON(raw);
         if (!parsed) {

@@ -89,8 +89,11 @@ export function useBiamOSEventOrchestrator(
                         forbidden: event.tools.forbidden,
                         muscle_memory: event.muscle_memory,
                         memory_id: event.memory_id,
+                        domain_knowledge: (event as any).domain_knowledge ?? null,
+                        system_context: (event as any).system_context ?? null,
                     });
                     break;
+
 
                 case 'BIAMOS_RESEARCH':
                     if (event.targetCard && event.targetCard !== cardId) return;

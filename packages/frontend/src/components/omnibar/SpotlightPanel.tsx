@@ -16,8 +16,8 @@ import {
     PlayCircleOutline as RunIcon,
     CheckCircleOutline as DoneIcon,
     ErrorOutline as ErrorIcon,
+    AutoAwesome as AutoIcon,
 } from "@mui/icons-material";
-import { RenderIcon } from "../integration-builder/IconPicker";
 import { COLORS, accentAlpha } from "../../theme/theme";
 import { useTaskStore } from "../../stores/useTaskStore";
 
@@ -251,9 +251,7 @@ export const SpotlightPanel = React.memo(function SpotlightPanel({
                                     sx={triggerChipSx}
                                     onClick={() => onSelectOption(group.matchedKeyword)}
                                 >
-                                    <RenderIcon
-                                        name={group.icon}
-                                        label={group.label}
+                                    <AutoIcon
                                         sx={{ fontSize: 14, color: "rgba(0, 220, 100, 0.7)" }}
                                     />
                                     <Typography

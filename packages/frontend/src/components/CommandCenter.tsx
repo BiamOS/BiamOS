@@ -387,6 +387,34 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
 
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+
+    // ─── Domain Ghost-Text Autocomplete ────────────────────────
+    const [knownDomains, setKnownDomains] = useState<string[]>([]);
+    const [ghostSuggestion, setGhostSuggestion] = useState('');
+
+    // Load known domains from KB on mount (silent, non-blocking)
+    useEffect(() => {
+        fetch('http://localhost:3001/api/knowledge/domains')
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.data) setKnownDomains(d.data); })
+            .catch(() => {});
+    }, []);
+
+    // Compute ghost suggestion whenever input changes
+    useEffect(() => {
+        if (!input.trim() || knownDomains.length === 0) {
+            setGhostSuggestion('');
+            return;
+        }
+        // Match last "word" in the typed text against known domains
+        const lastWord = input.split(/\s+/).pop() ?? '';
+        if (lastWord.length < 2) { setGhostSuggestion(''); return; }
+        const match = knownDomains.find(d =>
+            d.toLowerCase().startsWith(lastWord.toLowerCase()) && d !== lastWord
+        );
+        setGhostSuggestion(match ? match.slice(lastWord.length) : '');
+    }, [input, knownDomains]);
+
     const [panelWidth, setPanelWidth] = useState(() => {
         const saved = localStorage.getItem('biamos_cc_width');
         return saved ? parseInt(saved, 10) : PANEL_WIDTH;
@@ -929,6 +957,18 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                         }}
                         onFocus={takeSnapshot}
                         onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                            // Tab: confirm suggestion
+                            if (e.key === 'Tab' && ghostSuggestion) {
+                                e.preventDefault();
+                                setInput(prev => prev + ghostSuggestion);
+                                setGhostSuggestion('');
+                                return;
+                            }
+                            // Escape: dismiss
+                            if (e.key === 'Escape' && ghostSuggestion) {
+                                setGhostSuggestion('');
+                                return;
+                            }
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 handleSubmit(input);
@@ -955,7 +995,39 @@ export const CommandCenter = React.memo(function CommandCenter({ onOpenSettings 
                         <SendIcon sx={{ fontSize: 14, color: input.trim() ? '#fff' : tokens.muted }} />
                     </Box>
                 </Box>
-                <Box sx={{ mt: 0.5, textAlign: 'right' }}>
+
+                {/* ── Domain Autocomplete Pill ── */}
+                {ghostSuggestion && (
+                    <Box
+                        onClick={() => { setInput(prev => prev + ghostSuggestion); setGhostSuggestion(''); }}
+                        sx={{
+                            mt: 0.6, display: 'flex', alignItems: 'center', gap: 0.6,
+                            cursor: 'pointer',
+                            animation: 'fadeSlideIn 0.12s ease',
+                            '@keyframes fadeSlideIn': { from: { opacity: 0, transform: 'translateY(-4px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+                        }}
+                    >
+                        <Box sx={{
+                            display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                            bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 1.5, px: 1, py: 0.3,
+                        }}>
+                            <Typography component="span" sx={{ fontSize: '0.72rem', color: tokens.text, fontWeight: 600 }}>
+                                {/* typed part in normal white */}
+                                {input.split(/\s+/).pop()}
+                            </Typography>
+                            <Typography component="span" sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)' }}>
+                                {/* ghost completion in gray */}
+                                {ghostSuggestion}
+                            </Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+                            Tab ↹
+                        </Typography>
+                    </Box>
+                )}
+
+                <Box sx={{ mt: 0.5, display: 'flex', justifyContent: 'flex-end' }}>
                     <Typography sx={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.2)' }}>
                         Enter ↵ send · Shift+Enter newline
                     </Typography>

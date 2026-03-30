@@ -14,26 +14,22 @@ import { serve } from "@hono/node-server";
 import { bootstrapDatabase } from "./db/bootstrap.js";
 import { runSelfHealing, runBackgroundTasks } from "./self-healing.js";
 import { integrationRoutes } from "./routes/integration-routes.js";
-import { builderRoutes } from "./routes/builder-routes.js";
-import { intentRoutes } from "./routes/intent-routes.js";
+
 import { systemRoutes } from "./routes/system-routes.js";
 import { blockRoutes } from "./routes/block-routes.js";
 import { agentRoutes } from "./routes/agent-routes.js";
 import { pinnedRoutes, refreshAllPins } from "./routes/pinned-routes.js";
 import { contextRoutes } from "./routes/context-routes.js";
-import { summarizeRoutes } from "./routes/summarize-routes.js";
-import { selectorRoutes } from "./routes/selector-routes.js";
 import { autopilotRoutes } from "./routes/autopilot-routes.js";
 
 // Additional hoisted routes
 import { changelogRoutes } from "./routes/changelog-routes.js";
 import { historyRoutes } from "./routes/history-routes.js";
-import { researchRoutes } from "./routes/research-routes.js";
-import { classifyRoutes } from "./routes/classify-routes.js";
 import { universalRouter } from "./routes/universal-router.js";
 import { promptModuleRoutes } from "./routes/prompt-module-routes.js";
 import { chatRoutes } from "./routes/chat-routes.js";
 import { knowledgeRoutes } from "./routes/knowledge-routes.js";
+import { researchRoutes } from "./routes/research-routes.js";
 
 import { db } from "./db/db.js";
 import { agents } from "./db/schema.js";
@@ -90,27 +86,22 @@ app.get("/api/health", (c) => {
 // ─── Mount Route Modules ────────────────────────────────────
 
 app.route("/api/integrations", integrationRoutes);
-app.route("/api/builder", builderRoutes);
 
-// Specific Intent Routes MUST come before generic "/api/intent"
-app.route("/api/intent/classify", classifyRoutes);
 app.route("/api/intent/route", universalRouter);
-app.route("/api/intent", intentRoutes);
+
 
 app.route("/api/system", systemRoutes);
 app.route("/api/blocks", blockRoutes);
 app.route("/api/agents", agentRoutes);
 app.route("/api/pinned", pinnedRoutes);
 app.route("/api/context", contextRoutes);
-app.route("/api/scrape", summarizeRoutes);
-app.route("/api/scrapers", selectorRoutes);
 app.route("/api/autopilot", autopilotRoutes);
 app.route("/api/changelog", changelogRoutes);
 app.route("/api/history", historyRoutes);
-app.route("/api/research", researchRoutes);
 app.route("/api/prompt-modules", promptModuleRoutes);
 app.route("/api/chat", chatRoutes);
 app.route("/api/knowledge", knowledgeRoutes);
+app.route("/api/research", researchRoutes);
 
 // ─── Start Server ───────────────────────────────────────────
 

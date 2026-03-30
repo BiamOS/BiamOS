@@ -36,10 +36,17 @@ interface KnowledgeItem {
     content: string;
     confidence: number;
     source: string;
-    /** V3: optional path scope set by Librarian */
     path_pattern?: string;
-    /** V3: optional subdomain scope */
     subdomain?: string;
+    created_at: string;
+}
+
+interface LearnedPattern {
+    id: string;
+    domain: string;
+    path_pattern?: string | null;
+    content: string;
+    review_status: "pending" | "active" | "rejected";
     created_at: string;
 }
 
@@ -704,6 +711,158 @@ function AboutTab() {
     );
 }
 
+// ─── Tab: Learned (Auto-Patterns) ───────────────────────────
+
+function LearnedTab({ domain, onReview }: {
+    domain: string;
+    onReview: () => void;
+}) {
+    const [patterns, setPatterns] = useState<LearnedPattern[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState<'all' | 'pending' | 'active' | 'rejected'>('all');
+
+    const load = useCallback(() => {
+        setLoading(true);
+        fetch(`/api/knowledge/pending?domain=${encodeURIComponent(domain)}`)
+            .then(r => r.json())
+            .then(d => setPatterns(d?.data ?? []))
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, [domain]);
+
+    useEffect(() => { load(); }, [load]);
+
+    const handleReview = async (id: string, action: 'approve' | 'reject') => {
+        await fetch(`/api/knowledge/${id}/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+        });
+        load();
+        onReview();
+    };
+
+    const STATUS_META = {
+        pending:  { label: 'Pending',  color: COLORS.yellow,  bg: `${COLORS.yellow}18`,  emoji: '🟡' },
+        active:   { label: 'Approved', color: COLORS.green,   bg: `${COLORS.green}18`,   emoji: '✅' },
+        rejected: { label: 'Rejected', color: COLORS.red,     bg: `${COLORS.red}18`,     emoji: '❌' },
+    };
+
+    const filtered = filter === 'all' ? patterns : patterns.filter(p => p.review_status === filter);
+    const pending = patterns.filter(p => p.review_status === 'pending').length;
+
+    return (
+        <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: COLORS.textPrimary, flex: 1 }}>
+                    Auto-Learned Patterns
+                </Typography>
+                {pending > 0 && (
+                    <Chip label={`${pending} need review`} size="small"
+                        sx={{ height: 18, fontSize: '0.6rem', bgcolor: `${COLORS.yellow}22`, color: COLORS.yellow, fontWeight: 700 }} />
+                )}
+                {(['all','pending','active','rejected'] as const).map(f => (
+                    <Box key={f} component="button" onClick={() => setFilter(f)}
+                        sx={{
+                            px: 1.2, py: 0.3, borderRadius: '6px', border: `1px solid ${filter === f ? COLORS.accent : COLORS.border}`,
+                            bgcolor: filter === f ? accentAlpha(0.15) : 'transparent',
+                            color: filter === f ? COLORS.accent : COLORS.textSecondary,
+                            fontSize: '0.65rem', cursor: 'pointer', textTransform: 'capitalize',
+                        }}>{f}</Box>
+                ))}
+            </Box>
+
+            {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress size={20} sx={{ color: COLORS.accent }} />
+                </Box>
+            ) : filtered.length === 0 ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 1.5,
+                    borderRadius: '10px', border: `1px dashed ${COLORS.borderFaint}` }}>
+                    <Typography sx={{ fontSize: '1.8rem' }}>🧠</Typography>
+                    <Typography sx={{ fontSize: '0.8rem', color: COLORS.textSecondary }}>
+                        {filter === 'pending' ? 'No patterns need review' : 'No auto-learned patterns yet'}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.7rem', color: COLORS.textMuted, textAlign: 'center', maxWidth: 280, lineHeight: 1.5 }}>
+                        Patterns appear here when Lura fails then recovers — they show what to avoid.
+                    </Typography>
+                </Box>
+            ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+                    {filtered.map(p => {
+                        const meta = STATUS_META[p.review_status];
+                        const [avoidLine, insteadLine, urlLine] = p.content.split('\n');
+                        return (
+                            <Box key={p.id} sx={{
+                                borderRadius: '10px', border: `1px solid ${COLORS.border}`,
+                                bgcolor: COLORS.surfaceDark, overflow: 'hidden',
+                            }}>
+                                {/* Header */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.8,
+                                    bgcolor: meta.bg, borderBottom: `1px solid ${COLORS.borderFaint}` }}>
+                                    <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: meta.color }}>
+                                        {meta.emoji} {meta.label}
+                                    </Typography>
+                                    <Typography sx={{ fontSize: '0.6rem', color: COLORS.textSecondary, flex: 1 }}>
+                                        {p.domain}{p.path_pattern ? p.path_pattern : ''}
+                                    </Typography>
+                                    <Typography sx={{ fontSize: '0.55rem', color: COLORS.textMuted }}>
+                                        {timeAgo(p.created_at)}
+                                    </Typography>
+                                </Box>
+                                {/* Content */}
+                                <Box sx={{ px: 1.5, py: 1 }}>
+                                    {avoidLine && (
+                                        <Box sx={{ display: 'flex', gap: 0.8, mb: 0.5 }}>
+                                            <Typography sx={{ fontSize: '0.67rem', color: COLORS.red, fontWeight: 700, flexShrink: 0 }}>AVOID</Typography>
+                                            <Typography sx={{ fontSize: '0.67rem', color: COLORS.textPrimary, fontFamily: 'monospace' }}>
+                                                {avoidLine.replace('AVOID: ', '')}
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                    {insteadLine && (
+                                        <Box sx={{ display: 'flex', gap: 0.8 }}>
+                                            <Typography sx={{ fontSize: '0.67rem', color: COLORS.green, fontWeight: 700, flexShrink: 0 }}>USE</Typography>
+                                            <Typography sx={{ fontSize: '0.67rem', color: COLORS.textPrimary, fontFamily: 'monospace' }}>
+                                                {insteadLine.replace('INSTEAD: ', '')}
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                    {urlLine && (
+                                        <Typography sx={{ fontSize: '0.58rem', color: COLORS.textMuted, mt: 0.5 }}>{urlLine}</Typography>
+                                    )}
+                                </Box>
+                                {/* Actions */}
+                                {p.review_status === 'pending' && (
+                                    <Box sx={{ display: 'flex', gap: 0.8, px: 1.5, py: 0.8,
+                                        borderTop: `1px solid ${COLORS.borderFaint}` }}>
+                                        <Box component="button" onClick={() => handleReview(p.id, 'approve')}
+                                            sx={{
+                                                px: 1.5, py: 0.4, borderRadius: '6px', border: 'none',
+                                                bgcolor: `${COLORS.green}22`, color: COLORS.green,
+                                                fontSize: '0.67rem', fontWeight: 700, cursor: 'pointer',
+                                                '&:hover': { bgcolor: `${COLORS.green}40` },
+                                            }}>✓ Approve &amp; Activate</Box>
+                                        <Box component="button" onClick={() => handleReview(p.id, 'reject')}
+                                            sx={{
+                                                px: 1.5, py: 0.4, borderRadius: '6px',
+                                                border: `1px solid ${COLORS.borderFaint}`,
+                                                bgcolor: 'transparent', color: COLORS.textSecondary,
+                                                fontSize: '0.67rem', cursor: 'pointer',
+                                                '&:hover': { color: COLORS.red, borderColor: COLORS.red },
+                                            }}>✕ Reject</Box>
+                                    </Box>
+                                )}
+                            </Box>
+                        );
+                    })}
+                </Box>
+            )}
+        </Box>
+    );
+}
+
+
 // ─── Main Component ──────────────────────────────────────────
 
 export default function KnowledgeBaseHub() {
@@ -718,7 +877,8 @@ export default function KnowledgeBaseHub() {
     const [toast, setToast] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
     const [deleteDomainConfirm, setDeleteDomainConfirm] = useState<string | null>(null);
 
-    const loadDomains = useCallback(() => {
+    const loadDomains = useCallback((silent = false) => {
+        if (!silent) setLoadingDomains(true);
         fetch("/api/knowledge/all-domains")
             .then(r => r.json())
             .then(d => {
@@ -729,18 +889,22 @@ export default function KnowledgeBaseHub() {
                 if (list.length > 0 && !selectedDomain) setSelectedDomain(list[0].domain);
             })
             .catch(() => {})
-            .finally(() => setLoadingDomains(false));
+            .finally(() => { if (!silent) setLoadingDomains(false); });
     }, [selectedDomain]);
 
     useEffect(() => { loadDomains(); }, []);
 
-    const loadProfile = useCallback((domain: string) => {
-        setLoadingProfile(true);
-        setProfile(null);
+    const loadProfile = useCallback((domain: string, silent = false) => {
+        if (!silent) {
+            setLoadingProfile(true);
+            setProfile(null);
+        }
         fetch(`/api/knowledge/profile?domain=${encodeURIComponent(domain)}`)
             .then(r => r.json())
-            .then(d => setProfile(d?.data ?? null))
-            .finally(() => setLoadingProfile(false));
+            .then(d => {
+                if (d?.data || !silent) setProfile(d?.data ?? null);
+            })
+            .finally(() => { if (!silent) setLoadingProfile(false); });
     }, []);
 
     useEffect(() => { if (selectedDomain) loadProfile(selectedDomain); }, [selectedDomain]);
@@ -766,13 +930,16 @@ export default function KnowledgeBaseHub() {
         loadDomains();
     }, [selectedDomain, loadProfile, loadDomains]);
 
-    // V4: Auto-poll when bootstrap is running until it completes
+    // V4: Realtime Auto-polling (Background Sync)
     const bootstrapping = !!profile?.bootstrapping;
     useEffect(() => {
-        if (!bootstrapping || !selectedDomain) return;
-        const timer = setTimeout(() => loadProfile(selectedDomain), 5000);
-        return () => clearTimeout(timer);
-    }, [bootstrapping, selectedDomain, profile?.knowledge.length]);
+        if (!selectedDomain) return;
+        const timer = setInterval(() => {
+            loadProfile(selectedDomain, true);
+            loadDomains(true);
+        }, 3000); // 3s polling for real-time responsiveness
+        return () => clearInterval(timer);
+    }, [selectedDomain, loadProfile, loadDomains]);
 
     const deleteDomain = useCallback(async (domain: string) => {
         await fetch(`/api/knowledge/domain/${encodeURIComponent(domain)}`, { method: "DELETE" });
@@ -812,12 +979,24 @@ export default function KnowledgeBaseHub() {
         showToast(`${ids.length} workflows deleted`);
     }, []);
 
-    const tabCounts = profile ? [0, knowledgeItems.length, profile.workflows.length] : [0, 0, 0];
+    const [learnedCount, setLearnedCount] = useState(0);
+
+    // Load count of pending auto-learned patterns for badge
+    useEffect(() => {
+        if (!selectedDomain) return;
+        fetch(`/api/knowledge/pending?domain=${encodeURIComponent(selectedDomain)}`)
+            .then(r => r.json())
+            .then(d => setLearnedCount((d?.data ?? []).filter((p: any) => p.review_status === 'pending').length))
+            .catch(() => {});
+    }, [selectedDomain]);
+
+    const tabCounts = profile ? [0, knowledgeItems.length, profile.workflows.length, learnedCount] : [0, 0, 0, 0];
 
     const tabLabels = [
         { emoji: "🏛", label: "Base Rules" },
         { emoji: "🧠", label: "Knowledge",  count: tabCounts[1] },
         { emoji: "💪", label: "Workflows",  count: tabCounts[2] },
+        { emoji: "🤖", label: "Learned",    count: tabCounts[3] },
         { emoji: "ℹ️",  label: "About" },
     ];
 
@@ -977,6 +1156,14 @@ export default function KnowledgeBaseHub() {
                                     />
                                 </TabPanel>
                                 <TabPanel value={activeTab} index={3}>
+                                    {selectedDomain && (
+                                        <LearnedTab
+                                            domain={selectedDomain}
+                                            onReview={() => { refresh(); setLearnedCount(c => Math.max(0, c - 1)); }}
+                                        />
+                                    )}
+                                </TabPanel>
+                                <TabPanel value={activeTab} index={4}>
                                     <AboutTab />
                                 </TabPanel>
                             </>

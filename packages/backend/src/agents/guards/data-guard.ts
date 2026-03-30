@@ -8,7 +8,7 @@
 // layout instead of risking LLM hallucination.
 // ============================================================
 
-import type { IntentType } from "../intent/2-classifier.js";
+export type IntentType = "DATA" | "SEARCH" | "ARTICLE" | "IMAGE" | "IMAGES" | "VIDEO" | "ACTION" | "NAVIGATE" | "TOOL";
 
 // ─── Types ──────────────────────────────────────────────────
 

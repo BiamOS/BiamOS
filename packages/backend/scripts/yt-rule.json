@@ -1,0 +1,6 @@
+{
+  "domain": "www.youtube.com",
+  "type": "avoid_rule",
+  "content": "AVOID: Calling done() after typing a comment without clicking the submit button.\nINSTEAD: After type_text in a YouTube comment box, ALWAYS click the blue Kommentieren or Comment button. Task is NOT done until the submit button is clicked and the comment is posted.",
+  "source": "base_rule"
+}

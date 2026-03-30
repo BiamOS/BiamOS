@@ -249,12 +249,20 @@ export function useCanvasTabs(
 
         // ─── No existing card → create standalone web-view card ─
         const id = customId || `card-${Date.now()}-nav-${Math.random().toString(36).slice(2, 6)}`;
-        const slot = findSlotForWebview(itemsRef.current, 4, 18);
+        
+        // Dynamically calculate the number of rows to fill 100vh
+        // 80px for TopBar, 42px = (ROW_HEIGHT 30 + GRID_MARGIN_Y 12)
+        const viewportRows = typeof window !== "undefined" 
+            ? Math.floor((window.innerHeight - 80) / 42) - 1 
+            : 18;
+        const h = Math.max(18, viewportRows);
+        
+        const slot = findSlotForWebview(itemsRef.current, 4, h);
         const card: CanvasItem = {
             _id: id,
             _query: title || hostname,
             payload: iframePayload,
-            layout: { x: slot.x, y: slot.y, w: slot.w, h: 18 },
+            layout: { x: slot.x, y: slot.y, w: slot.w, h },
             _loading: false,
         };
         safeSetItems((prev) => [...prev, card]);

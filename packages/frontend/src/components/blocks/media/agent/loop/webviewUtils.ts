@@ -568,37 +568,45 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
 }
 
 // ─── waitForPageReady ────────────────────────────────────────
-// Unchanged from previous version. MutationObserver-based DOM silence check.
+// MutationObserver-based DOM silence check.
+// silenceMs is adaptive: 150ms (scroll), 200ms (type), 300ms (click), 1200ms (navigate).
+// IMPORTANT: Phase 2 is capped via Promise.race — YouTube/SPAs mutate DOM forever
+// (ads, autoplay, live counters) and would hang executeJavaScript indefinitely.
 
-export async function waitForPageReady(wv: any, label: string): Promise<boolean> {
+export async function waitForPageReady(wv: any, label: string, silenceMs = 800): Promise<boolean> {
     if (!wv) return false;
     const tag = `⏳ [waitForPageReady:${label}]`;
-    const MAX_WAIT_MS = 30000;
-    const DOM_SILENCE_MS = 800;
+    const MAX_WAIT_MS = 8000; // Phase 1 hard cap (was 30000 — caused 30s+ hangs)
     const start = Date.now();
 
-    // Phase 1: wait for isLoading() = false
+    // Phase 1: wait for isLoading() = false (hard cap 8s)
     while (wv.isLoading?.() && Date.now() - start < MAX_WAIT_MS) {
         await new Promise(r => setTimeout(r, 200));
     }
 
     // Phase 2: wait for DOM silence via executeJavaScript
+    // CRITICAL: always race against a hard timeout so busy SPAs (YouTube etc)
+    // don't block forever when their DOM never fully settles.
+    const phase2Cap = Math.min(silenceMs * 3, 3000); // adaptive: type=600ms click=900ms navigate=3000ms
     try {
-        await wv.executeJavaScript(`
-            new Promise(resolve => {
-                if (document.readyState === 'complete') {
-                    let t = null;
-                    const obs = new MutationObserver(() => {
-                        clearTimeout(t);
-                        t = setTimeout(() => { obs.disconnect(); resolve(true); }, ${DOM_SILENCE_MS});
-                    });
-                    obs.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true });
-                    t = setTimeout(() => { obs.disconnect(); resolve(true); }, ${DOM_SILENCE_MS});
-                } else {
-                    window.addEventListener('load', () => resolve(true), { once: true });
-                }
-            })
-        `, true);
+        await Promise.race([
+            wv.executeJavaScript(`
+                new Promise(resolve => {
+                    if (document.readyState === 'complete') {
+                        let t = null;
+                        const obs = new MutationObserver(() => {
+                            clearTimeout(t);
+                            t = setTimeout(() => { obs.disconnect(); resolve(true); }, ${silenceMs});
+                        });
+                        obs.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true });
+                        t = setTimeout(() => { obs.disconnect(); resolve(true); }, ${silenceMs});
+                    } else {
+                        window.addEventListener('load', () => resolve(true), { once: true });
+                    }
+                })
+            `, true),
+            new Promise<void>(r => setTimeout(r, phase2Cap)), // hard cap
+        ]);
     } catch {
         // Page navigated mid-wait — that's fine
     }

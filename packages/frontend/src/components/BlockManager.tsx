@@ -187,9 +187,8 @@ export const BlockManager = React.memo(function BlockManager() {
                         🧊 Blocks
                     </Typography>
                     <Typography variant="caption" sx={{ color: COLORS.textSecondary, lineHeight: 1.5, display: "block", maxWidth: 600 }}>
-                        Blocks are the UI building blocks that the AI uses to compose visual layouts on your Canvas.
-                        Each block type handles a specific kind of content — from titles and tables to charts and media.
-                        You can preview, edit source code, or create your own custom blocks with AI assistance.
+                        Blocks are BiamOS's internal UI design system. The AI agent uses these components to dynamically assemble individual dashboards and views on the Canvas.
+                        Depending on the context and data, the AI has 100% freedom to compose customized layouts (e.g., mixing tables, metrics, and charts) without any rigid or hardcoded templates.
                     </Typography>
                 </Box>
                 <Box sx={{ display: "flex", gap: 1 }}>

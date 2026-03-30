@@ -247,61 +247,39 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                 </Typography>
             </DocSection>
 
-            {/* ═══ Section 2: Intent Pipeline ═══ */}
-            <DocSection emoji="⚡" title="Intent Pipeline — How Queries Work" color={COLORS.accent}>
+            {/* ═══ Section 2: Agent Pipeline ═══ */}
+            <DocSection emoji="⚡" title="Agent Pipeline — How AI Browses" color={COLORS.accent}>
                 <Typography sx={textSx}>
-                    When you type a query in BiamOS, it goes through a <strong>multi-stage AI pipeline</strong>.
-                    Each stage is handled by a specialized LLM agent. The pipeline transforms your natural language
-                    into a structured API call, then renders the result as a visual card layout.
+                    When you type a command starting with <Box component="span" sx={codeSx}>/act</Box> or a general statement, BiamOS routes it through a <strong>Multi-Agent Pipeline</strong>.
+                    Instead of translating commands into static REST APIs, the AI now physically controls a headless browser using native OS-level inputs.
                 </Typography>
 
                 <Typography sx={headingSx}>Pipeline Stages</Typography>
-                <FlowStep step="1" label="Concierge (Cache)" description="Checks if the query matches a known group embedding. If yes, skips classification." color={COLORS.accentLight} />
-                <FlowStep step="2" label="Classifier" description="Determines the intent type: API_CALL, WEB_SEARCH, NAVIGATE, OPEN_APP, GENERAL_KNOWLEDGE." color={COLORS.accent} />
-                <FlowStep step="3" label="Router" description="Selects the correct integration (e.g., Jira, Spotify) based on intent." color={COLORS.accentDark} />
-                <FlowStep step="4" label="Param Extractor" description="Extracts required API payload variables using Llama." color={COLORS.accentLight} />
-                <FlowStep step="5" label="API Call" description="Executes the HTTP request with extracted params and auth config." color={COLORS.accent} />
-                <FlowStep step="6" label="Guard" description="Validates the API response — retries on error or redirects if needed." color="#ff6b6b" />
-                <FlowStep step="7" label="Layout Architect" description="AI generates a block-based layout (JSON) for displaying the API response data." color="#e040fb" />
-                <FlowStep step="8" label="UI Renderer" description="React renders the layout as visual blocks (cards, charts, lists, etc.)." color="#40c4ff" />
+                <FlowStep step="1" label="Semantic Router" description="Determines the intent type: RESEARCH, ACT, NAVIGATE, or GENERAL_KNOWLEDGE." color={COLORS.accentLight} />
+                <FlowStep step="2" label="Domain Brain Retrieval" description="Fetches specific rules, instructions, or selector hints from RAG memory for the current domain." color={COLORS.accent} />
+                <FlowStep step="3" label="WORMHOLE Executor" description="Performs live 4D raycasting on the DOM to find coordinates of elements without relying on fragile CSS selectors." color={COLORS.accentDark} />
+                <FlowStep step="4" label="GhostCursor Sync" description="Animates the visual cursor to match the physical raycast coordinates, simulating human trajectories (Bézier)." color={COLORS.accentLight} />
+                <FlowStep step="5" label="Native OS Input" description="Dispatches real OS-level mouse clicks and keyboard events through Electron." color={COLORS.accent} />
+                <FlowStep step="6" label="The Librarian" description="Observes execution. If the agent fails or loops, it distills 'Avoid Rules' for future runs." color="#ff6b6b" />
 
                 <Typography sx={headingSx}>Key Concepts</Typography>
                 <Typography sx={textSx}>
-                    <strong>Embeddings:</strong> Each integration gets a 768-dimensional vector (via Gemini) for fast semantic matching.
-                    The Concierge compares your query embedding against all group embeddings using cosine similarity.
-                </Typography>
-                <Typography sx={textSx}>
-                    <strong>Agents vs. Services:</strong> Agents are LLM-powered (they call an AI model). Services are
-                    deterministic code (embedding, caching, routing). Agents are configurable in the Agents panel.
+                    <strong>Muscle Memory:</strong> Successful workflows (e.g., booking a flight) are saved locally as cached JSON step sequences. When asked again, BiamOS replays the cache instead of querying the LLM for planning.
                 </Typography>
             </DocSection>
 
-            {/* ═══ Section 3: Copilot & AI Create ═══ */}
-            <DocSection emoji="🌐" title="Copilot & AI Create" color="#00dc64">
+            {/* ═══ Section 3: Copilot ═══ */}
+            <DocSection emoji="🌐" title="Context Copilot" color="#00dc64">
                 <Typography sx={textSx}>
-                    BiamOS has two AI-powered creation tools: the <strong>Context Copilot</strong> (sidebar assistant)
-                    and the <strong>AI Create / Builder</strong> (auto-generates integrations from API docs).
+                    The <strong>Context Copilot</strong> is your persistent sidebar assistant. It actively observes your
+                    browser tabs and answers questions using live page data without requiring dedicated API integrations.
                 </Typography>
 
-                <Typography sx={headingSx}>Context Copilot</Typography>
-                <Typography sx={textSx}>
-                    The Copilot sidebar analyzes the current webpage you're viewing inside the built-in browser.
-                    It extracts DOM content, detects the page context, and provides contextual AI insights.
-                </Typography>
+                <Typography sx={headingSx}>How it Works</Typography>
                 <FlowStep step="1" label="DOM Extraction" description="Strips scripts/styles, extracts meaningful text from the active webview." color="#00dc64" />
                 <FlowStep step="2" label="Context Analysis" description="LLM identifies the page topic, key entities, and actionable data." color={COLORS.accentLight} />
-                <FlowStep step="3" label="Hint Generation" description="Suggests relevant actions (e.g., 'Check stock price' when on a finance page)." color={COLORS.accent} />
-                <FlowStep step="4" label="Chat Interface" description="Users can ask follow-up questions — Copilot uses web search + page context." color="#ff9800" />
-
-                <Typography sx={headingSx}>AI Create (Builder Pipeline)</Typography>
-                <Typography sx={textSx}>
-                    The Builder takes an API documentation URL and auto-generates a full integration with endpoints,
-                    param schemas, and block layouts. It uses two specialized agents:
-                </Typography>
-                <FlowStep step="1" label="Blueprint Generator" description="Reads API docs and creates a structured endpoint definition (name, method, params, triggers)." color={COLORS.accent} />
-                <FlowStep step="2" label="Docs Verifier" description="Cross-checks the blueprint against the original docs — catches hallucinated endpoints." color="#ff6b6b" />
-                <FlowStep step="3" label="Save & Embed" description="Stores the integration in the DB and generates embeddings for semantic routing." color="#00dc64" />
-
+                <FlowStep step="3" label="Chat Interface" description="You can ask follow-up questions — Copilot understands the context of the current active tab." color="#ff9800" />
+                
                 <Typography sx={headingSx}>LLM Provider Setup</Typography>
                 <Typography sx={textSx}>
                     BiamOS requires an LLM provider to power all AI features. Currently supported:
@@ -311,42 +289,32 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                 </Typography>
             </DocSection>
 
-            {/* ═══ Section 4: Integration Manager ═══ */}
-            <DocSection emoji="🔌" title="Integration Manager" color="#ff9800">
+            {/* ═══ Section 4: Domain Brain ═══ */}
+            <DocSection emoji="🧠" title="The Domain Brain" color="#ff9800">
                 <Typography sx={textSx}>
-                    Integrations connect BiamOS to external APIs. Each integration has one or more
-                    <strong> endpoints</strong> grouped under a common name. BiamOS routes queries to the
-                    best-matching endpoint using semantic similarity + LLM reasoning.
+                    The <strong>Domain Brain</strong> is the core memory system of BiamOS. Instead of brittle, hardcoded
+                    scripts for individual websites, the agent learns how to interact with DOM elements dynamically over time.
                 </Typography>
 
-                <Typography sx={headingSx}>Integration Types</Typography>
+                <Typography sx={headingSx}>RAG Tier System</Typography>
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 2 }}>
-                    <TechBadge name="API Integration" desc="REST API calls with auto-param extraction. Powers data cards." />
-                    <TechBadge name="Web Integration" desc="Iframe-based. Opens websites as tabs inside BiamOS." />
-                    <TechBadge name="Template" desc="Pre-built integrations from the Template Shop (Wikipedia, Pexels, etc.)." />
-                    <TechBadge name="Custom" desc="User-created via AI Create or manual setup." />
+                    <TechBadge name="Tier 1: Global" desc="Rules applying to all websites (e.g., always accept cookie banners)." />
+                    <TechBadge name="Tier 2: Domain" desc="Rules for specific domains (e.g., youtube.com)." />
+                    <TechBadge name="Tier 3: Subdomain" desc="Rules for subdomains (e.g., studio.youtube.com)." />
+                    <TechBadge name="Tier 4: Exact Path" desc="Rules for specific pages (e.g., /upload) using Regex matching." />
                 </Box>
 
-                <Typography sx={headingSx}>Key Fields</Typography>
+                <Typography sx={headingSx}>Knowledge Types</Typography>
                 <Typography sx={textSx}>
-                    <Box component="span" sx={codeSx}>group_name</Box> — Groups multiple endpoints under one integration.<br />
-                    <Box component="span" sx={codeSx}>human_triggers</Box> — Keywords that help the Concierge match queries (e.g., "weather | forecast | temperature").<br />
-                    <Box component="span" sx={codeSx}>endpoint_tags</Box> — LLM-optimized tags for endpoint selection within a group.<br />
-                    <Box component="span" sx={codeSx}>api_config</Box> — JSON auth config: API key, bearer token, OAuth setup.<br />
-                    <Box component="span" sx={codeSx}>allowed_blocks</Box> — Restricts which UI blocks the Layout Architect can use for this endpoint.
+                    <Box component="span" sx={codeSx}>user_instruction</Box> — High-level intent ("On GitHub, always prefer dark mode").<br />
+                    <Box component="span" sx={codeSx}>selector_rule</Box> — Specific hints about the DOM ("The search bar is typically in div#search-container").<br />
+                    <Box component="span" sx={codeSx}>avoid_rule</Box> — Negative reinforcement automatically generated by The Librarian to stop infinite loops.
                 </Typography>
 
-                <Typography sx={headingSx}>Health Checks</Typography>
+                <Typography sx={headingSx}>Learned Interface</Typography>
                 <Typography sx={textSx}>
-                    BiamOS can ping integration endpoints to verify they're reachable. Status:
-                    🟢 healthy, 🟡 degraded (slow), 🔴 offline (5xx or timeout). Results are stored
-                    in the <Box component="span" sx={codeSx}>health_checks</Box> table with full history.
-                </Typography>
-
-                <Typography sx={headingSx}>Import / Export</Typography>
-                <Typography sx={textSx}>
-                    Integrations can be exported as <Box component="span" sx={codeSx}>.biam</Box> packages (JSON format)
-                    and shared with other BiamOS users. Import auto-creates all endpoints and config.
+                    You can manage, manually create, or delete RAG entries directly from the <strong>Knowledge Base</strong> panel in the UI. 
+                    This allows you to explicitly train the agent on how to use internal company tools or complex web applications.
                 </Typography>
             </DocSection>
 
@@ -365,20 +333,20 @@ export const DocumentationPanel = React.memo(function DocumentationPanel() {
                     a="Partially. If you use Ollama as your LLM provider, AI features work offline. However, API integrations (weather, stock data, etc.) require internet to reach the external APIs. Web integrations also need internet for iframe content."
                 />
                 <FaqItem
-                    q="How do I add a custom integration?"
-                    a="Three ways: (1) Use AI Create — paste an API docs URL and the AI auto-generates endpoints. (2) Use the Template Shop — install pre-built integrations. (3) Manual setup — click 'New Integration' and fill in the endpoint details."
+                    q="How do I teach the agent a new flow?"
+                    a="You don't need to 'program' it. Just ask it to perform a task. If it struggles, instruct it carefully via the Copilot chat. When it succeeds, BiamOS automatically saves the workflow as 'Muscle Memory'. Alternatively, you can explicitly add rules in the Knowledge Base."
                 />
                 <FaqItem
                     q="What happens when I click 'Delete All Data'?"
-                    a="It purges all user data: integrations, agents, pinned blocks, scraper endpoints, changelog entries, usage logs, and system settings. The database tables remain but are emptied. The page reloads to reset the UI. Note: this is irreversible!"
+                    a="It purges all user data: agent memory, learned rules, pinned blocks, changelog entries, and system settings. The database tables remain but are emptied. The page reloads to reset the UI. Note: this is irreversible!"
                 />
                 <FaqItem
                     q="What are Blocks?"
-                    a="Blocks are the visual components that display API data — titles, charts, key-value pairs, image grids, lists, etc. The Layout Architect (an AI agent) selects which blocks to use based on the API response shape. You can restrict which blocks an integration uses via 'allowed_blocks'."
+                    a="Blocks are our internal visual component design system — titles, charts, key-value pairs, image grids, lists, etc. The Layout Architect (an AI agent) selectively uses these components to build custom reports and dashboards dynamically."
                 />
                 <FaqItem
-                    q="How do embeddings work?"
-                    a="BiamOS generates vector embeddings (768-dimensional arrays of numbers) for each integration group. When you type a query, it's also converted to an embedding, and cosine similarity determines which integration is the best match. This happens in the Concierge stage, before any LLM call — making routing extremely fast."
+                    q="How does semantic routing work?"
+                    a="BiamOS generates vector embeddings (768-dimensional arrays of numbers) for intents. When you type a query, it's also converted to an embedding. This enables the agent to pattern-match commands ('find John on LinkedIn' vs. 'open John Doe LI profile') without exact text matches."
                 />
                 <FaqItem
                     q="Where is my data stored?"

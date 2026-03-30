@@ -93,6 +93,16 @@ export const domainKnowledge = sqliteTable("domain_knowledge", {
      * NULL = never expires (user-created knowledge).
      */
     expires_at: text("expires_at"),
+
+    /**
+     * Auto-Learn approval status.
+     *  - 'active'   : Immediately injected into agent prompts (default for user entries)
+     *  - 'pending'  : Auto-learned, awaiting user review in "Learned" KB tab
+     *  - 'rejected' : User rejected — never retrieved or injected
+     */
+    review_status: text("review_status", {
+        enum: ["active", "pending", "rejected"],
+    }).notNull().default("active"),
 });
 
 export type DomainKnowledgeEntry = typeof domainKnowledge.$inferSelect;

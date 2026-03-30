@@ -223,6 +223,10 @@ export function checkActionFingerprint(
 ): SafetyResult {
     if (steps.length < 3) return { action: "continue" };
 
+    // Stateless output tools: never touch the DOM, loop detection irrelevant.
+    const TRULY_STATELESS = new Set(['take_notes', 'genui', 'ask_user', 'done', 'read_page']);
+    if (TRULY_STATELESS.has(currentAction)) return { action: "continue" };
+
     const toFp = (action: string, a: Record<string, any> | undefined): string => {
         const args = a ?? {};
         if (action === 'click' || action === 'type_text') return `${action}:${args.id ?? ''}`;
@@ -235,6 +239,8 @@ export function checkActionFingerprint(
         if (action === 'navigate') return `${action}:${(args.url ?? '').substring(0, 80)}`;
         if (action === 'scroll') return `${action}:${args.direction ?? ''}`;
         if (action === 'vision_click') return `${action}:${args.x_pct ?? ''},${args.y_pct ?? ''}`;
+        // search_web: fingerprint per query so same query 3x = caught, different queries = OK
+        if (action === 'search_web') return `${action}:${(args.query ?? '').substring(0, 60)}`;
         return `${action}:_`;
     };
 
@@ -242,23 +248,51 @@ export function checkActionFingerprint(
     let streak = 0;
     for (let i = steps.length - 1; i >= 0; i--) {
         const s = steps[i] as any;
-        if (toFp(s.action, s.arguments ?? s.args ?? {}) === currentFp) {
+        // BUG-1 Fix: use _args (preserved by engine) > legacy fallbacks
+        if (toFp(s.action, s._args ?? s.arguments ?? s.args ?? {}) === currentFp) {
             streak++;
         } else {
             break;
         }
     }
 
-    if (streak >= 3) {
+    // Per-action streak thresholds:
+    // search_web:  1 — same query twice = immediate recovery
+    // type_text:   1 — typing same text in same field twice = loop
+    // navigate:    2 — allow 1 redirect retry
+    // everything else: 3 — standard
+    const streakThresholds: Record<string, number> = {
+        'search_web': 1,
+        'type_text': 1,
+        'navigate': 2,
+    };
+    const streakThreshold = streakThresholds[currentAction] ?? 3;
+
+    if (streak >= streakThreshold) {
         debug.log(`🔴 [FingerprintGuard] "${currentFp}" repeated ${streak + 1}x — forcing strategy change`);
+
+        // Hard stop after 5: the LLM is ignoring recovery steps — terminate
+        if (streak >= 5) {
+            return {
+                action: "stop",
+                reason: `Stopped: action "${currentFp}" repeated ${streak + 1}× without progress. If you are on a login/signup/auth page, use ask_user() to let the user handle authentication manually.`,
+                statusMessage: `🛑 Loop (${streak + 1}×) — agent stopped`,
+            };
+        }
+
         return {
             action: "recover",
             recoveryStep: {
                 action: "system_recovery",
-                description: `🚨 FINGERPRINT LOOP: "${currentFp}" attempted ${streak + 1}x without progress. DO NOT repeat. Element may be disabled, missing, or needs a prerequisite. Change strategy completely.`,
-                result: `STUCK: Do NOT repeat ${currentFp}. Change approach.`,
+                description: `🚨 FINGERPRINT LOOP: "${currentFp}" attempted ${streak + 1}× without progress. DO NOT repeat this action.
+MOST LIKELY CAUSES:
+1. You are on a LOGIN or SIGNUP page → call ask_user() immediately to let the user log in manually.
+2. The button is disabled (needs a form field filled first, e.g. email/password).
+3. An overlay/popup is blocking the click target → press Escape first.
+REQUIRED ACTION: Change strategy completely. If on an auth page → call ask_user(). If stuck → call done() with current progress.`,
+                result: `STUCK: Do NOT repeat ${currentFp}. Change approach NOW.`,
             },
-            statusMessage: `⚠️ Loop (${streak + 1}x on same target) — forcing new strategy`,
+            statusMessage: `⚠️ Loop (${streak + 1}× on same target) — forcing new strategy`,
         };
     }
 

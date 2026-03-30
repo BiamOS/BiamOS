@@ -5,7 +5,7 @@
 <h1 align="center">📖 BiamOS Developer Documentation</h1>
 
 <p align="center">
-  <em>How BiamOS works — architecture, AI pipelines, integrations, and FAQs.</em><br/>
+  <em>How BiamOS works — architecture, AI pipelines, agents, and FAQs.</em><br/>
   This documentation is also available in-app under <strong>Settings → Docs</strong>.
 </p>
 
@@ -14,9 +14,9 @@
 ## Table of Contents
 
 - [Architecture Overview](#%EF%B8%8F-architecture-overview)
-- [Intent Pipeline — How Queries Work](#-intent-pipeline--how-queries-work)
-- [Copilot & AI Create](#-copilot--ai-create)
-- [Integration Manager](#-integration-manager)
+- [Agent Pipeline — How AI Browses](#-agent-pipeline--how-ai-browses)
+- [Context Copilot](#-context-copilot)
+- [The Domain Brain](#-the-domain-brain)
 - [API Reference](#-api-reference)
 - [FAQ](#-frequently-asked-questions)
 
@@ -24,7 +24,7 @@
 
 ## 🏗️ Architecture Overview
 
-BiamOS is an **AI-native workspace OS** built as an Electron desktop app. The frontend (React + Vite) communicates with a local backend (Hono HTTP server) over `localhost:3001`. All data is stored in a local SQLite database via Drizzle ORM — no cloud, no external databases.
+BiamOS is an **Autonomous AI Web Browser** built as an Electron desktop app. The frontend (React + Vite) communicates with a local backend (Hono HTTP server) over `localhost:3001`. All data is stored in a local SQLite database via Drizzle ORM — no cloud, no external databases.
 
 ### System Diagram
 
@@ -49,88 +49,52 @@ BiamOS is an **AI-native workspace OS** built as an Electron desktop app. The fr
 | **Electron 34** | Desktop shell, webview management, IPC, session persistence |
 | **React 19 + TypeScript** | Frontend UI with MUI components |
 | **Vite** | Fast dev server and production bundler |
-| **Hono** | Lightweight HTTP backend (replaces Express) |
+| **Hono** | Lightweight HTTP backend |
 | **Drizzle ORM** | Type-safe SQLite queries and schema management |
 | **SQLite (libSQL)** | Local-first database, zero configuration |
 | **OpenRouter / Ollama** | LLM provider for all AI agents |
 | **MiniLM / Gemini** | Embedding models for semantic matching |
 
-### Project Structure
-
-```
-packages/
-  ├── frontend/       React + Vite (port 5173)
-  │   └── src/
-  │       ├── components/   UI panels, blocks, dialogs
-  │       ├── hooks/        Reusable state hooks
-  │       ├── theme/        Design tokens (COLORS, GRADIENTS)
-  │       └── types/        TypeScript interfaces
-  ├── backend/        Hono API server (port 3001)
-  │   └── src/
-  │       ├── agents/       AI pipeline stages
-  │       ├── db/           Schema, bootstrap, migrations
-  │       ├── routes/       API endpoints (REST)
-  │       ├── services/     Business logic
-  │       └── prompts/      LLM system prompts
-  └── electron/       Electron main process + preload
-```
-
 ---
 
-## ⚡ Intent Pipeline — How Queries Work
+## ⚡ Agent Pipeline — How AI Browses
 
-When you type a query in BiamOS, it goes through a **multi-stage AI pipeline**. Each stage is handled by a specialized LLM agent. The pipeline transforms your natural language into a structured API call, then renders the result as a visual card layout.
+When you type a command starting with `/act` or a general statement, BiamOS routes it through a **Multi-Agent Pipeline**. Instead of translating commands into static REST APIs, the AI now physically controls a headless browser using native OS-level inputs.
 
 ### Pipeline Stages
 
 ```
-User Query → [1] Concierge → [2] Classifier → [3] Router → [4] Param Extractor
+User Query → [1] Semantic Router → [2] Domain Brain Retrieval → [3] WORMHOLE Executor
                                                                      ↓
-              UI ← [8] Renderer ← [7] Layout Architect ← [6] Guard ← [5] API Call
+                                   [6] The Librarian ← [5] Native OS Input ← [4] GhostCursor Sync
 ```
 
 | Stage | Agent | What It Does |
 |-------|-------|-------------|
-| **1. Concierge** | Cache | Checks if the query matches a known group embedding. If yes, skips classification. |
-| **2. Classifier** | LLM | Determines intent type: `API_CALL`, `WEB_SEARCH`, `NAVIGATE`, `OPEN_APP`, `GENERAL_KNOWLEDGE`. |
-| **3. Router** | LLM | Selects the best integration endpoint using semantic matching + LLM reasoning. |
-| **4. Param Extractor** | LLM | Extracts API parameters from the query (e.g., "weather in Berlin" → `city=Berlin`). |
-| **5. API Call** | Service | Executes the HTTP request with extracted params and auth config. |
-| **6. Guard** | Service | Validates the API response — retries on error or redirects if needed. |
-| **7. Layout Architect** | LLM | Generates a block-based layout (JSON) for displaying the response data. |
-| **8. UI Renderer** | React | Renders the layout as visual blocks (cards, charts, lists, etc.). |
+| **1. Semantic Router** | LLM | Determines the intent type: `RESEARCH`, `ACT`, `NAVIGATE`, or `GENERAL_KNOWLEDGE`. |
+| **2. Domain Brain Retrieval** | Service | Fetches specific rules, instructions, or selector hints from RAG memory for the current domain. |
+| **3. WORMHOLE Executor** | Service | Performs live 4D raycasting on the DOM to find coordinates of elements without relying on fragile CSS selectors. |
+| **4. GhostCursor Sync** | Service | Animates the visual cursor to match the physical raycast coordinates, simulating human trajectories (Bézier). |
+| **5. Native OS Input** | Service | Dispatches real OS-level mouse clicks and keyboard events through Electron. |
+| **6. The Librarian** | Service | Observes execution. If the agent fails or loops, it distills 'Avoid Rules' for future runs. |
 
 ### Key Concepts
 
-- **Embeddings:** Each integration gets a 768-dimensional vector (via Gemini) for fast semantic matching. The Concierge compares your query embedding against all group embeddings using cosine similarity.
-- **Agents vs. Services:** Agents are LLM-powered (they call an AI model). Services are deterministic code (embedding, caching, routing). Agents are configurable in the Agents panel.
+- **Muscle Memory:** Successful workflows (e.g., booking a flight) are saved locally as cached JSON step sequences. When asked again, BiamOS replays the cache instead of querying the LLM for planning.
 
 ---
 
-## 🌐 Copilot & AI Create
+## 🌐 Context Copilot
 
-BiamOS has two AI-powered creation tools: the **Context Copilot** (sidebar assistant) and the **AI Create / Builder** (auto-generates integrations from API docs).
+The **Context Copilot** is your persistent sidebar assistant. It actively observes your browser tabs and answers questions using live page data without requiring dedicated API integrations.
 
-### Context Copilot
-
-The Copilot sidebar analyzes the current webpage you're viewing inside the built-in browser. It extracts DOM content, detects the page context, and provides contextual AI insights.
+### How it Works
 
 | Step | What Happens |
 |------|-------------|
 | **1. DOM Extraction** | Strips scripts/styles, extracts meaningful text from the active webview |
 | **2. Context Analysis** | LLM identifies the page topic, key entities, and actionable data |
-| **3. Hint Generation** | Suggests relevant actions (e.g., "Check stock price" when on a finance page) |
-| **4. Chat Interface** | Users can ask follow-up questions — Copilot uses web search + page context |
-
-### AI Create (Builder Pipeline)
-
-The Builder takes an API documentation URL and auto-generates a full integration with endpoints, param schemas, and block layouts.
-
-| Step | Agent | What It Does |
-|------|-------|-------------|
-| **1. Blueprint Generator** | LLM | Reads API docs and creates a structured endpoint definition (name, method, params, triggers) |
-| **2. Docs Verifier** | LLM | Cross-checks the blueprint against the original docs — catches hallucinated endpoints |
-| **3. Save & Embed** | Service | Stores the integration in the DB and generates embeddings for semantic routing |
+| **3. Chat Interface** | You can ask follow-up questions — Copilot understands the context of the current active tab |
 
 ### LLM Provider Setup
 
@@ -143,42 +107,28 @@ Configure your API key in **Settings → LLM**.
 
 ---
 
-## 🔌 Integration Manager
+## 🧠 The Domain Brain
 
-Integrations connect BiamOS to external APIs. Each integration has one or more **endpoints** grouped under a common name. BiamOS routes queries to the best-matching endpoint using semantic similarity + LLM reasoning.
+The **Domain Brain** is the core memory system of BiamOS. Instead of brittle, hardcoded scripts for individual websites, the agent learns how to interact with DOM elements dynamically over time.
 
-### Integration Types
+### RAG Tier System
 
-| Type | Description |
+| Tier | Description |
 |------|-------------|
-| **API Integration** | REST API calls with auto-param extraction. Powers data cards. |
-| **Web Integration** | Iframe-based. Opens websites as tabs inside BiamOS. |
-| **Template** | Pre-built integrations from the Template Shop (Wikipedia, Pexels, etc.). |
-| **Custom** | User-created via AI Create or manual setup. |
+| **Tier 1: Global** | Rules applying to all websites (e.g., always accept cookie banners). |
+| **Tier 2: Domain** | Rules for specific domains (e.g., youtube.com). |
+| **Tier 3: Subdomain**| Rules for subdomains (e.g., studio.youtube.com). |
+| **Tier 4: Exact Path** | Rules for specific pages (e.g., /upload) using Regex matching. |
 
-### Key Database Fields
+### Knowledge Types
 
-| Field | Purpose |
-|-------|---------|
-| `group_name` | Groups multiple endpoints under one integration |
-| `human_triggers` | Keywords that help the Concierge match queries (e.g., "weather \| forecast \| temperature") |
-| `endpoint_tags` | LLM-optimized tags for endpoint selection within a group |
-| `api_config` | JSON auth config: API key, bearer token, OAuth setup |
-| `allowed_blocks` | Restricts which UI blocks the Layout Architect can use for this endpoint |
-| `health_status` | Health check result: `healthy`, `degraded`, `offline`, `unchecked` |
+- `user_instruction` — High-level intent ("On GitHub, always prefer dark mode").
+- `selector_rule` — Specific hints about the DOM ("The search bar is typically in div#search-container").
+- `avoid_rule` — Negative reinforcement automatically generated by The Librarian to stop infinite loops.
 
-### Health Checks
+### Learned Interface
 
-BiamOS can ping integration endpoints to verify they're reachable:
-- 🟢 **healthy** — responds within 3 seconds
-- 🟡 **degraded** — slow response (>3s)
-- 🔴 **offline** — 5xx error or timeout
-
-Results are stored in the `health_checks` table with full history.
-
-### Import / Export
-
-Integrations can be exported as `.biam` packages (JSON format) and shared with other BiamOS users. Import auto-creates all endpoints and config.
+You can manage, manually create, or delete RAG entries directly from the **Knowledge Base** panel in the UI. This allows you to explicitly train the agent on how to use internal company tools or complex web applications.
 
 ---
 
@@ -191,26 +141,19 @@ All backend routes are available at `http://localhost:3001/api/`.
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/health` | Server health check |
-| `GET` | `/api/integrations` | List all integrations |
-| `POST` | `/api/integrations` | Create new integration |
-| `PATCH` | `/api/integrations/:id` | Update integration |
-| `DELETE` | `/api/integrations/:id` | Delete integration |
-| `GET` | `/api/integrations/templates` | List available templates |
-| `POST` | `/api/integrations/install-template` | Install a template |
-| `POST` | `/api/integrations/install-web` | Install web integration from URL |
-| `GET` | `/api/integrations/health` | Run health check on all integrations |
-| `GET` | `/api/integrations/health/history` | Health check history |
-| `GET` | `/api/integrations/:id/export` | Export integration as .biam |
-| `POST` | `/api/integrations/import` | Import .biam package |
+| `GET` | `/api/agents` | List all pipeline agents |
+| `PUT` | `/api/agents/:name` | Update agent config (model, prompt, etc.) |
+| `GET` | `/api/changelog` | List changelog entries |
+| `GET` | `/api/pinned` | List pinned dashboard blocks |
 
 ### Intent & AI
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/intent` | Process a user query through the AI pipeline |
-| `POST` | `/api/builder/auto-create` | AI Create — generate integration from URL |
 | `POST` | `/api/context/analyze` | Copilot — analyze page DOM content |
 | `POST` | `/api/context/chat` | Copilot — chat with context |
+| `POST` | `/api/agents/act` | Agent — Webview action execution loop |
 
 ### System & Settings
 
@@ -219,10 +162,6 @@ All backend routes are available at `http://localhost:3001/api/`.
 | `GET` | `/api/system/provider` | Get current LLM provider info |
 | `PUT` | `/api/system/provider` | Update LLM provider + API key |
 | `GET` | `/api/system/stats` | Token usage statistics |
-| `GET` | `/api/agents` | List all pipeline agents |
-| `PUT` | `/api/agents/:name` | Update agent config (model, prompt, etc.) |
-| `GET` | `/api/changelog` | List changelog entries |
-| `GET` | `/api/pinned` | List pinned dashboard blocks |
 
 ---
 
@@ -231,58 +170,49 @@ All backend routes are available at `http://localhost:3001/api/`.
 <details>
 <summary><strong>Why do I need an API key?</strong></summary>
 
-BiamOS uses large language models (LLMs) to understand your queries, route them to the right API, and generate visual layouts. These models run in the cloud (OpenRouter) or locally (Ollama). You need an API key to authenticate with the cloud provider. Without it, all AI features are disabled.
+BiamOS uses large language models (LLMs) to understand your queries, route them to the right pipeline, and generate actions. These models run in the cloud (OpenRouter) or locally (Ollama). You need an API key to authenticate with the cloud provider. Without it, all AI features are disabled.
 </details>
 
 <details>
 <summary><strong>What is OpenRouter?</strong></summary>
 
-OpenRouter is an LLM gateway that gives you access to hundreds of AI models (GPT-4, Gemini, Claude, Llama, etc.) through a single API key. BiamOS uses it as the default provider because it offers the best model variety and reliability. Sign up at [openrouter.ai](https://openrouter.ai).
+OpenRouter is an LLM gateway that gives you access to hundreds of AI models (GPT-4, Gemini, Claude, Llama, etc.) through a single API key. BiamOS uses it as the default provider because it offers the best model variety and reliability.
 </details>
 
 <details>
 <summary><strong>Can I use BiamOS without internet?</strong></summary>
 
-Partially. If you use Ollama as your LLM provider, AI features work offline. However, API integrations (weather, stock data, etc.) require internet to reach the external APIs. Web integrations also need internet for iframe content.
+Partially. If you use Ollama as your LLM provider, AI features work offline. However, web browsing and copilot chat require internet access.
 </details>
 
 <details>
-<summary><strong>How do I add a custom integration?</strong></summary>
+<summary><strong>How do I teach the agent a new flow?</strong></summary>
 
-Three ways:
-1. **AI Create** — paste an API docs URL and the AI auto-generates endpoints.
-2. **Template Shop** — install pre-built integrations (Wikipedia, Pexels, etc.).
-3. **Manual setup** — click "New Integration" and fill in the endpoint details.
+You don't need to 'program' it. Just ask it to perform a task. If it struggles, instruct it carefully via the Copilot chat. When it succeeds, BiamOS automatically saves the workflow as 'Muscle Memory'. Alternatively, you can explicitly add rules in the Knowledge Base.
 </details>
 
 <details>
 <summary><strong>What happens when I click 'Delete All Data'?</strong></summary>
 
-It purges all user data: integrations, agents, pinned blocks, scraper endpoints, changelog entries, usage logs, and system settings. The database tables remain but are emptied. The page reloads to reset the UI. **This is irreversible!**
+It purges all user data: agent memory, learned rules, pinned blocks, changelog entries, and system settings. The database tables remain but are emptied. The page reloads to reset the UI. **This is irreversible!**
 </details>
 
 <details>
 <summary><strong>What are Blocks?</strong></summary>
 
-Blocks are the visual components that display API data — titles, charts, key-value pairs, image grids, lists, etc. The Layout Architect (an AI agent) selects which blocks to use based on the API response shape. You can restrict which blocks an integration uses via `allowed_blocks`.
+Blocks are our internal visual component design system — titles, charts, key-value pairs, image grids, lists, etc. The Layout Architect (an AI agent) selectively uses these components to build custom reports and dashboards dynamically.
 </details>
 
 <details>
-<summary><strong>How do embeddings work?</strong></summary>
+<summary><strong>How does semantic routing work?</strong></summary>
 
-BiamOS generates vector embeddings (768-dimensional arrays of numbers) for each integration group. When you type a query, it's also converted to an embedding, and cosine similarity determines which integration is the best match. This happens in the Concierge stage, before any LLM call — making routing extremely fast.
+BiamOS generates vector embeddings (768-dimensional arrays of numbers) for intents. When you type a query, it's also converted to an embedding. This enables the agent to pattern-match commands ('find John on LinkedIn' vs. 'open John Doe LI profile') without exact text matches.
 </details>
 
 <details>
 <summary><strong>Where is my data stored?</strong></summary>
 
-All data is stored locally in a SQLite database at `packages/backend/data/BiamOS.db`. Nothing is sent to external servers except API calls to your configured LLM provider and integration endpoints. Your data stays on your machine.
-</details>
-
-<details>
-<summary><strong>What AI models does BiamOS use?</strong></summary>
-
-By default: **Gemini 2.5 Flash Lite** for fast agents (classifier, param-extractor) and **Gemini 2.5 Flash** for thinking agents (router, layout-architect). You can change any agent's model in Settings → Agents. For embeddings, MiniLM (384-dim) and Gemini Embedding (768-dim) are used.
+All data is stored locally in a SQLite database at `packages/backend/data/BiamOS.db`. Nothing is sent to external servers except API calls to your configured LLM provider. Your data stays on your machine.
 </details>
 
 ---

@@ -9,7 +9,7 @@
 // by the Layout Architect, NOT repeated per template.
 // ============================================================
 
-import type { IntentType } from "../intent/2-classifier.js";
+import type { IntentType } from "../guards/data-guard.js";
 
 // ─── Types ──────────────────────────────────────────────────
 

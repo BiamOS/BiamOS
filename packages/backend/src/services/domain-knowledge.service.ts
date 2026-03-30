@@ -24,6 +24,9 @@ import {
 } from "./embedding.js";
 import { log } from "../utils/logger.js";
 
+// ─── Auto-Bootstrap Deduplication State ───────────────────────
+const inflightBootstraps = new Set<string>();
+
 // ─── Constants ───────────────────────────────────────────────
 
 /** Minimum cosine similarity to include a result (prevents noise) */
@@ -189,12 +192,34 @@ export async function retrieveKnowledge(
     const rootDomain = extractRootDomain(hostname);
 
     // Stage 1: Pull all candidate rows for this root domain (single SQL query)
+    // review_status filter: 'pending' and 'rejected' entries are NEVER injected.
     const candidates = await db.all<DomainKnowledgeEntry>(sql`
         SELECT *
         FROM domain_knowledge
         WHERE domain IN (${hostname}, ${rootDomain}, 'global')
           AND (expires_at IS NULL OR expires_at > ${now})
+          AND (review_status IS NULL OR review_status = 'active')
     `);
+
+
+    // D8: Domain Auto-Bootstrap Check (V4)
+    // If we've never seen this domain before, automatically extract its profile in the background
+    if (hostname !== 'global' && rootDomain !== 'global' && !inflightBootstraps.has(rootDomain)) {
+        const hasBaseRule = candidates.some(c => c.source === 'base_rule' || c.source === 'auto_bootstrap');
+        const hasCartridge = await import("../data/platform-cartridges.js").then(m => m.matchCartridge("", `https://${hostname}`));
+        
+        if (!hasBaseRule && !hasCartridge) {
+            inflightBootstraps.add(rootDomain);
+            import("./domain-bootstrap.service.js").then(({ bootstrapDomainPrompt }) => {
+                log.info(`  🌱 [DomainBrain] Auto-triggering background bootstrap for missing domain: ${rootDomain}`);
+                bootstrapDomainPrompt(rootDomain).catch(() => {})
+                  .finally(() => {
+                      // Keep it cached for 5 minutes so we don't spam the LLM
+                      setTimeout(() => inflightBootstraps.delete(rootDomain), 300000);
+                  });
+            }).catch(() => inflightBootstraps.delete(rootDomain));
+        }
+    }
 
     if (candidates.length === 0) return [];
 

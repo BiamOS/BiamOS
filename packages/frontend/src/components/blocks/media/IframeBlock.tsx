@@ -474,19 +474,17 @@ export const IframeBlock = React.memo(function IframeBlock({
                             {currentUrl === 'about:blank' && BiamOSEngineSkeleton}
                             <GhostCursor cursorPos={agent.agentState.cursorPos} />
 
-                            {/* ── Agent Input Shield ── */}
-                            {/* Blocks human scroll/click while agent is active, */}
-                            {/* but stays fully transparent so user can watch. */}
-                            {(agent.agentState.status === 'running' || agent.agentState.status === 'paused') && (
+                            {/* ── Agent Input Shield (running) ── */}
+                            {/* Blocks human scroll/click while agent is actively running. */}
+                            {/* NOT shown when paused — user must be able to interact (e.g. login). */}
+                            {agent.agentState.status === 'running' && (
                                 <Box
                                     sx={{
                                         position: 'absolute',
                                         inset: 0,
                                         zIndex: 9000,
-                                        // Block ALL pointer events from reaching the webview
                                         pointerEvents: 'all',
                                         cursor: 'not-allowed',
-                                        // Subtle visual cue — scanline + cyan vignette
                                         background: `
                                             linear-gradient(
                                                 to bottom,
@@ -496,15 +494,12 @@ export const IframeBlock = React.memo(function IframeBlock({
                                                 rgba(0, 229, 255, 0.03) 100%
                                             )
                                         `,
-                                        // Thin animated border to reinforce the "agent owns this" state
                                         outline: '2px solid rgba(0, 229, 255, 0.25)',
                                         outlineOffset: '-2px',
                                         transition: 'opacity 0.3s ease',
                                     }}
-                                    // Still allow right-click to be inspected if needed
                                     onContextMenu={(e) => e.preventDefault()}
                                 >
-                                    {/* Lock badge */}
                                     <Box sx={{
                                         position: 'absolute',
                                         top: 8,
@@ -525,7 +520,72 @@ export const IframeBlock = React.memo(function IframeBlock({
                                         userSelect: 'none',
                                         pointerEvents: 'none',
                                     }}>
-                                        🔒 {agent.agentState.status === 'paused' ? 'Waiting for you...' : 'Agent active'}
+                                        🤖 Agent active
+                                    </Box>
+                                </Box>
+                            )}
+
+                            {/* ── Manual Login Banner (paused) ── */}
+                            {/* Overlay is REMOVED when paused so user can freely click/type in the browser. */}
+                            {/* A slim amber banner at the top shows the pause question without blocking interaction. */}
+                            {agent.agentState.status === 'paused' && (
+                                <Box
+                                    sx={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        zIndex: 9000,
+                                        pointerEvents: 'none', // ← NEVER block the webview below
+                                        px: 1.5,
+                                        py: 0.75,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        bgcolor: 'rgba(20, 12, 0, 0.82)',
+                                        backdropFilter: 'blur(10px)',
+                                        borderBottom: '1px solid rgba(251, 191, 36, 0.45)',
+                                        boxShadow: '0 2px 16px rgba(251, 191, 36, 0.12)',
+                                    }}
+                                >
+                                    {/* Pulsing amber dot */}
+                                    <Box sx={{
+                                        width: 7,
+                                        height: 7,
+                                        borderRadius: '50%',
+                                        bgcolor: '#fbbf24',
+                                        flexShrink: 0,
+                                        boxShadow: '0 0 8px rgba(251,191,36,0.7)',
+                                        animation: 'pulseAmber 1.8s ease-in-out infinite',
+                                        '@keyframes pulseAmber': {
+                                            '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                                            '50%': { opacity: 0.4, transform: 'scale(0.75)' },
+                                        },
+                                    }} />
+                                    <Box sx={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        color: 'rgba(251, 191, 36, 0.95)',
+                                        letterSpacing: '0.02em',
+                                        userSelect: 'none',
+                                        flex: 1,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                    }}>
+                                        ⏸ Lura wartet — {agent.agentState.pauseQuestion
+                                            ? agent.agentState.pauseQuestion.length > 80
+                                                ? agent.agentState.pauseQuestion.slice(0, 80) + '…'
+                                                : agent.agentState.pauseQuestion
+                                            : 'Aktion im Chat bestätigen'}
+                                    </Box>
+                                    <Box sx={{
+                                        fontSize: '0.65rem',
+                                        color: 'rgba(251, 191, 36, 0.5)',
+                                        flexShrink: 0,
+                                        userSelect: 'none',
+                                    }}>
+                                        Browser entsperrt ↓
                                     </Box>
                                 </Box>
                             )}

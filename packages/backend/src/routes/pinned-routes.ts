@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { db } from "../db/db.js";
 import { pinnedIntents } from "../db/schema.js";
-import { processSingleIntent } from "../services/intent-pipeline.js";
+
 import { log } from "../utils/logger.js";
 
 const pinnedRoutes = new Hono();
@@ -64,13 +64,7 @@ pinnedRoutes.post("/", async (c) => {
     let lastData: string | null = null;
     let lastLayout: string | null = null;
     if (pinType === "intent" && body.query) {
-        try {
-            const result = await processSingleIntent(body.query.trim());
-            lastData = JSON.stringify(result);
-            lastLayout = result.layout ? JSON.stringify(result.layout) : null;
-        } catch (err) {
-            log.warn("[Pinned] Initial fetch failed for:", body.query, err);
-        }
+        log.warn("[Pinned] Initial fetch skipped: classic API intents are deprecated.");
     }
 
     const [inserted] = await db.insert(pinnedIntents).values({
@@ -218,20 +212,10 @@ pinnedRoutes.post("/refresh-stale", async (c) => {
 async function refreshPin(pin: typeof pinnedIntents.$inferSelect) {
     // Skip refresh for webview pins — they don't need API data
     if (pin.pin_type === "webview") return false;
-    try {
-        log.debug(`[Pinned] Refreshing pin #${pin.id} ("${pin.query}")...`);
-        const result = await processSingleIntent(pin.query);
-        await db.update(pinnedIntents).set({
-            last_data: JSON.stringify(result),
-            last_layout: (result as any).layout ? JSON.stringify((result as any).layout) : pin.last_layout,
-            last_refreshed: new Date().toISOString(),
-        }).where(eq(pinnedIntents.id, pin.id));
-        log.debug(`[Pinned] ✅ Pin #${pin.id} refreshed successfully`);
-        return true;
-    } catch (err) {
-        log.warn(`[Pinned] ❌ Refresh failed for pin #${pin.id} ("${pin.query}"):`, err);
-        return false;
-    }
+    // API intents reflect the legacy V1 system running via /api/intent
+    // Because the old intent pipeline has been deleted in Phase 5, classic API 
+    // intents cannot be refreshed anymore. 
+    return false;
 }
 
 export async function refreshAllPins() {

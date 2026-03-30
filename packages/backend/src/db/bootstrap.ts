@@ -383,6 +383,28 @@ export async function bootstrapDatabase(): Promise<void> {
                 { type: "improvement", text: "Universal Typing (V5): Replaced brittle React input event forcing with comprehensive 3-tier browser native Input.insertText + KeyEvents + fallback strategy." },
             ]),
         },
+        {
+            version: "5.2.0",
+            date: "2026-03-27",
+            entries: JSON.stringify([
+                { type: "improvement", text: "Phase 4 Cleanup: Removed legacy REST API-Creation and Integration Builder tools to fully pivot BiamOS towards the Autonomous Agentic Web Browser paradigm." },
+                { type: "improvement", text: "UI Blocks Repurposed: Visual UI blocks are now exclusively used by the Layout Architect for internal Dashboard and UI generation, rather than rendering complex external JSON APIs." },
+                { type: "improvement", text: "Documentation Rewrite: In-app docs and README updated to reflect the new Domain Brain and Multi-Agent Pipeline architecture." },
+            ]),
+        },
+        {
+            version: "5.3.0",
+            date: "2026-03-30",
+            entries: JSON.stringify([
+                { type: "fix", text: "CRITICAL: waitForPageReady hung indefinitely on YouTube and other busy SPAs (ads, autoplay, live counters kept resetting MutationObserver). Added Promise.race hard-cap — each step now completes in 1–3s instead of 30–60s." },
+                { type: "feature", text: "Auto-Terminate Engine: Agent now detects task completion directly from URL patterns (YouTube lc= anchor = comment posted, Gmail #sent = email sent) and stops immediately — no LLM call needed, Muscle Memory cannot override." },
+                { type: "fix", text: "ALREADY THERE false-positive: Submit buttons no longer trigger the navigation-loop guard on first click. The [ALREADY THERE] signal now only fires on the 2nd+ consecutive click of the same element ID." },
+                { type: "fix", text: "type_text repeat loop: LLM no longer types the same text into the same field twice. Fingerprint threshold for type_text lowered to 1 — second attempt triggers recovery instead of repeating." },
+                { type: "improvement", text: "Per-action fingerprint thresholds: search_web=1 (immediate recovery), type_text=1, navigate=2 (redirect retry allowed), click=3 (standard). Prevents action-specific infinite loops." },
+                { type: "improvement", text: "type_text completion message now correctly instructs the LLM to click the submit button before calling done() — prevents premature done() calls on comment boxes and forms." },
+                { type: "improvement", text: "Adaptive post-action wait: navigate≤3s, click≤0.9s, type≤0.6s, scroll≤0.45s. Previously all actions waited up to 2.5s regardless of type." },
+            ]),
+        },
     ];
 
     for (const entry of SEED_CHANGELOG) {
@@ -487,6 +509,10 @@ export async function bootstrapDatabase(): Promise<void> {
     try { await db.run(sql.raw(`ALTER TABLE domain_knowledge ADD COLUMN path_pattern TEXT`)); } catch { }
     try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN subdomain TEXT`)); } catch { }
     try { await db.run(sql.raw(`ALTER TABLE agent_workflows ADD COLUMN path_pattern TEXT`)); } catch { }
+
+    // ─── V5: Auto-Learn Review Status ───────────────────────────
+    try { await db.run(sql.raw(`ALTER TABLE domain_knowledge ADD COLUMN review_status TEXT NOT NULL DEFAULT 'active'`)); } catch { }
+
 
     // ─── V4: Drop source CHECK constraint migration ──────────
     // SQLite can't ALTER a CHECK constraint — must recreate the table.

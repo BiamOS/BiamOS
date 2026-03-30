@@ -25,6 +25,12 @@ export interface WorkflowMatch {
     success_count: number;
 }
 
+export interface WorkflowSaveResult {
+    workflow_id: number;
+    success_count: number;
+    just_compiled: boolean; // true when this save triggered auto-verification (count reached 3)
+}
+
 // ─── Intent Hashing ─────────────────────────────────────────
 // Normalize a task into a stable hash for deduplication.
 // Strips filler words, lowercases, sorts keywords.
@@ -104,17 +110,28 @@ export async function saveWorkflowTrace(
         .limit(1);
 
     if (existing.length > 0) {
-        // Update: increment success count, update steps
+        const newCount = existing[0].success_count + 1;
+        // ── Auto-Verify Gate (Phase 3A): 3 Assertion-verified successes → compiled ──
+        // The Assertion Engine already verified each done() call deterministically.
+        // 3 verified successes = this workflow is reliable enough to run without LLM.
+        const autoVerify = newCount >= 3;
+
         await db
             .update(agentWorkflows)
             .set({
                 steps_json: JSON.stringify(cleanSteps),
-                success_count: existing[0].success_count + 1,
+                success_count: newCount,
+                verified: (autoVerify || !!existing[0].verified) as any,
                 updated_at: now,
             })
             .where(eq(agentWorkflows.id, existing[0].id));
 
-        log.debug(`  🧠 Memory: updated workflow #${existing[0].id} (${domain} / ${hash}) — ${existing[0].success_count + 1} successes`);
+        if (autoVerify && !existing[0].verified) {
+            log.info(`  🧠 [NeuroSymbolic] Workflow #${existing[0].id} AUTO-COMPILED after ${newCount} verified runs (${domain})`);
+        } else {
+            log.debug(`  🧠 Memory: updated workflow #${existing[0].id} (${domain} / ${hash}) — ${newCount} successes`);
+        }
+
         return existing[0].id;
     }
 

@@ -13,7 +13,11 @@ import { MODEL_FAST } from "../config/models.js";
 import { logTokenUsage } from "../server-utils.js";
 import { safeParseJSON } from "../utils/safe-json.js";
 import { log } from "../utils/logger.js";
-import type { IntentMode, CrudMethod } from "./classify-routes.js";
+
+// ─── Types (inlined from deleted classify-routes) ────────────
+export type IntentMode = "ACTION" | "ACTION_WITH_CONTEXT" | "CONTEXT_QUESTION" | "RESEARCH" | "GENERAL" | "CHAT";
+export type CrudMethod = "GET" | "POST" | "PUT" | "DELETE";
+
 import { getIntegrationForQuery } from "../services/integration-context.js";
 import { matchCartridge } from "../data/platform-cartridges.js";
 import { lookupWorkflow, extractDomain } from "../services/agent-memory.js";
@@ -72,6 +76,12 @@ Mode rules (the intent block will guide you):
 
 CRITICAL SPLITTING RULES:
 1. SEQUENTIAL BROWSER ACTIONS = ONE TASK: If tasks are step-by-step actions on the SAME platform/site, they MUST be a single task (not split). Splitting sequential browser tasks causes broken parallel execution.
+4. RESEARCH + DASHBOARD = ONE TASK: If user asks to "research X and create dashboard", NEVER split. The dashboard IS the output of research -- splitting leaves it without data.
+   WRONG: ["recherchiere AI News", "erstelle mir ein Dashboard"]
+   RIGHT: ["recherchiere die neuesten AI News und erstelle mir ein Dashboard"]
+5. OPEN URL = ACTION (GET), NOT RESEARCH: "oeffne todoist.com", "open youtube.com" must be mode=ACTION method=GET. Agent navigates directly. NEVER classify URL-open tasks as RESEARCH mode.
+   WRONG: mode=RESEARCH for "open todoist.com" (agent falls back to search_web loops)
+   RIGHT: mode=ACTION, method=GET (agent calls navigate directly)
    ❌ BAD: ["navigate to x.com", "find mr beast post"] — these run in parallel, breaking the flow
    ✅ GOOD: ["navigate to x.com and find mr beast's latest post"] — one task, one browser session
 2. SPLIT ONLY for TRULY INDEPENDENT tasks on DIFFERENT platforms (e.g. "check Gmail AND post on Twitter").
@@ -346,15 +356,15 @@ universalRouter.post("/", async (c) => {
             ];
 
             const ragDomain: string | null = (() => {
-                // Path A: webview open
-                if (hasWebview && currentUrl) return extractDomain(currentUrl);
-                // Path B: extract from query text
+                // PATH B FIRST: Query intent wins over current URL.
+                // 'open youtube...' while on google.com = YOUTUBE knowledge injected.
                 for (const [re, domain] of DOMAIN_HINTS) {
                     if (re.test(query)) return domain;
                 }
+                // PATH A FALLBACK: No target in query -> use current webview domain.
+                if (hasWebview && currentUrl) return extractDomain(currentUrl);
                 return null;
             })();
-
             if (ragDomain) {
                 try {
                     const ragChunks = await retrieveKnowledge(ragDomain, query);
@@ -376,39 +386,44 @@ universalRouter.post("/", async (c) => {
 
             // ── CONSOLIDATION GUARD: Merge same-domain sequential tasks ──────
             // The LLM sometimes splits a compound sequential task into many sub-tasks.
-            // If we have >1 ACTION tasks and they all target the same domain, they MUST
-            // be a single sequential agent — not parallel agents that race and conflict.
-            // We restore the original user query as the single merged task.
+            // ONLY merge if ALL action tasks target the EXACT SAME single domain.
+            // NEVER merge when tasks span multiple different domains — that would
+            // confuse the agent into trying to do everything on one page.
             const actionTasks = fullyHydratedTasks.filter((t: any) => t.mode === 'ACTION' || t.mode === 'ACTION_WITH_CONTEXT');
             if (actionTasks.length > 1) {
-                // Detect if all action tasks reference the same domain/platform
-                const taskTexts = actionTasks.map((t: any) => t.task.toLowerCase()).join(' ');
+                // Extract unique site mentions from EACH task individually
+                const SITE_PATTERN = /\b(todoist|gmail|twitter|x\.com|youtube|linkedin|github|notion|slack|trello|asana|jira|shopify|figma|n8n|airtable|google|amazon|instagram|facebook|reddit|discord|whatsapp|telegram|spotify|netflix|shrib|wikipedia|stackoverflow)\b/gi;
                 
-                // Extract site mentions from all task texts
-                const siteMatches = taskTexts.match(/\b(todoist|gmail|twitter|x\.com|youtube|linkedin|github|notion|slack|trello|asana|jira|shopify|figma|n8n|airtable|google|amazon|instagram|facebook|reddit|discord|whatsapp|telegram|spotify|netflix|shrib|wikipedia|stackoverflow)\b/gi) ?? [];
+                const taskTexts = actionTasks.map((t: any) => t.task.toLowerCase()).join(' ');
+                const siteMatches = taskTexts.match(SITE_PATTERN) ?? [];
                 const uniqueSites = new Set(siteMatches.map((s: string) => s.toLowerCase()));
 
-                if (uniqueSites.size <= 1 || actionTasks.length >= 3) {
-                    // Same-domain sequential tasks OR 3+ tasks (almost certainly a sequence)
-                    // Collapse ALL action tasks into ONE using the original user query
+                // ✅ FIXED: Only merge if there is AT MOST 1 unique site across all tasks
+                // (meaning they all target the same domain OR mention no specific site)
+                // If 2+ unique sites are found → tasks target different domains → do NOT merge
+                if (uniqueSites.size <= 1) {
+                    // Same-domain sequential tasks only — collapse into one
                     const mergedMethod = actionTasks.some((t: any) => ['POST', 'PUT', 'DELETE'].includes(t.method)) ? 'POST' : 'GET';
                     const mergedTools = CRUD_TOOL_MAP[mergedMethod as CrudMethod];
                     const nonActionTasks = fullyHydratedTasks.filter((t: any) => t.mode !== 'ACTION' && t.mode !== 'ACTION_WITH_CONTEXT');
                     
                     const mergedTask = {
-                        task: query, // Use original full user query — it's already self-contained
+                        task: query, // Use original full user query
                         mode: 'ACTION' as IntentMode,
                         method: mergedMethod as CrudMethod,
                         allowed_tools: mergedTools.allowed,
                         forbidden: mergedTools.forbidden,
                     };
                     
-                    log.info(`  🧭 [CONSOLIDATION] Merged ${actionTasks.length} fragmented ACTION tasks → 1 task (sites: ${[...uniqueSites].join(', ') || 'same'}) for: "${query.substring(0, 50)}"`);
+                    log.info(`  🧭 [CONSOLIDATION] Merged ${actionTasks.length} same-domain tasks → 1 (site: ${[...uniqueSites][0] ?? 'unspecified'}) for: "${query.substring(0, 50)}"`);
                     
-                    // Return: any non-action tasks (RESEARCH etc.) + 1 merged action
                     const finalTasks = [...nonActionTasks, mergedTask];
                     return c.json(finalTasks);
+                } else {
+                    // Multi-domain tasks: keep them separate so each agent handles its own domain
+                    log.info(`  🧭 [CONSOLIDATION] Skipped — ${uniqueSites.size} different domains detected (${[...uniqueSites].join(', ')}). Keeping ${actionTasks.length} separate tasks.`);
                 }
+
             }
             // ── END CONSOLIDATION GUARD ──────────────────────────────────────
 

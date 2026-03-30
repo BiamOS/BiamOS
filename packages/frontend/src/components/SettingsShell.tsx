@@ -12,7 +12,6 @@ import { Box, Typography, List, ListItemButton, ListItemIcon, ListItemText } fro
 import { Settings as GeneralIcon, Extension as StoreIcon, Widgets as BlocksIcon, SmartToy as AgentsIcon, Psychology as LLMIcon, HistoryEdu as ChangelogIcon, MenuBook as DocsIcon, AutoAwesome as KnowledgeIcon } from "@mui/icons-material";
 import { COLORS, accentAlpha } from "./ui/SharedUI";
 import { GeneralSettings } from "./GeneralSettings";
-import { IntegrationStore } from "./IntegrationStore";
 import { BlockManager } from "./BlockManager";
 import { AgentPanel } from "./AgentPanel";
 import { LLMSettings } from "./LLMSettings";
@@ -25,13 +24,12 @@ import KnowledgeBaseHub from "./KnowledgeBaseHub";
 // Types
 // ============================================================
 
-type Panel = "general" | "llm" | "integrations" | "blocks" | "agents" | "knowledge" | "changelog" | "docs";
+type Panel = "general" | "llm" | "blocks" | "agents" | "knowledge" | "changelog" | "docs";
 
 const NAV_ITEMS: { key: Panel; label: string; icon: React.ReactNode }[] = [
     { key: "general", label: "General", icon: <GeneralIcon /> },
     { key: "llm", label: "LLM", icon: <LLMIcon /> },
     { key: "agents", label: "Agents", icon: <AgentsIcon /> },
-    { key: "integrations", label: "Integrations", icon: <StoreIcon /> },
     { key: "blocks", label: "Blocks", icon: <BlocksIcon /> },
     { key: "knowledge", label: "Knowledge Base", icon: <KnowledgeIcon /> },
     { key: "changelog", label: "Changelog", icon: <ChangelogIcon /> },
@@ -159,10 +157,14 @@ export const SettingsShell = React.memo(function SettingsShell({ initialPanel = 
 
             {/* ─── Content Panel ─── */}
             {/* Knowledge Base Hub needs full height without padding for its sidebar layout */}
-            <Box sx={{ flex: 1, overflow: "hidden", ...(activePanel !== "knowledge" ? { p: 3 } : {}) }}>
+            <Box sx={{ 
+                flex: 1, 
+                overflowX: "hidden",
+                overflowY: activePanel === "knowledge" ? "hidden" : "auto", 
+                ...(activePanel !== "knowledge" ? { p: 3 } : {}) 
+            }}>
                 {activePanel === "general"     && <ErrorBoundary label="General"><GeneralSettings /></ErrorBoundary>}
                 {activePanel === "llm"         && <ErrorBoundary label="LLM"><LLMSettings /></ErrorBoundary>}
-                {activePanel === "integrations" && <ErrorBoundary label="Integrations"><IntegrationStore /></ErrorBoundary>}
                 {activePanel === "blocks"      && <ErrorBoundary label="Blocks"><BlockManager /></ErrorBoundary>}
                 {activePanel === "agents"      && <ErrorBoundary label="Agents"><AgentPanel /></ErrorBoundary>}
                 {activePanel === "knowledge"   && <ErrorBoundary label="Knowledge"><KnowledgeBaseHub /></ErrorBoundary>}

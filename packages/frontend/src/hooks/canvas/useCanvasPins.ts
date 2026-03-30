@@ -154,50 +154,6 @@ export function useCanvasPins(
                             };
                             card.tabs = [originalTab];
                             card.activeTabIndex = 0;
-
-                            const totalToRestore = p.related_queries.length;
-                            let restored = 0;
-                            const savedActiveIdx = getSavedActiveTabs()[`pin-${p.id}`] ?? 0;
-                            for (const rq of p.related_queries) {
-                                fetch("http://localhost:3001/api/intent", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ text: rq }),
-                                })
-                                    .then(r => r.json())
-                                    .then(result => {
-                                        let payload = result;
-                                        if (result.action === "multi_result" && Array.isArray(result.results) && result.results.length > 0) {
-                                            payload = result.results[0];
-                                        }
-                                        if (payload.action !== "render_layout") {
-                                            debug.warn(`📌 [Tab Restore] Skipping "${rq}" — action=${payload.action}`);
-                                            return;
-                                        }
-                                        debug.log(`📌 [Tab Restore] Adding tab "${rq}" to pin ${card._id}`);
-                                        const tabPayload = {
-                                            ...payload,
-                                            _query: rq,
-                                        } as BiamPayload;
-                                        const tabId = `tab-rq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-                                        safeSetItems(prev => prev.map(item => {
-                                            if (item._id !== card._id) return item;
-                                            const tabs = item.tabs || [originalTab];
-                                            const newTabs = [...tabs, { id: tabId, label: rq, payload: tabPayload }];
-                                            restored++;
-                                            if (restored >= totalToRestore && savedActiveIdx > 0 && savedActiveIdx < newTabs.length) {
-                                                return {
-                                                    ...item,
-                                                    tabs: newTabs,
-                                                    activeTabIndex: savedActiveIdx,
-                                                    payload: newTabs[savedActiveIdx].payload,
-                                                };
-                                            }
-                                            return { ...item, tabs: newTabs };
-                                        }));
-                                    })
-                                    .catch(err => { debug.warn(`📌 [Tab Restore] Failed for "${rq}":`, err); });
-                            }
                         }
 
                         return card;

@@ -21,6 +21,7 @@ export interface AgentStep {
     result?: string;
     screenshot?: string;
     didNavigate?: boolean; // true when click caused URL change — resets scroll counter
+    _args?: Record<string, any>; // BUG-1: original action args preserved for fingerprint guard
 }
 
 export type AgentStatus = "idle" | "running" | "paused" | "done" | "error";

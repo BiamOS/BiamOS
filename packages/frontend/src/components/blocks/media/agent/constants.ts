@@ -120,7 +120,25 @@ export const DOM_SNAPSHOT_SCRIPT = `
                 // Only use id-based selectors for CLEAN ids (no colons, dots)
                 elSel = '#' + el.id;
             }
-            // No fallback — elements without unique attributes use coordinate targeting
+                // No fallback — elements without unique attributes use coordinate targeting
+            
+            // ── Phase 1B: Raycast Occlusion Filter ──────────────────────────────
+            // Cast a virtual ray at the element's center point.
+            // If the element at that pixel is NOT this element (or its descendant),
+            // it means an overlay/modal/datepicker is blocking it.
+            // The LLM should never see — or try to click — an occluded element.
+            // Exception: dialog/modal elements themselves are top-layer by definition.
+            var isDialog = el.closest('[role="dialog"],[role="alertdialog"],.modal,.dialog,dialog') !== null;
+            if (!isDialog) {
+                var topEl = document.elementFromPoint(cx, cy);
+                if (topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el)) {
+                    // Element is occluded — skip it entirely
+                    usedIds[somId] = false; // free the ID slot back
+                    delete usedIds[somId];
+                    continue;
+                }
+            }
+            // ── End Occlusion Filter ─────────────────────────────────────────────
             
             somMap[somId] = { x: cx, y: cy, w: Math.round(rect.width), h: Math.round(rect.height), sel: elSel };
             

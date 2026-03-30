@@ -36,12 +36,10 @@ import {
 } from "@mui/material";
 import {
     Refresh as RefreshIcon,
-    Add as AddIcon,
     KeyboardArrowDown as ExpandIcon,
     KeyboardArrowUp as CollapseIcon,
     FolderOpen as GroupIcon,
 } from "@mui/icons-material";
-import { IntegrationBuilder } from "./IntegrationBuilder";
 import { CapsuleRow } from "./IntegrationRow";
 
 // ============================================================
@@ -145,9 +143,7 @@ export function IntegrationManager() {
     const [snackbar, setSnackbar] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [expandedId, setExpandedId] = useState<number | null>(null);
-    const [showBuilder, setShowBuilder] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [advancedMode, setAdvancedMode] = useState(false);
 
     const { groups, ungrouped } = useMemo(() => groupIntegrations(integrations), [integrations]);
 
@@ -267,13 +263,6 @@ export function IntegrationManager() {
 
     useEffect(() => {
         fetchIntegrations();
-        // Check if Advanced Mode is enabled
-        fetch("/api/system/settings")
-            .then(r => r.json())
-            .then(json => {
-                if (json.settings?.advanced_mode === "true") setAdvancedMode(true);
-            })
-            .catch(() => {});
     }, [fetchIntegrations]);
 
     return (
@@ -329,39 +318,6 @@ export function IntegrationManager() {
                         </Box>
 
                         <Box sx={{ display: "flex", gap: 1 }}>
-                            {advancedMode && (
-                                <Button
-                                    variant={showBuilder ? "outlined" : "contained"}
-                                    startIcon={<AddIcon />}
-                                    onClick={() => setShowBuilder(!showBuilder)}
-                                    size="small"
-                                    sx={{
-                                        borderRadius: 2,
-                                        textTransform: "none",
-                                        fontWeight: 700,
-                                        fontSize: "0.8rem",
-                                        px: 2,
-                                        ...(showBuilder
-                                            ? {
-                                                borderColor: accentAlpha(0.4),
-                                                color: COLORS.accent,
-                                                "&:hover": {
-                                                    borderColor: accentAlpha(0.7),
-                                                    bgcolor: accentAlpha(0.05),
-                                                },
-                                            }
-                                            : {
-                                                background: `linear-gradient(135deg, ${COLORS.accentLight} 0%, ${COLORS.accent} 100%)`,
-                                                "&:hover": {
-                                                    background: `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`,
-                                                },
-                                            }),
-                                    }}
-                                >
-                                    {showBuilder ? "Close" : "New Integration"}
-                                </Button>
-                            )}
-
                             <Tooltip title="Refresh">
                                 <IconButton
                                     onClick={fetchIntegrations}
@@ -530,23 +486,8 @@ export function IntegrationManager() {
                         <EmptyState
                             icon="📦"
                             title="No integrations registered"
-                            subtitle="Start with a new integration!"
+                            subtitle="No current integrations found."
                         />
-                    )}
-
-                    {/* Inline Builder (Advanced Mode only) */}
-                    {advancedMode && (
-                        <Collapse in={showBuilder} timeout={400}>
-                            <Divider
-                                sx={{ my: 3, borderColor: "rgba(255, 255, 255, 0.06)" }}
-                            />
-                            <IntegrationBuilder
-                                onClose={() => {
-                                    setShowBuilder(false);
-                                    fetchIntegrations();
-                                }}
-                            />
-                        </Collapse>
                     )}
                 </CardContent>
             </Card>

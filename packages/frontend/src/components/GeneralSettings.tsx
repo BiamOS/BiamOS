@@ -23,7 +23,6 @@ import {
     Switch,
 } from "@mui/material";
 import {
-    Language as LanguageIcon,
     Key as KeyIcon,
     Shield as ShieldIcon,
     DeleteForever as DeleteIcon,
@@ -35,8 +34,6 @@ import {
     Storage as StorageIcon,
     QueryStats as StatsIcon,
     Extension as IntegIcon,
-    TravelExplore as WebSearchIcon,
-    Science as AdvancedIcon,
 } from "@mui/icons-material";
 import {
     GradientButton,
@@ -51,8 +48,6 @@ import {
     accentAlpha,
     LoadingSpinner,
 } from "./ui/SharedUI";
-import { useLanguage } from "../hooks/useLanguage";
-import { LANGUAGES, type SupportedLanguage } from "../i18n";
 import type { AuditData } from "../types/settings";
 
 // ============================================================
@@ -60,29 +55,15 @@ import type { AuditData } from "../types/settings";
 // ============================================================
 
 export const GeneralSettings = React.memo(function GeneralSettings() {
-    const { language, setLanguage, tr } = useLanguage();
     const [loading, setLoading] = useState(true);
     const [auditData, setAuditData] = useState<AuditData | null>(null);
     const [auditOpen, setAuditOpen] = useState(false);
     const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
     const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-    const [webSearchEnabled, setWebSearchEnabled] = useState(true);
-    const [advancedMode, setAdvancedMode] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
         try { await fetch("/api/system/stats"); } catch (err) { console.warn("[GeneralSettings] stats prefetch failed:", err); }
-        // Load web search fallback setting
-        try {
-            const res = await fetch("/api/system/settings");
-            const json = await res.json();
-            if (json.settings?.web_search_fallback !== undefined) {
-                setWebSearchEnabled(json.settings.web_search_fallback !== "false");
-            }
-            if (json.settings?.advanced_mode !== undefined) {
-                setAdvancedMode(json.settings.advanced_mode === "true");
-            }
-        } catch (err) { console.warn("[GeneralSettings] settings load failed:", err); }
         setLoading(false);
     }, []);
 
@@ -99,128 +80,8 @@ export const GeneralSettings = React.memo(function GeneralSettings() {
                 ⚙️ General
             </Typography>
             <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: "block", mb: 2.5 }}>
-                Language preferences and data management
+                Manage your system data and privacy configurations.
             </Typography>
-
-            {/* ═══ Language ═══ */}
-            <Box sx={panelSx}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
-                    <LanguageIcon sx={{ color: accentAlpha(0.7), fontSize: 20 }} />
-                    <Typography sx={{ ...sectionLabelSx, mb: 0 }}>{tr.language}</Typography>
-                </Box>
-
-                <FormControl fullWidth size="small">
-                    <Select
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
-                        sx={{
-                            bgcolor: COLORS.surfaceDark,
-                            color: COLORS.textPrimary,
-                            borderRadius: 2,
-                            "& .MuiOutlinedInput-notchedOutline": { borderColor: COLORS.border },
-                            "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: accentAlpha(0.4) },
-                            "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: accentAlpha(0.7) },
-                        }}
-                        MenuProps={{
-                            PaperProps: {
-                                sx: { bgcolor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 2 },
-                            },
-                        }}
-                    >
-                        {LANGUAGES.map((lang) => (
-                            <MenuItem key={lang.code} value={lang.code}
-                                sx={{ color: COLORS.textPrimary, "&:hover": { bgcolor: accentAlpha(0.08) }, "&.Mui-selected": { bgcolor: accentAlpha(0.12) } }}>
-                                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                                    <Typography sx={{ fontSize: "1.2rem" }}>{lang.flag}</Typography>
-                                    <Typography sx={{ fontWeight: 500 }}>{lang.label}</Typography>
-                                </Box>
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-
-                <Typography variant="caption" sx={{ color: COLORS.textMuted, mt: 1, display: "block" }}>
-                    {language === "en" ? "This affects the UI language and AI-generated content."
-                        : language === "de" ? "Dies betrifft die UI-Sprache und KI-generierte Inhalte."
-                            : language === "es" ? "Esto afecta el idioma de la interfaz y el contenido generado por IA."
-                                : language === "fr" ? "Ceci affecte la langue de l'interface et le contenu généré par l'IA."
-                                    : "これはUIの言語とAI生成コンテンツに影響します。"}
-                </Typography>
-            </Box>
-
-            {/* ═══ Web Search Fallback ═══ */}
-            <Box sx={{ ...panelSx, mt: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <WebSearchIcon sx={{ color: accentAlpha(0.7), fontSize: 20 }} />
-                        <Box>
-                            <Typography sx={{ ...sectionLabelSx, mb: 0 }}>Web Search Fallback</Typography>
-                            <Typography variant="caption" sx={{ color: COLORS.textMuted, display: "block" }}>
-                                When no integration matches, open a Google search
-                            </Typography>
-                        </Box>
-                    </Box>
-                    <Switch
-                        checked={webSearchEnabled}
-                        onChange={async (e) => {
-                            const newVal = e.target.checked;
-                            setWebSearchEnabled(newVal);
-                            try {
-                                await fetch("/api/system/settings", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ key: "web_search_fallback", value: String(newVal) }),
-                                });
-                            } catch { setWebSearchEnabled(!newVal); }
-                        }}
-                        sx={{
-                            "& .MuiSwitch-switchBase.Mui-checked": { color: accentAlpha(1) },
-                            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { bgcolor: accentAlpha(0.5) },
-                        }}
-                    />
-                </Box>
-            </Box>
-
-            {/* ═══ Advanced Mode ═══ */}
-            <Box sx={{ ...panelSx, mt: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <AdvancedIcon sx={{ color: accentAlpha(0.7), fontSize: 20 }} />
-                        <Box>
-                            <Typography sx={{ ...sectionLabelSx, mb: 0 }}>Advanced Mode</Typography>
-                            <Typography variant="caption" sx={{ color: COLORS.textMuted, display: "block" }}>
-                                Show Integration Builder for creating custom API integrations
-                            </Typography>
-                        </Box>
-                    </Box>
-                    <Switch
-                        checked={advancedMode}
-                        onChange={async (e) => {
-                            const newVal = e.target.checked;
-                            setAdvancedMode(newVal);
-                            try {
-                                await fetch("/api/system/settings", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ key: "advanced_mode", value: String(newVal) }),
-                                });
-                            } catch { setAdvancedMode(!newVal); }
-                        }}
-                        sx={{
-                            "& .MuiSwitch-switchBase.Mui-checked": { color: accentAlpha(1) },
-                            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { bgcolor: accentAlpha(0.5) },
-                        }}
-                    />
-                </Box>
-            </Box>
-
-            {/* Hint: API Key in LLM tab */}
-            <Box sx={{ ...rowSx, mt: 2, mb: 3, gap: 1.5 }}>
-                <KeyIcon sx={{ color: accentAlpha(0.6), fontSize: 18 }} />
-                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    API Key and LLM Provider settings can be found in the <strong>LLM</strong> tab.
-                </Typography>
-            </Box>
 
             {/* ═══ Data & Privacy ═══ */}
             <Typography variant="h5" sx={{ ...gradientTitleSx(), mb: 0.5, background: "linear-gradient(135deg, #EF4444 0%, #F97316 100%)" }}>

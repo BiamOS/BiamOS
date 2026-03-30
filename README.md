@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/BiamOS-v5.1.0-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
+  <img src="https://img.shields.io/badge/BiamOS-v2.3.1--alpha-blueviolet?style=for-the-badge&logo=windows&logoColor=white" alt="version"/>
   <img src="https://img.shields.io/badge/Electron_34-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="electron"/>
   <img src="https://img.shields.io/badge/React_19-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="react"/>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="license"/>
 </p>
 
-<h1 align="center">🧬 BiamOS V5</h1>
+<h1 align="center">🧬 BiamOS v2.3.1-alpha</h1>
 
 <h3 align="center">
   <em>The Autonomous AI Web Browser</em><br/>
@@ -98,7 +98,7 @@ The next time you ask for a similar task, the system recognizes the intent via o
 │  │  Spatial Canvas       │◄──►│  WORMHOLE Engine (CDP)       │  │
 │  │  GhostCursor Engine   │    │  Domain Brain (RAG)          │  │
 │  │  Set-of-Mark Overlay  │    │  The Librarian (Learning)    │  │
-│  │  GenUI Block System   │    │  Workflow Muscle Memory      │  │
+│  │  Agent Dashboard UI   │    │  Workflow Muscle Memory      │  │
 │  │                       │    │                              │  │
 │  │  TypeScript + MUI     │    │  Drizzle ORM + SQLite        │  │
 │  └───────────────────────┘    └──────────────────────────────┘  │

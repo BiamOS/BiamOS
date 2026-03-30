@@ -30,8 +30,8 @@ import {
     WarningAmber as WarnIcon,
     Mic as MicIcon,
     MicOff as MicOffIcon,
+    AutoAwesome as AutoIcon,
 } from "@mui/icons-material";
-import { RenderIcon } from "./integration-builder/IconPicker";
 import { accentAlpha } from "./ui/SharedUI";
 
 // ============================================================
@@ -626,9 +626,7 @@ export const IntentInput = React.memo(function IntentInput({
                                     }}
                                 >
                                     <MatchIcon sx={{ fontSize: 13, color: "rgba(0, 220, 100, 0.7)" }} />
-                                    <RenderIcon
-                                        name={group.icon}
-                                        label={group.label}
+                                    <AutoIcon
                                         sx={{ fontSize: 14, color: "rgba(255, 255, 255, 0.6)" }}
                                     />
                                     <Typography

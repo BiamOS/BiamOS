@@ -17,6 +17,7 @@
 
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "../db/db.js";
 import { domainKnowledge } from "../db/schema.js";
 import {
@@ -28,7 +29,7 @@ import {
 } from "../services/domain-knowledge.service.js";
 import type { KnowledgeType } from "../services/domain-knowledge.service.js";
 import { matchCartridge, PLATFORM_CARTRIDGES } from "../data/platform-cartridges.js";
-import { extractDomain } from "../services/agent-memory.js";
+import { extractDomain, lookupWorkflow } from "../services/agent-memory.js";
 import { log } from "../utils/logger.js";
 import type { PromptModule } from "../prompt-modules/types.js";
 import { bootstrapDomainPrompt } from "../services/domain-bootstrap.service.js";
@@ -76,7 +77,7 @@ knowledgeRoutes.post("/", async (c) => {
             return c.json({ error: "Missing required fields: domain, type, content" }, 400);
         }
 
-        const validTypes: KnowledgeType[] = ["user_instruction", "selector_rule", "auto_trajectory", "api_doc"];
+        const validTypes: KnowledgeType[] = ["user_instruction", "selector_rule", "auto_trajectory", "api_doc", "avoid_rule"];
         if (!validTypes.includes(type)) {
             return c.json({ error: `Invalid type. Must be one of: ${validTypes.join(", ")}` }, 400);
         }
@@ -100,6 +101,112 @@ knowledgeRoutes.post("/", async (c) => {
     } catch (err) {
         log.error("[KnowledgeRoutes] POST / error:", err);
         return c.json({ error: "Failed to ingest knowledge" }, 500);
+    }
+});
+
+
+// ─── POST /api/knowledge/auto-pattern ────────────────────────
+// Auto-Learn endpoint: called by the agent engine after success-after-failure.
+// Creates an avoid_rule with review_status='pending' (needs user approval).
+//
+// Body: { domain, path_pattern?, what_failed, what_worked, url }
+
+knowledgeRoutes.post("/auto-pattern", async (c) => {
+    try {
+        const body = await c.req.json();
+        const { domain, path_pattern, what_failed, what_worked, url } = body;
+
+        if (!domain || !what_failed || !what_worked) {
+            return c.json({ error: "Missing required: domain, what_failed, what_worked" }, 400);
+        }
+
+        const content = [
+            `AVOID: ${what_failed}`,
+            `INSTEAD: ${what_worked}`,
+            url ? `Observed on: ${url}` : null,
+        ].filter(Boolean).join("\n");
+
+        const id = randomUUID();
+        const now = new Date().toISOString();
+        const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        await db.run(sql`
+            INSERT INTO domain_knowledge
+                (id, domain, path_pattern, type, content, confidence, source, version, created_at, expires_at, review_status)
+            VALUES
+                (${id}, ${domain}, ${path_pattern ?? null}, 'avoid_rule', ${content}, 0.85, 'auto', 1, ${now}, ${expires}, 'pending')
+        `);
+
+        log.info(`  🧠 [AutoLearn] Pattern pending review — domain=${domain} path=${path_pattern ?? '*'}`);
+        return c.json({ data: { id, status: "pending" } }, 201);
+    } catch (err) {
+        log.error("[KnowledgeRoutes] POST /auto-pattern error:", err);
+        return c.json({ error: "Failed to save auto-pattern" }, 500);
+    }
+});
+
+
+// ─── POST /api/knowledge/:id/review ──────────────────────────
+// User approves or rejects an auto-learned pattern from the KB UI.
+// Body: { action: "approve" | "reject" }
+
+knowledgeRoutes.post("/:id/review", async (c) => {
+    try {
+        const id = c.req.param("id");
+        const { action } = await c.req.json();
+
+        if (action !== "approve" && action !== "reject") {
+            return c.json({ error: "action must be 'approve' or 'reject'" }, 400);
+        }
+
+        const newStatus = action === "approve" ? "active" : "rejected";
+        await db.run(sql`
+            UPDATE domain_knowledge SET review_status = ${newStatus} WHERE id = ${id}
+        `);
+
+        log.info(`  🧠 [AutoLearn] Pattern ${newStatus}: id=${id}`);
+        return c.json({ data: { id, review_status: newStatus } });
+    } catch (err) {
+        log.error("[KnowledgeRoutes] POST /:id/review error:", err);
+        return c.json({ error: "Review failed" }, 500);
+    }
+});
+
+
+// ─── GET /api/knowledge/pending ──────────────────────────────
+// Returns all pending auto-learned patterns for the "Learned" tab.
+// Query params: domain? (filter by domain)
+
+knowledgeRoutes.get("/pending", async (c) => {
+    try {
+        const domain = c.req.query("domain");
+        const rows = domain
+            ? await db.all(sql`SELECT * FROM domain_knowledge WHERE review_status = 'pending' AND domain = ${domain} ORDER BY created_at DESC`)
+            : await db.all(sql`SELECT * FROM domain_knowledge WHERE review_status != 'active' ORDER BY created_at DESC`);
+        return c.json({ data: rows });
+    } catch (err) {
+        log.error("[KnowledgeRoutes] GET /pending error:", err);
+        return c.json({ error: "Failed to fetch pending patterns" }, 500);
+    }
+});
+
+
+
+// ─── GET /api/knowledge/domains ──────────────────────────────
+// Returns all distinct domains that have knowledge in the DB.
+// Used by the CommandCenter autocomplete to suggest known sites.
+
+knowledgeRoutes.get("/domains", async (c) => {
+    try {
+        const rows = await db
+            .selectDistinct({ domain: domainKnowledge.domain })
+            .from(domainKnowledge)
+            .orderBy(domainKnowledge.domain);
+        const domains = rows.map(r => r.domain);
+        return c.json({ data: domains });
+    } catch (err) {
+        log.error("[KnowledgeRoutes] GET /domains error:", err);
+        return c.json({ error: "Failed to fetch domains" }, 500);
     }
 });
 
@@ -444,5 +551,26 @@ knowledgeRoutes.delete("/domain/:domain", async (c) => {
     } catch (err) {
         log.error(`[KnowledgeRoutes] DELETE /domain/${domain} error:`, err);
         return c.json({ error: "Delete failed" }, 500);
+    }
+});
+// ─── POST /api/memory/lookup ─────────────────────────────────
+// Used by Phase 3A Neuro-Symbolic Compiled Execution in engine.ts.
+// Returns the best verified workflow for a domain+task combination.
+// Frontend checks verified=true to decide whether to execute without LLM.
+
+knowledgeRoutes.post("/memory/lookup", async (c) => {
+    try {
+        const body = await c.req.json();
+        const { domain, task } = body;
+
+        if (!domain || !task) {
+            return c.json({ error: "Missing required fields: domain, task" }, 400);
+        }
+
+        const workflow = await lookupWorkflow(domain, task);
+        return c.json({ data: { workflow } });
+    } catch (err) {
+        log.error("[MemoryRoutes] POST /memory/lookup error:", err);
+        return c.json({ error: "Lookup failed" }, 500);
     }
 });

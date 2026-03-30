@@ -17,16 +17,18 @@
 
 import { getChatUrl, getHeaders } from "./llm-provider.js";
 import { log } from "../utils/logger.js";
-import { MODEL_THINKING } from "../config/models.js";
+import { MODEL_FAST, MODEL_THINKING } from "../config/models.js";
 import { logTokenUsage, incrementAgentUsage } from "../server-utils.js";
 import { lookupWorkflow, extractDomain } from "./agent-memory.js";
 import * as fs from 'fs';
 import * as path from 'path';
 
 // ─── Feature Flags ──────────────────────────────────────────
-// Set to true to enable workflow memory injection.
-// Keep false during development until core DOM interactions are 100% stable.
-const USE_MEMORY = false;
+// Memory system is now ACTIVE.
+// The Assertion Engine (engine.ts) acts as the verification gate:
+// done() is only accepted after deterministic DOM assertion.
+// This prevents memory poisoning — only proven, verified workflows are stored.
+const USE_MEMORY = true;
 
 // Debug log file for full LLM payload auditing
 const DEBUG_LOG_PATH = path.join(process.cwd(), 'agent-debug.log');
@@ -383,19 +385,32 @@ const AGENT_TOOLS = [
         type: "function" as const,
         function: {
             name: "done",
-            description: "[ANY Phase · Cost: zero] Terminal. The task is complete — summarize what was accomplished and exit.",
+            description: "[ANY Phase \u00b7 Cost: zero] Terminal. Call ONLY when the task is visually confirmed complete.\n\n\u26a0\ufe0f ASSERTION ENGINE: Your done() call will be verified by the system BEFORE accepting it.\nProvide the 'assert_text' or 'assert_selector' parameter so the engine can verify.\nIf the assertion FAILS, done() will be REJECTED and you must continue working.\n\nWHEN TO PROVIDE ASSERTIONS:\n- Created a task/item \u2192 assert_text = the item's title as it appears in the list\n- Submitted a form \u2192 assert_selector = '.toast-success' or success element selector\n- Navigated to page \u2192 assert_url_contains = expected URL fragment\n- Sent something \u2192 assert_text = 'Gesendet' or equivalent confirmation\n- Pure research (no DOM change expected) \u2192 omit assertions",
             parameters: {
                 type: "object",
                 properties: {
                     summary: {
                         type: "string",
-                        description: "Summary of what was accomplished",
+                        description: "Summary of what was accomplished. Be specific — mention what was created/sent/found.",
+                    },
+                    assert_text: {
+                        type: "string",
+                        description: "A string that MUST appear in the current DOM to confirm success. Example: the task title you just created, 'Gesendet', 'Erfolgreich'. Case-insensitive substring match.",
+                    },
+                    assert_selector: {
+                        type: "string",
+                        description: "A CSS selector that MUST exist in the DOM to confirm success. Example: '.toast-success', '[data-saved=true]', '.task-item'.",
+                    },
+                    assert_url_contains: {
+                        type: "string",
+                        description: "A URL fragment that MUST appear in the current URL. Example: '/app/inbox', '/sent'. Use for navigation tasks.",
                     },
                 },
                 required: ["summary"],
             },
         },
     },
+
     {
         type: "function" as const,
         function: {
@@ -424,9 +439,9 @@ const AGENT_TOOLS = [
 // last RECENT_WINDOW steps in full detail. Older steps become
 // compact 1-line summaries. Result strings are always capped.
 
-const RECENT_WINDOW = 12;      // Expanded short-term memory for Enterprise deep-work
-const RESULT_CAP_FULL = 400;   // ✅ Fix 4: raised from 200 — preserves ✅/❌ feedback messages
-const RESULT_CAP_SUMMARY = 150; // ✅ Fix 4: raised from 50 — keeps crucial error context
+const RECENT_WINDOW = 8;       // Tighter short-term memory window for lower token cost
+const RESULT_CAP_FULL = 300;   // Reduced from 400 — still preserves success/fail signals
+const RESULT_CAP_SUMMARY = 100; // Reduced from 150 — older steps only need brief context
 
 export function compressHistory(history: AgentStep[]): string {
     if (history.length === 0) return '';
@@ -600,26 +615,39 @@ function buildAgentPrompt(task: string, pageUrl: string, pageTitle: string, hist
 
     // Dynamic "next step" hint for research tasks — covers every state in the flow
     let nextStepHint = '';
-    const isDashboardTask = /dashboard|news|neuigkeiten|zusammenfassen|research|zeig|überblick|trends|aktuell/i.test(task);
+
+    // ── URL-Direct Navigation Fast-Hint ────────────────────────
+    // If task mentions a direct domain (e.g. "öffne todoist.com"), always navigate() on step 1.
+    // Never use search_web to "open" a website — that causes search loops.
+    const urlInTask = task.match(/\b([a-zA-Z0-9-]+\.(com|de|io|org|net|app|co|ai|at|ch|fr|uk))\b/i);
+    if (urlInTask && history.length === 0) {
+        const detectedUrl = urlInTask[1].toLowerCase();
+        nextStepHint = `\n⚡ URL DETECTED: The task contains "${detectedUrl}". Call navigate("https://${detectedUrl}") IMMEDIATELY as your FIRST action. Do NOT use search_web — navigate() opens websites directly and is always faster.`;
+    }
+    const isDashboardTask = /dashboard|news|neuigkeiten|zusammenfassen|research|zeig|überblick|trends|aktuell|erstell.*dashboard|dashboard.*erstell/i.test(task);
     if (isDashboardTask) {
         const hasSearch = history.some(s => s.action === 'search_web');
         const hasNavigate = history.some(s => s.action === 'navigate');
         const hasGenui = history.some(s => s.action === 'genui');
         const navigateCount = history.filter(s => s.action === 'navigate').length;
         const noteCount = history.filter(s => s.action === 'take_notes').length;
-        // Find notes taken AFTER the last navigate (= notes from current page)
         const lastNavIdx = history.map(s => s.action).lastIndexOf('navigate');
         const notesAfterLastNav = lastNavIdx >= 0 ? history.slice(lastNavIdx + 1).filter(s => s.action === 'take_notes').length : 0;
 
         if (!hasGenui) {
-            if (hasSearch && !hasNavigate && noteCount > 0) {
-                nextStepHint = '\n⚡ NEXT STEP: You have search results in your notes. NOW call navigate() to visit the BEST URL. You need REAL page content for a good dashboard.';
+            if (!hasSearch && !hasNavigate) {
+                // Step 1: Critical — tell agent to search for the TOPIC, not for "how to create dashboard"
+                nextStepHint = '\n⚡ STEP 1 — RESEARCH: Call search_web to find information about the TOPIC in the user\'s request. The "dashboard" or "create" part of the task is YOUR job via the genui tool — do NOT search for "dashboard creation". Search for the actual content topic (e.g. AI news, weather, stocks, emails). Start immediately.';
+            } else if (hasSearch && !hasNavigate && noteCount > 0) {
+                nextStepHint = '\n⚡ NEXT STEP: You have search results. NOW call navigate() to visit the BEST URL for deeper content.';
+            } else if (hasSearch && !hasNavigate && noteCount === 0) {
+                nextStepHint = '\n⚡ NEXT STEP: Call take_notes on your search results OR navigate to the best URL to get real page content.';
             } else if (hasNavigate && notesAfterLastNav === 0) {
-                nextStepHint = '\n⚡ NEXT STEP: You are on a page. Call take_notes NOW to extract headlines, facts, dates, and key information you see. Then navigate to the next URL or call genui.';
+                nextStepHint = '\n⚡ NEXT STEP: You are on a page. Call take_notes NOW to extract headlines, facts, dates, and key information. Then call genui.';
             } else if (hasNavigate && notesAfterLastNav > 0 && navigateCount < 2) {
-                nextStepHint = '\n⚡ NEXT STEP: Good notes! Navigate to a 2nd URL from your earlier search results for more perspectives. Or if you have enough data, call genui to create the dashboard.';
-            } else if (navigateCount >= 2 && noteCount >= 2) {
-                nextStepHint = '\n⚡ NEXT STEP: You visited multiple pages and collected notes. Call genui NOW to create the dashboard with ALL your data.';
+                nextStepHint = '\n⚡ NEXT STEP: Good notes! You can navigate to 1 more URL or call genui NOW to create the dashboard with your current data.';
+            } else if (navigateCount >= 2 || noteCount >= 2) {
+                nextStepHint = '\n⚡ NEXT STEP: Enough data collected. Call genui NOW to create the dashboard.';
             }
         }
     }
@@ -637,6 +665,116 @@ function buildAgentPrompt(task: string, pageUrl: string, pageTitle: string, hist
         nextStepHint,
     });
 }
+
+// ─── buildTaskAnchor ─────────────────────────────────────────
+// Derives a measurable "endpoint" from the task text.
+// Returns a prompt block describing what DONE looks like.
+// This is injected at the end of every system prompt so Lura
+// always has a concrete goal — not just an open-ended instruction.
+
+function buildTaskAnchor(task: string, historyLength: number): string {
+    const t = task.toLowerCase();
+
+    // ── Pattern: Create a task / todo / aufgabe ──
+    const todoMatch = task.match(/(?:erstell|add|create|hinzufügen|new todo|neue aufgabe)[^\w]*["']?([^"'\n,]{3,50})["']?/i);
+    if (todoMatch || /todo|aufgabe|task.*erstell|erstell.*task/i.test(t)) {
+        const target = todoMatch?.[1]?.trim() || 'the new task';
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: The item "${target}" is VISIBLE in the task list / inbox.
+              The task creation form/modal is CLOSED.
+BEFORE done(): Confirm in your screenshot that the item appears in the list.
+               If the form is still open → submit it first.
+
+✅ REQUIRED done() CALL:
+done(
+  summary="Created task '${target}'",
+  assert_text="${target}"
+)
+← The engine will verify "${target}" exists in the DOM. If not found, done() is REJECTED.`;
+    }
+
+    // ── Pattern: Send email ──
+    if (/email|mail|send|schick|schreib.*mail|gmail|outlook/i.test(t)) {
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: The email was sent. You should see a "Gesendet" / "Sent" confirmation.
+BEFORE done(): Verify the compose window is gone AND confirmation is visible.
+
+✅ REQUIRED done() CALL:
+done(
+  summary="Email sent successfully",
+  assert_text="Gesendet"
+)
+← The engine will verify "Gesendet" (or "Sent") exists in the DOM.`;
+    }
+
+    // ── Pattern: Fill and submit a form ──
+    if (/formular|form|submit|absenden|anmelden|registrier|sign up/i.test(t)) {
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: The form is SUBMITTED. Confirmation is visible or page has changed.
+BEFORE done(): If form is still visible → it was NOT submitted.
+
+✅ REQUIRED done() CALL:
+done(
+  summary="Form submitted",
+  assert_selector="[class*='success'],[class*='confirm'],[class*='toast']"
+)
+← Provide any selector that would appear on success.`;
+    }
+
+    // ── Pattern: Navigate / open a page ──
+    if (/navigate|öffne|open|gehe zu|go to|visit/i.test(t)) {
+        const urlM = task.match(/\b([a-zA-Z0-9-]+\.(com|de|io|org|net|app|co|ai))\b/i);
+        const target = urlM ? urlM[1] : 'the target website';
+        const urlFragment = urlM ? urlM[1].split('.')[0] : '';
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: The browser is ON ${target}. URL bar shows the correct domain.
+BEFORE done(): Verify the URL matches the target.
+
+✅ REQUIRED done() CALL:
+done(
+  summary="Navigated to ${target}",
+  assert_url_contains="${urlFragment}"
+)
+← The engine will verify the current URL contains "${urlFragment}".`;
+    }
+
+    // ── Pattern: Search / find ──
+    if (/such|search|find|finde|zeig|show me|lookup/i.test(t)) {
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: Results are VISIBLE on screen. At least one relevant result shown.
+BEFORE done(): Confirm results are visible. Do NOT call done() on an empty page.
+
+✅ REQUIRED done() CALL:
+done(
+  summary="Found results for: [what you found]"
+)
+← Research tasks: no assertion needed, but be specific in your summary.`;
+    }
+
+    // ── Generic fallback ──
+    if (historyLength >= 2) {
+        return `🎯 TASK ANCHOR — Your Goal & Endpoint:
+TASK: ${task}
+SUCCESS STATE: The task described above is VISUALLY COMPLETE.
+BEFORE done(): Look at the current screenshot. Does it CLEARLY show the task is complete?
+               If YES → call done() with assert_text set to something visible that proves it.
+               If NO  → continue working.
+
+✅ PREFERRED done() CALL:
+done(
+  summary="[what you did]",
+  assert_text="[a word/phrase visible on screen that confirms success]"
+)`;
+    }
+
+    return ''; // Steps 0-1: no anchor yet, agent is still navigating
+}
+
 
 // ─── Stream Agent Step ──────────────────────────────────────
 
@@ -697,6 +835,16 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         log.debug(`  🧠 [DomainBrain] Injected ${ctx.domain_knowledge.length} chars of domain knowledge`);
     }
 
+    // ── Task Anchor: Measurable Endpoint (Option A) ──────────
+    // Derives a visible success state from the task text.
+    // Injected LAST → highest position in LLM "recency bias" → most likely to be followed.
+    // Pattern: what should be VISIBLE on screen when the task is truly done?
+    const taskAnchor = buildTaskAnchor(ctx.task, history.length);
+    if (taskAnchor) {
+        systemPrompt += `\n\n${'▓'.repeat(50)}\n${taskAnchor}\n${'▓'.repeat(50)}`;
+        log.debug(`  🎯 [TaskAnchor] Injected goal endpoint for step ${ctx.step_number}`);
+    }
+
     // ── Add Trajectory as Context Prepender ──
     if (ctx.trajectory) {
         systemPrompt = `═══════════════════════════════════════════════════\nAGENT TRAJECTORY (Your recent history & results):\n═══════════════════════════════════════════════════\n${ctx.trajectory}\n\n` + systemPrompt;
@@ -716,7 +864,7 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
             type: "image_url",
             image_url: {
                 url: `data:image/png;base64,${ctx.screenshot}`,
-                detail: "high",   // Fix 6: force high-res — prevents OpenRouter downscaling on small n8n nodes
+                detail: "low",  // ✅ Perf: 'low' = 85-token fixed cost vs 'high' = 1000+ tokens per call
             },
         });
     }
@@ -729,27 +877,45 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
 
         log.debug(`  🤖 Agent: step ${ctx.step_number ?? '?'}/${ctx.max_steps ?? '?'} for task "${ctx.task.substring(0, 50)}..."`);
 
-        // ── Write full payload to debug log for LLM auditing ──
-        try {
-            const debugPayload = `\n${'═'.repeat(60)}\n[${new Date().toISOString()}] STEP ${ctx.step_number ?? '?'}/${ctx.max_steps ?? '?'}\nTASK: ${ctx.task}\nURL: ${ctx.page_url}\n${'─'.repeat(60)}\nSYSTEM PROMPT (${systemPrompt.length} chars):\n${systemPrompt}\n${'─'.repeat(60)}\nDOM SNAPSHOT (${ctx.dom_snapshot?.length ?? 0} chars):\n${ctx.dom_snapshot?.substring(0, 2000) ?? 'none'}\n${'─'.repeat(60)}\nHISTORY (${history.length} steps):\n${JSON.stringify(history, null, 2)}\n${'═'.repeat(60)}\n`;
-            fs.appendFileSync(DEBUG_LOG_PATH, debugPayload);
-        } catch { /* debug logging is non-fatal */ }
+        // ── Write full payload to debug log (async, non-blocking) ──
+        setImmediate(() => {
+            try {
+                const debugPayload = `\n${'═'.repeat(60)}\n[${new Date().toISOString()}] STEP ${ctx.step_number ?? '?'}/${ctx.max_steps ?? '?'}\nTASK: ${ctx.task}\nURL: ${ctx.page_url}\n${'─'.repeat(30)}\nSYSTEM PROMPT (${systemPrompt.length} chars)\n${'─'.repeat(30)}\nDOM (${ctx.dom_snapshot?.length ?? 0} chars)\n${'═'.repeat(60)}\n`;
+                fs.appendFileSync(DEBUG_LOG_PATH, debugPayload);
+            } catch { /* debug logging is non-fatal */ }
+        });
 
         // Stream thinking to show the user what the AI is considering
         onEvent(`data: ${JSON.stringify({ type: "thinking", content: "Analyzing page..." })}\n\n`);
+
+        // ── Adaptive Model Selection ──────────────────────────
+        // Use the fast model (Gemini 2.5 Flash Lite) for:
+        //   - Steps 1-10: fast DOM interactions don't need heavy reasoning
+        // Use the thinking model for:
+        //   - Steps 11+ (complex multi-step reasoning needed)
+        //   - Any step where Domain Brain knowledge is available (site-specific rules)
+        const stepNum = ctx.step_number ?? 1;
+        const hasDomainKnow = !!ctx.domain_knowledge;
+        // Threshold raised from 6 → 10: Flash-Lite handles most action steps fine
+        const useThinkingModel = hasDomainKnow || stepNum > 10;
+        const selectedModel = useThinkingModel ? MODEL_THINKING : MODEL_FAST;
+
+        // Dashboard/research tasks need more max_tokens (genui tool-call carries larger args)
+        const isResearchStep = filteredTools.some((t: any) => t.function.name === 'genui');
+        const maxTok = isResearchStep ? 3000 : 1500;
 
         const response = await fetch(chatUrl, {
             method: "POST",
             headers,
             body: JSON.stringify({
-                model: MODEL_THINKING,
+                model: selectedModel,
                 messages,
                 tools: filteredTools,
                 tool_choice: "required",  // Force a tool call
-                temperature: 0.2,         // Low temp for precise actions
+                temperature: 0.35,        // Balanced: decisive but creative enough to try different strategies
                 frequency_penalty: 0.3,   // Prevent LLM text-generation loops
-                presence_penalty: 0.1,    // Encourage new tokens over repetition
-                max_tokens: 5000,         // Plenty of room for full email composition
+                presence_penalty: 0.15,   // Encourage trying new strategies over repeating the same
+                max_tokens: maxTok,       // Adaptive: 3000 for research+genui, 1500 for action
             }),
         });
 
@@ -760,8 +926,11 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         }
 
         const result = await response.json();
-        await logTokenUsage("agent:browser-agent", MODEL_THINKING, result.usage ?? {});
-        await incrementAgentUsage("browser-agent", result.usage ?? {});
+        const usage = result.usage ?? {};
+        const actualModel = selectedModel;
+        await logTokenUsage("agent:lura-ai", actualModel, usage);
+        await incrementAgentUsage("lura-ai", usage);
+        log.debug(`  🤖 Agent: model=${actualModel === MODEL_FAST ? 'FAST' : 'THINKING'} step=${stepNum}/${ctx.max_steps ?? '?'}`);
 
         const message = result.choices?.[0]?.message;
 

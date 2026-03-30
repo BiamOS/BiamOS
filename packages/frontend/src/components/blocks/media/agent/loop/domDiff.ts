@@ -101,7 +101,18 @@ export async function buildDomDiffSuffix(
 
         debug.log(`🔍 [Critic] DOM unchanged after action: ${action}`);
         if (action === 'click') {
-            return ' ℹ️ [DOM STABLE] No major layout shifts. For toggles/tabs/buttons, look at the next DOM Snapshot for [PRESSED], [SELECTED], or [CHECKED] badges to verify success.';
+            // "No navigation triggered" = agent clicked a nav/tab element it was already on.
+            // This is the #1 cause of click loops (Gmail inbox, YouTube sidebar, etc.).
+            // Give the LLM a hard stop — it is ALREADY at the destination.
+            const isNavLoop = actionResult.logMessage?.includes('No navigation triggered');
+            if (isNavLoop) {
+                const currentUrl = before?.url ? ` Current URL: ${before.url}` : '';
+                return ` ⛔ [ALREADY THERE]${currentUrl} — You clicked a navigation element but you are ALREADY viewing its destination. ` +
+                    'Clicking it again will NEVER change the page. ' +
+                    'DO NOT click this element again. ' +
+                    'The content you need is ALREADY on screen. Proceed directly: read it, extract data, use read_page, take_notes, genui, or call done().';
+            }
+            return ' ℹ️ [DOM STABLE] No major layout shift. For toggles/tabs/buttons check [PRESSED]/[SELECTED]/[CHECKED] badges in next DOM snapshot.';
         }
         return ' ⚠️ [NO VISIBLE UI CHANGE] — The click may have missed. Please verify the next screenshot: did the expected UI change happen? If not, try click_at with different coordinates or a different element.';
     } catch { return ''; }
