@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 BiamOS Contributors
 // ============================================================
-// BiamOS — AI Browser Agent (Action Loop)
+// BiamOS — AI Browser Agent (Action Loop — Kinetic Sonar Edition)
 // ============================================================
-// Receives screenshot + DOM snapshot from the frontend,
-// asks the LLM to decide the next action, and streams
-// structured action responses back via SSE.
-//
-// ARCHITECTURE: The backend is a STATELESS inference engine.
-// All safety guards (max steps, repetition, stuck detection)
-// live in the frontend (safety.ts). The backend only:
-// 1. Builds the system prompt
-// 2. Calls the LLM
-// 3. Streams the response back
+// KINETIC SONAR ARCHITECTURE (Phase 1 Purge complete):
+//   - dom_snapshot is NO LONGER sent to the LLM.
+//   - LLM receives: SoM screenshot (JPEG) + 40-entry semantic legend.
+//   - System prompt is the Vision-First Manifest (see buildAgentPrompt).
+//   - Backend remains a STATELESS inference engine.
 // ============================================================
 
 import { getChatUrl, getHeaders } from "./llm-provider.js";
 import { log } from "../utils/logger.js";
-import { MODEL_FAST, MODEL_THINKING } from "../config/models.js";
+import { MODEL_FAST, MODEL_THINKING, MODEL_AGENT_PRECISE } from "../config/models.js";
 import { logTokenUsage, incrementAgentUsage } from "../server-utils.js";
 import { lookupWorkflow, extractDomain } from "./agent-memory.js";
 import * as fs from 'fs';
@@ -39,8 +34,12 @@ export interface AgentRequest {
     task: string;              // User's instruction, e.g. "find important email"
     page_url: string;
     page_title: string;
-    dom_snapshot: string;      // Simplified DOM with selectors
-    screenshot?: string;       // Base64 PNG
+    /** @deprecated Kinetic Sonar: dom_snapshot is no longer sent to the LLM.
+     * Retained in the interface for backwards-compatibility with old callers.
+     * The engine still runs captureDomSnapshot() internally to build the SoM map,
+     * but the text output is never forwarded to this endpoint. */
+    dom_snapshot?: string;
+    screenshot?: string;       // Base64 JPEG (SoM annotated, #FF3333 boxes)
     history?: AgentStep[];     // Previous actions in this session
     trajectory?: string;       // Condensed tracking of latest results
     step_number?: number;      // Current step (from frontend SSOT)
@@ -49,8 +48,8 @@ export interface AgentRequest {
     method?: string;           // CRUD method from Manager-Agent (GET/POST/PUT/DELETE)
     allowed_tools?: string[];  // Tools the agent may use (from classifier)
     forbidden?: string[];      // Tools physically removed (from classifier)
-    system_context?: string | null; // Platform Cartridge injection (appended at end of system prompt)
-    domain_knowledge?: string | null; // D8 Domain Brain RAG injection (<domain_knowledge> XML block)
+    system_context?: string | null; // Platform Cartridge injection
+    domain_knowledge?: string | null; // D8 Domain Brain RAG injection
 }
 
 export interface AgentStep {
@@ -71,7 +70,7 @@ const AGENT_TOOLS = [
         type: "function" as const,
         function: {
             name: "search_web",
-            description: "[RESEARCH · Cost: very low] Primary engine for broad discovery. Fast, stateless, multi-source. Searches the web WITHOUT leaving the current page. Returns structured results (titles, snippets, URLs). Use this for ALL information gathering — it's faster and cheaper than navigating. Max 3-4 calls per task. The user's current page stays untouched.",
+            description: "[RESEARCH · Cost: very low] Background web search via API — does NOT navigate the browser. Returns Google/Bing-style results (titles, snippets, URLs). Use for broad discovery and fact-finding ONLY.\n\n⚠️ CRITICAL RESTRICTIONS:\n- NEVER use this to search WITHIN a specific platform (YouTube, Amazon, Reddit, Twitter, GitHub, Spotify, etc.). For those: navigate() to the site, then type_text() into their search bar.\n- NEVER use this to 'open' a website — use navigate() for that.\n- Use ONLY for background research when you need general web results (news, facts, URLs, documentation).\n\nMax 3-4 calls per task.",
             parameters: {
                 type: "object",
                 properties: {
@@ -278,7 +277,7 @@ const AGENT_TOOLS = [
                     },
                     clear_first: {
                         type: "boolean",
-                        description: "If true, clear existing text via Ctrl+A → Delete before typing. Default: FALSE (appends). Set to true ONLY to REPLACE/correct existing content.",
+                        description: "If false, APPENDS to the existing text. Default: TRUE (clears field before typing). Usually you want to clear the field first.",
                     },
                     submit_after: {
                         type: "boolean",
@@ -449,25 +448,30 @@ export function compressHistory(history: AgentStep[]): string {
     const lines: string[] = [];
     const cutoff = Math.max(0, history.length - RECENT_WINDOW);
 
+    // Build action fingerprint map for repeat detection
+    const actionCounts: Record<string, number> = {};
+
     for (let i = 0; i < history.length; i++) {
         const s = history[i];
         const num = i + 1;
+        const actionKey = `${s.action}:${s.value ?? s.description ?? ''}`;
+        actionCounts[actionKey] = (actionCounts[actionKey] || 0) + 1;
+        const repeatMark = actionCounts[actionKey] >= 2 && s.action !== 'system_recovery'
+            ? ` ⚠️ REPEAT(${actionCounts[actionKey]}x)` : '';
 
         if (i < cutoff) {
-            // Older steps: compact summary, heavily truncated result
             let rawResult = s.result || '';
             const markerIdx = rawResult.indexOf('__STRUCTURED__');
             if (markerIdx >= 0) rawResult = rawResult.substring(0, markerIdx).trim();
             const shortResult = rawResult ? ` → ${rawResult.substring(0, RESULT_CAP_SUMMARY)}` : '';
-            lines.push(`${num}. ${s.action} — ${s.description}${shortResult}`);
+            lines.push(`${num}. ${s.action}${repeatMark} — ${s.description}${shortResult}`);
         } else {
-            // Recent steps: full detail, moderately capped result
             let rawResult = s.result || '';
             const markerIdx = rawResult.indexOf('__STRUCTURED__');
             if (markerIdx >= 0) rawResult = rawResult.substring(0, markerIdx).trim();
             const val = s.value ? `("${s.value.substring(0, 50)}")` : '';
             const result = rawResult ? ` → ${rawResult.substring(0, RESULT_CAP_FULL)}` : '';
-            lines.push(`${num}. ${s.action}${val} — ${s.description}${result}`);
+            lines.push(`${num}. ${s.action}${val}${repeatMark} — ${s.description}${result}`);
         }
     }
 
@@ -584,15 +588,27 @@ function filterToolsByCrud(
     return filtered.map(tool => {
         if (ACTION_TOOLS.has(tool.function.name)) {
             const cloned = JSON.parse(JSON.stringify(tool));
-            cloned.function.parameters.properties.analysis = {
+            
+            // ReAct Loop (Reasoning + Acting)
+            const analysisSchema = {
                 type: "object",
                 properties: {
-                    past: { type: "string", description: "What action you took in the last step and its result (Success/Fail)." },
-                    present: { type: "string", description: "What changed in the DOM/Image. If the last action failed, explain why." },
-                    future: { type: "string", description: "Your logical plan. If ID X failed previously, EXPLICITLY state you will NOT try X again." }
+                    state_evaluation: { type: "string", description: "CRITICAL: Describe what you actually see on the screenshot. Did your last action succeed? Are you exactly where you expected to be? Or did you hit an Ad, Overlay, or irrelevant page?" },
+                    step_by_step_plan: { type: "string", description: "Your global checklist for the entire task (e.g. '1. Search [X], 2. Open Video, 3. Scroll to comments'). Mark failed steps. Which step are you on right now?" },
+                    next_action_justification: { type: "string", description: "Given the State Evaluation and your Checklist, explain exactly why the action you are about to take is logically correct." }
                 },
-                required: ["past", "present", "future"]
+                required: ["state_evaluation", "step_by_step_plan", "next_action_justification"]
             };
+
+            // Force physical key ordering in the JSON schema by rebuilding the object.
+            // This is an architectural requirement: The LLM MUST think (analysis) 
+            // BEFORE generating the actual action parameters (like target IDs).
+            const existingProps = cloned.function.parameters.properties;
+            cloned.function.parameters.properties = {
+                analysis: analysisSchema,
+                ...existingProps
+            };
+
             if (!cloned.function.parameters.required.includes("analysis")) {
                 cloned.function.parameters.required.unshift("analysis");
             }
@@ -619,10 +635,30 @@ function buildAgentPrompt(task: string, pageUrl: string, pageTitle: string, hist
     // ── URL-Direct Navigation Fast-Hint ────────────────────────
     // If task mentions a direct domain (e.g. "öffne todoist.com"), always navigate() on step 1.
     // Never use search_web to "open" a website — that causes search loops.
-    const urlInTask = task.match(/\b([a-zA-Z0-9-]+\.(com|de|io|org|net|app|co|ai|at|ch|fr|uk))\b/i);
-    if (urlInTask && history.length === 0) {
-        const detectedUrl = urlInTask[1].toLowerCase();
-        nextStepHint = `\n⚡ URL DETECTED: The task contains "${detectedUrl}". Call navigate("https://${detectedUrl}") IMMEDIATELY as your FIRST action. Do NOT use search_web — navigate() opens websites directly and is always faster.`;
+    const rawUrlMatch = task.match(/\b([a-zA-Z0-9-]+\.(com|de|io|org|net|app|co|ai|at|ch|fr|uk))\b/i);
+    let detectedUrl = rawUrlMatch ? rawUrlMatch[1].toLowerCase() : null;
+    
+    // Fallback aliases for well-known platforms (if user just says "open youtube")
+    if (!detectedUrl) {
+        if (/\byoutube\b/i.test(task)) detectedUrl = 'youtube.com';
+        else if (/\btodoist\b/i.test(task)) detectedUrl = 'app.todoist.com';
+        else if (/\bgmail\b/i.test(task)) detectedUrl = 'mail.google.com';
+        else if (/\bgithub\b/i.test(task)) detectedUrl = 'github.com';
+        else if (/\bnotion\b/i.test(task)) detectedUrl = 'notion.so';
+        else if (/\breddit\b/i.test(task)) detectedUrl = 'reddit.com';
+        else if (/\btwitter|x\.com\b/i.test(task)) detectedUrl = 'x.com';
+        else if (/\blinear\b/i.test(task)) detectedUrl = 'linear.app';
+        else if (/\bamazon\b/i.test(task)) detectedUrl = 'amazon.com';
+    }
+
+    if (detectedUrl && history.length === 0) {
+        // Only trigger if we aren't already on that parent domain
+        // (e.g. don't trigger if detected=youtube.com and pageUrl=https://www.youtube.com/results)
+        const baseDomain = detectedUrl.replace(/^(www\.|app\.|mail\.)/, '');
+        const alreadyOnSite = pageUrl.toLowerCase().includes(baseDomain);
+        if (!alreadyOnSite) {
+            nextStepHint = `\n⚡ URL DETECTED: The task targets "${detectedUrl}". Call navigate("https://${detectedUrl}") IMMEDIATELY as your FIRST action. Do NOT use search_web — navigate() opens websites directly and is always faster.`;
+        }
     }
     const isDashboardTask = /dashboard|news|neuigkeiten|zusammenfassen|research|zeig|überblick|trends|aktuell|erstell.*dashboard|dashboard.*erstell/i.test(task);
     if (isDashboardTask) {
@@ -854,18 +890,52 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         { role: "system", content: systemPrompt },
     ];
 
-    // Add screenshot + DOM as user message
-    const userContent: any[] = [
-        { type: "text", text: `DOM Snapshot (interactive elements with Set-of-Mark IDs):\nFormat: [ID] tag "label" (aria-label: "...", placeholder: "...") — Read the aria-label and placeholder to identify WHAT each element does. NEVER guess by position or visual location alone.\n\`\`\`\n${ctx.dom_snapshot}\n\`\`\`\n\nUse click(id: N) to interact with elements by their [N] ID. Analyze the page and decide the next action to complete the task: "${ctx.task}"` },
-    ];
+    // VISION-FIRST: Screenshot is the PRIMARY input, legend is the semantic anchor.
+    // Image FIRST — Claude 3.5 Sonnet processes visual context better when image precedes text.
+    // Legend SECOND — ground-truth for Box ID ↔ element name mapping (Architect Refinement #1).
+    const userContent: any[] = [];
 
+    // 1. Screenshot (Vision Primary)
     if (ctx.screenshot) {
         userContent.push({
             type: "image_url",
             image_url: {
-                url: `data:image/png;base64,${ctx.screenshot}`,
-                detail: "low",  // ✅ Perf: 'low' = 85-token fixed cost vs 'high' = 1000+ tokens per call
+                url: `data:image/jpeg;base64,${ctx.screenshot}`,
+                detail: "high",  // 👁️ Vision-First: 'high' for precise small-element recognition on UI
             },
+        });
+    }
+
+    // 2. Hybrid Legend (Semantic Anchor — Refinement #1)
+    // Short list: [id] role "name". Ground-truth for Box ID ↔ element mapping.
+    // LLM combines visual spatial understanding with this hard-fact anchor.
+    // Kinetic Sonar: legend only. dom_snapshot fallback permanently removed.
+    const legend = (ctx as any).som_legend || '';
+    if (legend) {
+        // Count repeated actions in history for self-awareness signal
+        const repeatWarnings: string[] = [];
+        if (ctx.history && ctx.history.length > 0) {
+            const counts: Record<string, number> = {};
+            for (const s of ctx.history) {
+                const k = `${s.action}:${(s as any)._args?.id ?? s.description ?? ''}`;
+                if (s.action !== 'system_recovery') counts[k] = (counts[k] || 0) + 1;
+            }
+            for (const [k, c] of Object.entries(counts)) {
+                if (c >= 2) repeatWarnings.push(`"${k.split(':')[0]}" on "${k.split(':').slice(1).join(':').substring(0, 40)}" (${c}x)`);
+            }
+        }
+        const repeatBlock = repeatWarnings.length > 0
+            ? `\n\n⚠️ SELF-CHECK — YOU HAVE REPEATED THESE ACTIONS:\n${repeatWarnings.map(w => `  • ${w}`).join('\n')}\nThis means your current approach is NOT working. You MUST change strategy for these actions.`
+            : '';
+
+        userContent.push({
+            type: "text",
+            text: `INTERACTIVE ELEMENTS (red numbered boxes on screenshot):\n${legend}\n\nUNIVERSAL RULES (apply to ALL websites):\n- Search bar: ALWAYS use type_text with submit_after=true. NEVER click the search button separately.\n- Form submit: ALWAYS use type_text(submit_after=true) or press_key(Enter). NEVER click submit buttons that are next to input fields.\n- Comment/text box: Click the field FIRST (wait 300ms), THEN type_text into it.\n- If an action has NO effect (same result twice): STOP. Try a completely different approach.${repeatBlock}\n\nYOUR TASK: "${ctx.task}"\nStep ${ctx.step_number ?? '?'} of ${ctx.max_steps ?? 20}. Choose ONE action. Respond with a single tool call — no prose.`,
+        });
+    } else {
+        userContent.push({
+            type: "text",
+            text: `Task: "${ctx.task}" — Analyze the screenshot and choose the next action.`,
         });
     }
 
@@ -888,17 +958,43 @@ Follow this path if the page structure looks similar. If the DOM has changed sig
         // Stream thinking to show the user what the AI is considering
         onEvent(`data: ${JSON.stringify({ type: "thinking", content: "Analyzing page..." })}\n\n`);
 
-        // ── Adaptive Model Selection ──────────────────────────
-        // Use the fast model (Gemini 2.5 Flash Lite) for:
-        //   - Steps 1-10: fast DOM interactions don't need heavy reasoning
-        // Use the thinking model for:
-        //   - Steps 11+ (complex multi-step reasoning needed)
-        //   - Any step where Domain Brain knowledge is available (site-specific rules)
+        // ── Kinetic Sonar: 3-Tier Adaptive Model Selection ────────────────
+        //
+        // TIER 1 — MODEL_FAST (gemini-2.5-flash-lite)
+        //   Step 1 only. Pure navigation — no screenshot needed, no vision required.
+        //   Ultra-cheap. Decides: navigate(url) or classify task.
+        //
+        // TIER 2 — MODEL_THINKING (gemini-2.5-flash)  ← DEFAULT for ALL action steps
+        //   Steps 2+. PRIMARY vision model for Kinetic Sonar.
+        //   ✅ Understands SoM screenshots natively
+        //   ✅ 1M token context (long agent sessions)
+        //   ✅ 3x faster than Claude Sonnet
+        //   ✅ Agentic function calling
+        //   💰 ~10x cheaper than Claude
+        //
+        // TIER 3 — MODEL_AGENT_PRECISE (claude-sonnet-4-5)
+        //   Step 12+. Fallback for complex/stuck tasks.
+        //   Activated when: agent stumbles for 12+ steps (likely complex SPA or ambiguous task).
+        //   Claude's instruction following & visual grounding is superior for edge cases.
+        //   💰 Only deployed when cheaper tiers have already struggled.
+
         const stepNum = ctx.step_number ?? 1;
         const hasDomainKnow = !!ctx.domain_knowledge;
-        // Threshold raised from 6 → 10: Flash-Lite handles most action steps fine
-        const useThinkingModel = hasDomainKnow || stepNum > 10;
-        const selectedModel = useThinkingModel ? MODEL_THINKING : MODEL_FAST;
+
+        let selectedModel: string;
+        if (stepNum === 1 && !hasDomainKnow) {
+            // Step 1: pure navigation — no vision, ultra-cheap
+            selectedModel = MODEL_FAST;
+        } else if (stepNum > 12 || hasDomainKnow) {
+            // Step 12+: complex task OR domain-knowledge enriched → Claude Sonnet for max accuracy
+            selectedModel = MODEL_AGENT_PRECISE;
+        } else {
+            // Steps 2–12: standard vision action loop → Gemini 2.5 Flash
+            selectedModel = MODEL_THINKING;
+        }
+
+        log.debug(`  🤖 Model: ${selectedModel} (step=${stepNum} domain=${hasDomainKnow})`);
+
 
         // Dashboard/research tasks need more max_tokens (genui tool-call carries larger args)
         const isResearchStep = filteredTools.some((t: any) => t.function.name === 'genui');

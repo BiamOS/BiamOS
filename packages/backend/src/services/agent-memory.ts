@@ -188,6 +188,16 @@ export async function lookupWorkflow(
 ): Promise<WorkflowMatch | null> {
     // Strip /act prefix if leaked from frontend
     const cleanTask = task.replace(/^\/act\s*/i, '').trim();
+
+    // HOTFIX-3: Block Neuro-Symbolic Replay for pure navigation commands.
+    // "open todoist" MUST NOT replay a stored "add task" workflow.
+    // Pure-open: starts with open/öffne/geh zu/visit + one word, nothing else.
+    const pureOpenBlock = /^(open|öffne|geh zu|go to|besuche|visit|navigate to|zeig)\s+\S+\s*$/i;
+    if (pureOpenBlock.test(cleanTask)) {
+        log.debug(`  🧠 Memory: [LOBOTOMY] Blocked lookup for pure-open command: "${cleanTask}"`);
+        return null;
+    }
+
     const hash = hashIntent(cleanTask);
     log.debug(`  🧠 Memory: lookup for domain="${domain}" hash="${hash}" task="${cleanTask.substring(0, 50)}..."`);
 
@@ -238,7 +248,10 @@ export async function lookupWorkflow(
         }
 
         // Search current domain first, then ALL domains as cross-domain fallback
-        const SIMILARITY_THRESHOLD = 0.65;
+        // HOTFIX-3: Raised from 0.65 to 0.92.
+        // At 0.65, 'open todoist' matched 'add task todoist' (shared embedding space).
+        // At 0.92, intent AND structural pattern must be near-identical for replay.
+        const SIMILARITY_THRESHOLD = 0.92;
         let bestMatch: any = null;
         let bestScore = 0;
 

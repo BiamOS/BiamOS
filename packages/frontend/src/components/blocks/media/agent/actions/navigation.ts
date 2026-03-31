@@ -35,7 +35,7 @@ export async function navigate(args: Record<string, any>, ctx: ActionContext): P
         console.log(`🧭 Navigate FAILED: ${url} → error page detected`);
         return { logMessage: `Navigation FAILED: "${url}" could not be loaded — the site cannot be reached. The URL may be MISSPELLED. Use search_web to find the correct URL.` };
     }
-    return { logMessage: `✓ Navigated to ${url}`, didNavigate: true };
+    return { logMessage: `✓ Navigated to ${url} (Resolved to: ${actualUrl})`, didNavigate: true };
 }
 
 export async function go_back(_args: Record<string, any>, ctx: ActionContext): Promise<ActionResult> {

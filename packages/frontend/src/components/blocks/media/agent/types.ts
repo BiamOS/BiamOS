@@ -16,14 +16,15 @@ export interface TrajectoryStep {
 export interface AgentStep {
     action: string;
     selector?: string;
-    value?: string;
+    value?: string;       // text typed (type_text) or element ID as string (click) — used for loop detection fingerprint
     description: string;
     result?: string;
     screenshot?: string;
     didNavigate?: boolean; // true when click caused URL change — resets scroll counter
-    _args?: Record<string, any>; // BUG-1: original action args preserved for fingerprint guard
+    state_evaluation?: string;
+    step_by_step_plan?: string;
+    next_action_justification?: string;
 }
-
 export type AgentStatus = "idle" | "running" | "paused" | "done" | "error";
 
 export interface AgentState {

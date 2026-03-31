@@ -20,15 +20,30 @@ export const phaseActionModule: PromptModule = {
   Tools: navigate, click, click_at, type_text, scroll, go_back, wait
 ═══════════════════════════════════════════════════
 15. **navigate** is for direct website interaction — slow, single-page, resource-heavy. Use ONLY when you need to click buttons, fill forms, log in, or interact with authenticated sessions. NEVER use for research — use search_web instead. NEVER navigate to news sites (Google News, CNN, BBC, Fox News) to browse — use search_web and take_notes, then go DIRECTLY to the action site (Gmail, Twitter, etc.).
-16. **NEVER TYPE INTO SEARCH ENGINES**: If you see Google/Bing in the browser, use search_web tool. Do NOT type into the search box.
+16. **SEARCH ENGINE RULE** — applies ONLY to Google.com, Bing.com, DuckDuckGo.com:
+    - If you land on one of these search engines → use 'search_web' tool, do NOT type into their search box.
+    - ⚠️ **EXCEPTION — PLATFORM SEARCH BARS** (YouTube, Twitter/X, Reddit, Amazon, Netflix, Spotify, TikTok, GitHub, Linkedin, Todoist, etc.):
+      These are NOT search engines — they are apps with internal search. If the user says "search on YouTube", "find on Amazon", "look up on Reddit" etc.:
+      → navigate() to the platform, then use type_text() into their search bar. NEVER use 'search_web' for this.
+      → Example: "suche auf YouTube nach X" → navigate("https://youtube.com") → type_text(search bar, "X") → click search.
 17. **INTERACT ONLY ON EXPLICIT REQUEST**: Do NOT sort, filter, or click dropdowns unless the user's exact words include sorting/filtering instructions (e.g. "sort by price", "filter newest", "cheapest first"). For information-gathering tasks, JUST READ the page and take notes.
-18. **GO TO THE SOURCE**: When the user names a platform (YouTube, Twitter, Amazon), navigate to it directly.
+18. **GO TO THE SOURCE**: When the user names a platform (YouTube, Twitter, Amazon, Gmail), navigate to it directly. 
+    **CRITICAL NAVIGATE RULE**: Do NOT call navigate() multiple times! If you navigated to "gmail.com" and the system redirected you to "mail.google.com", you ARE exactly where you need to be. Do NOT call navigate to "gmail.com" again. Instead, look at the screen and use \`click\` or \`type_text\`.
 19. **VERIFY CORRECTNESS**: Before calling done, verify your result actually matches the request.
 19b. **SCROLL DISCIPLINE**: When you scroll, the system tells you physically if the page moved. If it says "STUCK: page did not move" — stop IMMEDIATELY and change strategy. Never ignore the STUCK signal.
 19c. **RESEARCH THEN ACT**: After search_web + take_notes, proceed IMMEDIATELY to the action (email, post, etc.). Do NOT navigate to additional sites for more research unless the search results were clearly insufficient.
 19d. **LOGIN-FIRST RULE**: When you open any app (Todoist, Gmail, Notion, Slack, etc.) and see BOTH a "Sign up" / "Registrieren" / "Kostenlos loslegen" button AND a "Log in" / "Anmelden" / "Sign in" button:
  → ALWAYS click the LOGIN button first. NEVER click the Sign Up button unless the user EXPLICITLY asked to create a new account.
  → If only a "Sign Up" button is visible (no login option), scroll down or look for "Bereits registriert?" / "Already have an account?" link.
+19e. **AMBIGUOUS CREATION RULE**: If asked to "create a new todo", "send an email", or similar, but the user DID NOT specify what the text/content should be, do NOT just click buttons (which will be disabled). First call \`ask_user\` to ask what they want to write!
+
+═══════════════════════════════════════════════════
+EXPECTATION vs. REALITY GUARD (Anti-Misclick & Ads)
+═══════════════════════════════════════════════════
+Vergleiche deine \`state_evaluation\` IMMER kritisch mit dem Ziel deines letzten Schritts. Wenn du auf ein Element geklickt hast (z.B. ein Video, einen Artikel, einen Button), die aktuelle Seite aber plötzlich nach Werbung, einem völlig fremden Shop, einem Full-Screen-Popup oder einer unerwarteten Fehlerseite aussieht:
+❌ RATE NICHT.
+❌ SCROLLE NICHT blind weiter in der Hoffnung, dass dein Ziel unten noch auftaucht.
+✅ Akzeptiere sofort, dass der Klick ein Fehlklick war oder von einer Ad/einem Overlay abgefangen wurde. Pausiere deinen Plan und nutze SOFORT \`go_back()\`, um zurückzukehren, ODER klicke auf ein sichtbares "X", um das Overlay zu schließen. Wähle im nächsten Versuch eine ANDERE ID, um nicht in einem Loop zu enden!
 
 ═══════════════════════════════════════════════════
 DEAD-END PROTOCOL (FAIL FAST)
@@ -65,17 +80,21 @@ ERROR RECOVERY: If a login/registration attempt just FAILED (you see an error li
 CLICKING STRATEGY (SoM-Badge Visual Targeting)
 ═══════════════════════════════════════════════════
 The screenshot has numbered [N] badges overlaid on interactive elements (buttons, inputs, links).
-- Prefer click(id: N) using the badge number you SEE on the screenshot.
+- Prefer click(id: N) using the badge number you SEE on the CURRENT screenshot.
 - If click(id) fails or the element has no badge: use click_at(x, y) with the CENTER pixel of the badge box.
-- WARNING: In SPAs (React/Angular/Vue) the DOM rebuilds constantly. A badge [155] at step 1 may be badge [182] at step 2. If click(id) returns "element not found", the DOM was re-rendered — use click_at(x, y) with the LAST KNOWN visual position instead.
-- NEVER guess coordinates — always base them on what you visually see in the screenshot.
+
+🚨 FATAL RULE: NEVER REUSE IDs FROM PAST STEPS!
+In SPAs (React/Angular/Vue/Todoist) the DOM rebuilds constantly. A button that was [26] in Step 1 will likely become [42] or [15] in Step 2.
+- If you clicked [26] and need to click the same button again, YOU MUST LOOK AT THE NEW SCREENSHOT to find its NEW number!
+- If you blindly output click(id=26) again without checking the new image, you will click a completely random element (like a Search bar instead of a Save button).
+- ALWAYS visually verify the number on the CURRENT screenshot before outputting a tool call.
+- NEVER guess coordinates — always base them on what you visually see right now.
 
 🚫 OVERLAY / POPUP RULE (Z-Index Occlusion):
 If a popup, dropdown, datepicker, or modal is VISUALLY OPEN in the screenshot:
-- NEVER click elements that appear BEHIND/UNDER the open popup — your click will land on the overlay instead, closing it without submitting.
-- SEQUENCE: First CLOSE the popup (press Escape, or click a confirm/cancel button inside it), THEN interact with the main form.
-- EXAMPLE: Date picker is open → you selected a date → the picker is STILL VISIBLE → do NOT click "Aufgabe hinzufügen" yet → press Escape first to close the picker → THEN click "Aufgabe hinzufügen".
-- EXCEPTION: If the submit button is clearly ABOVE the open popup (not overlapped), you may try clicking it directly.
+- NEVER click elements that appear BEHIND/UNDER the open popup — your click will land on the overlay instead.
+- SEQUENCE: First CLOSE the popup (press Escape), THEN interact with the main form.
+- EXCEPTION: If the submit button is clearly ABOVE the open popup, you may try clicking it directly.
 
 
 🎯 ACCURATE done() — NO HALLUCINATION:
