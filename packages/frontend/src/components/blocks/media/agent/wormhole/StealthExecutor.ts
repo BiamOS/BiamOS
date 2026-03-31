@@ -203,15 +203,51 @@ export class StealthExecutor {
         }
     }
 
+    // ─── B3: Element Stability Check (Animation Frame Delta) ─────
+    //
+    // Before clicking, verify the element is NOT mid-animation.
+    // Playwright calls this "stable" — two consecutive AnimationFrames
+    // must produce identical BoundingBoxes before a click is trusted.
+    //
+    // WHY: Dropdown menus, modals, toasts slide in over ~200ms.
+    // If we click at t=100ms the element is at y=250 (mid-slide).
+    // At t=200ms it settles at y=300. Click lands in empty space.
+    //
+    // IMPLEMENTATION: Two DOM.getBoxModel calls ~32ms apart.
+    // If all 8 quad-points are within 1px → STABLE → proceed.
+    // Otherwise → throw AnimatingError so click.ts can re-queue.
+    async checkStability(backendNodeId: number): Promise<void> {
+        try {
+            const get = () => this.cdp('DOM.getBoxModel', { backendNodeId });
+            const [r1, r2] = await Promise.all([
+                get(),
+                new Promise<any>(resolve => setTimeout(() => get().then(resolve), 32)) // ~2 frames @ 60fps
+            ]);
+            if (!r1.ok || !r2.ok) return; // can't check = proceed (non-fatal)
+            const c1: number[] = r1.result?.model?.content ?? [];
+            const c2: number[] = r2.result?.model?.content ?? [];
+            if (c1.length !== 8 || c2.length !== 8) return;
+            const isStable = c1.every((v: number, i: number) => Math.abs(v - c2[i]) < 1);
+            if (!isStable) {
+                const maxDelta = Math.max(...c1.map((v: number, i: number) => Math.abs(v - c2[i])));
+                throw new Error(`[ANIMATING] Element ${backendNodeId} is mid-animation (max Δ=${maxDelta.toFixed(1)}px). Retry in 200ms.`);
+            }
+        } catch (err) {
+            if ((err as Error).message.includes('[ANIMATING]')) throw err;
+            // DOM.getBoxModel error = non-fatal for stability check
+        }
+    }
+
     // ─── Physical Click ───────────────────────────────────────
 
     /**
      * Performs a stealth click on a node:
      * 1. Scroll into view
-     * 2. Pre-flight Z-index check (throws ObscuredElementError if blocked)
-     * 3. Human Bézier trajectory to target
-     * 4. Random delay 40-100ms (human reaction gap)
-     * 5. mouseDown + mouseUp via wc.sendInputEvent (isTrusted: true)
+     * 2. B3: Stability Check (2 AnimationFrames — blocks clicks on sliding menus)
+     * 3. Pre-flight Z-index check (throws ObscuredElementError if blocked)
+     * 4. Human Bézier trajectory to target
+     * 5. Random delay 40-100ms (human reaction gap)
+     * 6. mouseDown + mouseUp via wc.sendInputEvent (isTrusted: true)
      *
      * @param backendNodeId - The node to click
      * @param frameId       - Optional frameId if node is in a cross-origin iframe
@@ -226,19 +262,22 @@ export class StealthExecutor {
         // 1. Scroll into view
         await this.scrollIntoView(backendNodeId);
 
-        // 2. Pre-flight raycasting
+        // 2. B3: Stability Check — element must not be mid-animation
+        await this.checkStability(backendNodeId);
+
+        // 3. Pre-flight raycasting
         const { x: targetX, y: targetY } = await this.checkVisibility(backendNodeId, frameId);
 
         // Notify UI to gracefully animate GhostCursor to the exact live target
         if (this.onTargetUpdate) this.onTargetUpdate(targetX, targetY);
 
-        // 3. Human trajectory
+        // 4. Human trajectory
         await this.simulateHumanTrajectory(fromX, fromY, targetX, targetY);
 
-        // 4. Random pre-click delay (simulates human reaction time)
+        // 5. Random pre-click delay (simulates human reaction time)
         await delay(Math.floor(randomBetween(40, 100)));
 
-        // 5. Click via wc.sendInputEvent (isTrusted: true at C++ level)
+        // 6. Click via wc.sendInputEvent (isTrusted: true at C++ level)
         await this.ipc('spatial-input', this.wcId, [
             { type: 'mouseDown', x: targetX, y: targetY, button: 'left', clickCount: 1 },
         ]);

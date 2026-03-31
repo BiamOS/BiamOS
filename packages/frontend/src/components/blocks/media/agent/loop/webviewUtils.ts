@@ -1,19 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 BiamOS Contributors
 // ============================================================
-// BiamOS — WebView Utilities (CDP Edition)
+// BiamOS — WebView Utilities (Kinetic Sonar Edition)
 // ============================================================
-// Phase 2 of CDP Rebuild:
+// PHASE 1 PURGE: Removed (-350 lines):
+//   - harvestClickablePointerElements() — recursive JS shadow-DOM injection
+//   - Spatial Context Map (modal detection via JS injection)
+//
+// UPGRADED:
+//   - MAX_ELEMENTS: 400 → 80 (only what matters)
+//   - SoM box color: #FF00FF → #FF3333 (maximum LLM contrast)
+//   - Badge background: #CC00CC → #1A1A1A (black, white text)
+//
+// RETAINED:
 //   captureDomSnapshot() — uses CDP DOMSnapshot.captureSnapshot
 //     - Zero JS injection into the guest process
 //     - Automatically pierces ALL iframes
 //     - Z-index occlusion culling via paintOrder
 //     - Sequential SoM IDs 1..N (never hash-based)
-//   captureVisionFrame() — Ghost-Compositing
+//   captureVisionFrame() — Ghost-Compositing (upgraded colors)
 //     - Captures raw wv screenshot
-//     - Burns SoM neon boxes in RAM (off-screen canvas)
+//     - Burns SoM neon-red boxes in RAM (off-screen canvas)
 //     - Exports as JPEG 0.85 (saves ~60% LLM tokens vs PNG)
 //   waitForPageReady() — unchanged (MutationObserver based)
+//   buildSomLegend() — capped at 40 entries (semantic anchor)
 // ============================================================
 
 import { debug } from '../../../../../utils/debug';
@@ -31,85 +41,6 @@ const INTERACTIVE_ROLES = new Set([
     'tab', 'listbox', 'option', 'slider', 'spinbutton', 'switch',
     'treeitem', 'columnheader', 'rowheader',
 ]);
-
-// ─── V3: Harvest cursor:pointer Elements (Aggressive Button Hunter) ─
-// CDP DOMSnapshot gives no computed CSS — we run a tiny JS injection
-// in parallel to capture any element with `cursor: pointer` that the
-// DOM phase would miss (React fake-buttons, styled divs, etc.).
-
-export interface PointerElement {
-    x: number; y: number; w: number; h: number;
-    role: string; name: string;
-    iconHint?: string; // Phase 3: Mute Icon Scraper
-}
-
-export async function harvestClickablePointerElements(
-    wv: any,
-): Promise<PointerElement[]> {
-    try {
-        const raw = await wv.executeJavaScript(`
-            (function() {
-                var MAX = 120;
-                var results = [];
-                var all = document.querySelectorAll('*');
-                for (var i = 0; i < all.length && results.length < MAX; i++) {
-                    var el = all[i];
-                    try {
-                        var tag = el.tagName || '';
-                        // Skip tags already captured by DOMSnapshot
-                        if (['BUTTON','A','INPUT','TEXTAREA','SELECT','SUMMARY','SCRIPT','STYLE','SVG','IMG'].includes(tag)) continue;
-                        // Skip invisible elements
-                        var style = window.getComputedStyle(el);
-                        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) < 0.05) continue;
-                        // Must have cursor:pointer
-                        if (style.cursor !== 'pointer') continue;
-                        var r = el.getBoundingClientRect();
-                        if (r.width < 4 || r.height < 4) continue;
-                        // Skip elements already covered by a native button ancestor
-                        var par = el.parentElement;
-                        var hasNativeParent = false;
-                        while (par && par !== document.body) {
-                            var pt = par.tagName;
-                            if (pt === 'BUTTON' || pt === 'A' || (par.getAttribute && par.getAttribute('role') === 'button')) {
-                                hasNativeParent = true; break;
-                            }
-                            par = par.parentElement;
-                        }
-                        if (hasNativeParent) continue;
-                        // Build label
-                        var name = el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent.trim().slice(0, 80);
-                        // Phase 3: Icon Hint extraction
-                        var iconHint = '';
-                        var children = el.querySelectorAll('i, svg, span');
-                        for (var ci = 0; ci < children.length; ci++) {
-                            var cls = children[ci].className || '';
-                            if (typeof cls === 'string') {
-                                var match = cls.match(/(fa-[\w-]+|mdi-[\w-]+|icon-[\w-]+|bi-[\w-]+)/i);
-                                if (match) { iconHint = match[1]; break; }
-                            }
-                            // SVG title fallback
-                            var svgTitle = children[ci].querySelector && children[ci].querySelector('title');
-                            if (svgTitle && svgTitle.textContent.trim()) { iconHint = svgTitle.textContent.trim(); break; }
-                        }
-                        results.push({
-                            x: Math.round(r.left + r.width / 2),
-                            y: Math.round(r.top + r.height / 2),
-                            w: Math.round(r.width),
-                            h: Math.round(r.height),
-                            role: el.getAttribute('role') || 'div',
-                            name: name || '',
-                            iconHint: iconHint,
-                        });
-                    } catch(e) {}
-                }
-                return JSON.stringify(results);
-            })()
-        `, true);
-        return JSON.parse(raw) as PointerElement[];
-    } catch {
-        return [];
-    }
-}
 
 type ParsedDomNode = {
     isInteractive: boolean;
@@ -134,7 +65,6 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
     for (const doc of result.documents ?? []) {
         const nodes = doc.nodes;
         const layout = doc.layout;
-        const textBoxes = doc.textBoxes;
         if (!nodes || !layout) continue;
 
         // Build nodeIndex → layoutIndex map for this document
@@ -151,14 +81,14 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
             const bounds = layout.bounds?.[li];
             if (!bounds || bounds.length < 4) continue;
             const [bx, by, bw, bh] = bounds;
-            
+
             // Skip zero-size or off-screen elements
             if (bw <= 0 || bh <= 0) continue;
-            if (by < -100) continue; 
+            if (by < -100) continue;
 
             const tagIdx = nodes.nodeName?.[ni];
             const tag = typeof tagIdx === 'number' ? (strings[tagIdx] ?? '') : '';
-            
+
             let isInteractive = INTERACTIVE_TAGS.has(tag);
 
             // Extract accessible properties from attributes
@@ -171,9 +101,10 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
             for (let ai = 0; ai < attrs.length - 1; ai += 2) {
                 const attrKey = strings[attrs[ai]]?.toLowerCase() ?? '';
                 const attrVal = strings[attrs[ai + 1]] ?? '';
-                
+
                 if (attrKey === 'aria-label' && attrVal) { name = attrVal; }
                 else if (attrKey === 'placeholder' && attrVal && !name) { name = attrVal; }
+                else if ((attrKey === 'data-placeholder' || attrKey === 'aria-placeholder') && attrVal && !name) { name = attrVal; }
                 else if (attrKey === 'title' && attrVal && !name) { name = attrVal; }
                 else if (attrKey === 'value' && attrVal && !name && tag === 'INPUT') { name = attrVal; }
                 else if (attrKey === 'role') { roleAttr = attrVal.toLowerCase(); }
@@ -185,7 +116,6 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
                 else if (attrKey === 'disabled' || (attrKey === 'aria-disabled' && attrVal === 'true')) { stateBadges += '[DISABLED] '; }
             }
 
-            // If it's a contenteditable div or has an explicitly interactive ARIA role, it's interactive!
             if (isContentEditable || INTERACTIVE_ROLES.has(roleAttr)) {
                 isInteractive = true;
             }
@@ -197,14 +127,11 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
                 innerText = strings[textIdx] ?? '';
             }
 
-            if (!name && innerText) {
-                name = innerText;
-            }
+            if (!name && innerText) { name = innerText; }
 
             const cleanName = name.replace(/\s+/g, ' ').trim();
             const cleanText = innerText.replace(/\s+/g, ' ').trim();
-            
-            // Merge name and text if they differ, so the LLM sees both the aria-label and the visible text (e.g., "Mag ich | 2430")
+
             let finalName = cleanName;
             if (cleanText && cleanName && !cleanName.includes(cleanText) && !cleanText.includes(cleanName)) {
                 finalName = `${cleanName} | ${cleanText}`;
@@ -231,14 +158,8 @@ function parseDomSnapshot(result: any): ParsedDomNode[] {
                     paintOrder: layout.paintOrders?.[li] ?? 0,
                 });
             } else if (cleanText && cleanText.length > 0) {
-                // Ignore script/style text
                 if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
-                
-                // Add visible static text as context
-                out.push({
-                    isInteractive: false,
-                    text: cleanText.substring(0, 200)
-                });
+                out.push({ isInteractive: false, text: cleanText.substring(0, 200) });
             }
         }
     }
@@ -259,7 +180,7 @@ async function resolveAxTreeCoords(
     const out: Omit<SomEntry, 'id'>[] = [];
     let resolved = 0;
     for (const node of nodes) {
-        if (resolved >= 300) break;
+        if (resolved >= 80) break;
         const role = node.role?.value ?? '';
         if (!INTERACTIVE_ROLES.has(role)) continue;
         const name = node.name?.value ?? '';
@@ -269,7 +190,6 @@ async function resolveAxTreeCoords(
             const r = await electronAPI.cdpSend(wcId, 'DOM.getBoxModel', { backendNodeId });
             if (!r.ok || !r.result?.model) continue;
             const { content } = r.result.model;
-            // content = [x0,y0, x1,y1, x2,y2, x3,y3] quad
             if (!content || content.length < 8) continue;
             const bx = content[0], by = content[1];
             const bw = content[2] - content[0];
@@ -287,10 +207,12 @@ async function resolveAxTreeCoords(
     return out;
 }
 
-// ─── captureDomSnapshot (CDP Edition) ───────────────────────
-// Replaces the old executeJavaScript(DOM_SNAPSHOT_SCRIPT) approach.
+// ─── captureDomSnapshot (CDP Edition) ────────────────────────
 // Populates stepSomRef with the new SomMap for this step.
-// Returns the text SoM string that gets sent to the LLM.
+// Returns the text SoM string — NOT sent to LLM, used internally
+// to give captureVisionFrame() the coordinates for box-drawing.
+//
+// MAX_ELEMENTS: 80 (Kinetic Sonar — only what the eye sees matters)
 
 export async function captureDomSnapshot(
     wv: any,
@@ -304,7 +226,6 @@ export async function captureDomSnapshot(
     stepSomRef.current = new Map();
 
     if (!electronAPI?.cdpSend || !wcId) {
-        // Non-Electron / no CDP: fall back to empty snapshot with warning
         debug.log('⚠️ [CDP] cdpSend unavailable — no DOM snapshot');
         return '[DOM snapshot unavailable: running outside Electron or CDP not ready]';
     }
@@ -315,18 +236,17 @@ export async function captureDomSnapshot(
     try {
         const resp = await electronAPI.cdpSend(wcId, 'DOMSnapshot.captureSnapshot', {
             computedStyles: [],
-            includePaintOrder: true,   // Z-index occlusion culling
+            includePaintOrder: true,
             includeDOMRects: true,
         });
         if (resp.ok && resp.result) {
             nodes = parseDomSnapshot(resp.result);
-            debug.log(`🔌 [CDP] DOMSnapshot: ${nodes.length} nodes (interactive+static) across all frames`);
+            debug.log(`🔌 [CDP] DOMSnapshot: ${nodes.length} nodes across all frames`);
         } else {
             throw new Error(resp.error ?? 'DOMSnapshot failed');
         }
     } catch (e1) {
         debug.log(`⚠️ [CDP] DOMSnapshot failed (${e1}), trying AXTree fallback...`);
-        // ── Fallback: Accessibility.getFullAXTree ───────────
         try {
             const axResp = await electronAPI.cdpSend(wcId, 'Accessibility.getFullAXTree', {});
             if (axResp.ok && axResp.result?.nodes) {
@@ -343,14 +263,11 @@ export async function captureDomSnapshot(
     }
 
     // ── Assign sequential IDs 1..N to Interactive elements ───
-    const MAX_ELEMENTS = 400;
+    const MAX_ELEMENTS = 80; // Kinetic Sonar: lean and precise
     const lines: string[] = [];
     let idCounter = 1;
 
-    // ── Fetch scroll offset AND device pixel ratio FIRST ─────────
-    // DOMSnapshot gives document-absolute coords; sendInputEvent needs viewport-relative.
-    // On Windows 125%/150% DPI, DOMSnapshot coords are in the webview's logical px space
-    // (scaled by DPR), but sendInputEvent uses layout CSS pixels. Dividing by DPR corrects this.
+    // ── Fetch scroll offset AND device pixel ratio ─────────
     let pageScrollX = 0;
     let pageScrollY = 0;
     let contentDpr = 1;
@@ -370,23 +287,10 @@ export async function captureDomSnapshot(
         debug.log(`📍 [SoM] Corrections: scrollX=${pageScrollX} scrollY=${pageScrollY} DPR=${contentDpr.toFixed(2)}`);
     }
 
-    // ── Phase 1: V3 Aggressive Button Hunter (cursor:pointer harvest) ──
-    // Run in parallel while nodes is populated. Caps at 120 extra elements.
-    let pointerExtras: PointerElement[] = [];
-    try {
-        pointerExtras = await harvestClickablePointerElements(wv);
-        debug.log(`🎯 [SoM V3] cursor:pointer harvest: ${pointerExtras.length} extra clickable elements discovered`);
-    } catch { /* non-fatal */ }
-
     for (const node of nodes) {
         if (node.isInteractive) {
             if (idCounter > MAX_ELEMENTS) continue;
-            
-            // Apply scroll + DPR correction:
-            // - DOMSnapshot coords are document-absolute (subtract scroll)
-            // - On Windows 125%/150% DPI, DOMSnapshot coords are in the webview's
-            //   content px space (DPR-scaled). Divide by DPR to get layout CSS pixels
-            //   that match sendInputEvent and GhostCursor coordinate systems.
+
             const entry: SomEntry = {
                 id: idCounter,
                 x: Math.round(((node.x ?? 0) - pageScrollX) / contentDpr),
@@ -404,47 +308,19 @@ export async function captureDomSnapshot(
             lines.push(line);
             idCounter++;
         } else {
-            // It's a static text node
             lines.push(`  "${node.text}"`);
         }
     }
 
-    // ── Inject cursor:pointer extras, deduplicating by spatial proximity ──
-    const DEDUP_RADIUS = 20; // px — if a pointer-div is within 20px of an existing SoM element, skip it
-    for (const extra of pointerExtras) {
-        if (idCounter > MAX_ELEMENTS) break;
-        // Check if an existing element in the SoM map is nearby
-        let isDuplicate = false;
-        for (const existing of stepSomRef.current.values()) {
-            if (Math.abs(existing.x - extra.x) < DEDUP_RADIUS && Math.abs(existing.y - extra.y) < DEDUP_RADIUS) {
-                isDuplicate = true;
-                break;
-            }
-        }
-        if (isDuplicate) continue;
-
-        const name = extra.iconHint ? `${extra.name || ''}[icon:${extra.iconHint}]`.trim() : extra.name;
-        const entry: SomEntry = {
-            id: idCounter,
-            x: extra.x, y: extra.y, w: extra.w, h: extra.h,
-            role: extra.role, name: name.substring(0, 150),
-        };
-        stepSomRef.current.set(idCounter, entry);
-        lines.push(`[${idCounter}] ${entry.role} "${entry.name}" (x:${entry.x} y:${entry.y} w:${entry.w} h:${entry.h}) [cursor:pointer]`);
-        idCounter++;
-    }
-
     // ── Minimap header (Viewport Radar) ─────────────────────
     const scrollInfo = await getScrollInfo(wv);
-    const radarBar = scrollInfo.atBottom 
-        ? `[ SCROLL: ${scrollInfo.pct}% | AT BOTTOM — do NOT scroll more ]`
-        : `[ SCROLL: ${scrollInfo.pct}% | PAGE HEIGHT: ${scrollInfo.pageH}px | VIEWPORT: ${scrollInfo.viewH}px | MORE CONTENT BELOW — scroll down to see it ]`;
-    const minimap = `[PAGE RADAR] ${radarBar}\nSoM elements: ${idCounter - 1} (+${pointerExtras.length} cursor:pointer extras)\n⚠️ IDs are EPHEMERAL — only valid for THIS step. Never reuse an ID from a previous step.\n${'─'.repeat(48)}\n`;
+    const radarBar = scrollInfo.atBottom
+        ? `[ SCROLL: ${scrollInfo.pct}% | AT BOTTOM ]`
+        : `[ SCROLL: ${scrollInfo.pct}% | MORE CONTENT BELOW ]`;
+    const minimap = `[PAGE RADAR] ${radarBar}\nSoM elements: ${idCounter - 1}\n⚠️ IDs are EPHEMERAL — only valid for THIS step.\n${'─'.repeat(48)}\n`;
 
     return minimap + lines.join('\n');
-
 }
-
 
 function formatSomLine(e: SomEntry): string {
     const roleOrTag = e.role || e.tag?.toLowerCase() || '?';
@@ -467,18 +343,82 @@ async function getScrollInfo(wv: any): Promise<{ pct: number; atBottom: boolean;
     } catch { return { pct: 0, atBottom: false, pageH: 0, viewH: 0, scrollX: 0, scrollY: 0 }; }
 }
 
-// ─── captureVisionFrame (Ghost-Compositing) ──────────────────
+// ─── buildSomLegend (40-entry Semantic Anchor) ───────────────
+// Compact legend that accompanies the screenshot in the LLM prompt.
+// Format: "[id] role "name"" — one entry per interactive element, max 40.
+// Sorted by paintOrder (modals/overlays first — highest visual priority).
+// This is the "semantic bridge": 100-150 tokens for 100% ID certainty.
+
+export function buildSomLegend(somMap: SomMap, maxEntries = 40): string {
+    const lines: string[] = [];
+
+    // Sort visually salient items (modals/overlays) to the TOP
+    const entries = Array.from(somMap.entries()).sort((a, b) => {
+        const paintA = a[1].paintOrder ?? 0;
+        const paintB = b[1].paintOrder ?? 0;
+        return paintB - paintA; // Descending: highest paintOrder first
+    });
+
+    let count = 0;
+    for (const [id, entry] of entries) {
+        if (count >= maxEntries) break;
+        const roleStr = entry.role || entry.tag?.toLowerCase() || 'element';
+        const nameStr = entry.name ? ` "${entry.name}"` : '';
+        lines.push(`[${id}] ${roleStr}${nameStr}`);
+        count++;
+    }
+    return lines.join('\n');
+}
+
+// ─── captureVisionFrame (Ghost-Compositing, Kinetic Sonar) ───
 // Burns SoM bounding boxes into the screenshot in RAM.
 // The page DOM is NEVER touched. CSP cannot block this.
 // Exports as JPEG 0.85 — saves ~60% tokens vs PNG.
+//
+// COLOR UPGRADE (Phase 1):
+//   Box stroke: #FF3333 (bright red — max LLM contrast vs white/gray UI)
+//   Badge bg:   #1A1A1A (near-black — white text pops cleanly)
+//   Failed ID:  #FF0000 (pure red, with dark-red border)
 
 export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: number | null = null): Promise<string> {
     if (!wv?.capturePage) return '';
-    try {
-        const nativeImg = await wv.capturePage();
-        if (!nativeImg || nativeImg.isEmpty()) return '';
 
-        // Resize to max 1200px wide before compositing (LLM doesn't need full-res)
+    // ── Black Frame Detection + Retry ─────────────────────────
+    // capturePage() can return a solid-black frame when the webview GPU surface
+    // hasn't composited yet (e.g. first frame after navigation, or webview
+    // momentarily off-screen). We detect this and retry once after a brief wait.
+    const captureWithBlackCheck = async (): Promise<{ img: any; isBlack: boolean }> => {
+        const nativeImg = await wv.capturePage();
+        if (!nativeImg || nativeImg.isEmpty()) return { img: null, isBlack: true };
+
+        // Sample 16 pixels spread across the image to detect solid-black frames
+        const sample = nativeImg.resize({ width: 8, height: 8 });
+        const buf: Buffer = sample.toBitmap();
+        let brightPixels = 0;
+        for (let i = 0; i < buf.length; i += 4) {
+            const r = buf[i], g = buf[i + 1], b = buf[i + 2];
+            if (r + g + b > 30) brightPixels++; // Any non-near-black pixel counts
+        }
+        const brightRatio = brightPixels / (buf.length / 4);
+        return { img: nativeImg, isBlack: brightRatio < 0.05 }; // <5% bright = black frame
+    };
+
+    try {
+        let { img: nativeImg, isBlack } = await captureWithBlackCheck();
+
+        if (isBlack) {
+            debug.log('⚠️ [captureVisionFrame] Black frame detected — waiting 600ms and retrying');
+            await new Promise(r => setTimeout(r, 600));
+            const retry = await captureWithBlackCheck();
+            nativeImg = retry.img;
+            isBlack = retry.isBlack;
+        }
+
+        if (!nativeImg || isBlack) {
+            debug.log('⚠️ [captureVisionFrame] Frame still black after retry — returning empty');
+            return ''; // Engine will send no screenshot — LLM will be told page not rendered
+        }
+
         const size = nativeImg.getSize();
         const resized = size.width > 1200 ? nativeImg.resize({ width: 1200 }) : nativeImg;
         const base64Data = resized.toDataURL();
@@ -494,10 +434,6 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
 
                 ctx.drawImage(img, 0, 0);
 
-                // DPR factor: nativeImg may be @2x on Retina.
-                // We get CSS pixel coords from CDP, so we need to scale them up.
-                // img.width is the physical pixel width of the screenshot.
-                // The webview CSS width is stored on wv.__cssWidth (set below).
                 const cssWidth = (wv as any).__cssWidth ?? img.width;
                 const dpr = img.width / cssWidth;
 
@@ -505,8 +441,6 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                     ctx.font = `bold ${11 * dpr}px monospace`;
                     ctx.textBaseline = 'top';
 
-                    // ── Phase 2: Anti-Occlusion Badge Positioning ──
-                    // Track occupied badge zones to offset collisions
                     const occupiedBadges: { bx: number; by: number; bw: number; bh: number }[] = [];
 
                     for (const [id, entry] of somMap.entries()) {
@@ -515,18 +449,18 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                         const w = entry.w * dpr;
                         const h = entry.h * dpr;
 
-                        // Bounding box — magenta for max LLM contrast
+                        // ── Box: bright red for maximum LLM contrast ──
                         ctx.lineWidth = 2 * dpr;
-                        ctx.strokeStyle = lastFailedId === id ? '#FF3333' : '#FF00FF';
+                        ctx.strokeStyle = lastFailedId === id ? '#FF0000' : '#FF3333';
                         ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
 
-                        // Badge: anchor to top-left of element (anti-occlusion)
+                        // Badge
                         const badgeW = (String(id).length * 8 + 6) * dpr;
                         const badgeH = 16 * dpr;
                         let badgeX = cx - w / 2;
                         let badgeY = cy - h / 2 - badgeH;
 
-                        // Collision detection: shift right if overlapping a previous badge
+                        // Anti-collision: shift right if overlapping a previous badge
                         let attempts = 0;
                         while (attempts < 8) {
                             const collision = occupiedBadges.some(ob =>
@@ -534,12 +468,13 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                                 badgeY < ob.by + ob.bh && badgeY + badgeH > ob.by
                             );
                             if (!collision) break;
-                            badgeX += badgeW + 2 * dpr; // shift right to avoid collision
+                            badgeX += badgeW + 2 * dpr;
                             attempts++;
                         }
                         occupiedBadges.push({ bx: badgeX, by: badgeY, bw: badgeW, bh: badgeH });
 
                         if (lastFailedId === id) {
+                            // Failed: pure red badge
                             ctx.fillStyle = '#FF0000';
                             ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
                             ctx.lineWidth = 3 * dpr;
@@ -547,7 +482,8 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                             ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
                             ctx.fillStyle = '#FFFFFF';
                         } else {
-                            ctx.fillStyle = '#CC00CC';
+                            // Normal: near-black badge, white text
+                            ctx.fillStyle = '#1A1A1A';
                             ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
                             ctx.fillStyle = '#FFFFFF';
                         }
@@ -555,7 +491,6 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
                     }
                 }
 
-                // JPEG 0.85: imperceptible quality loss, ~60% smaller than PNG
                 resolve(canvas.toDataURL('image/jpeg', 0.85).replace(/^data:image\/\w+;base64,/, ''));
             };
             img.onerror = reject;
@@ -567,27 +502,24 @@ export async function captureVisionFrame(wv: any, somMap: SomMap, lastFailedId: 
     }
 }
 
+
 // ─── waitForPageReady ────────────────────────────────────────
 // MutationObserver-based DOM silence check.
 // silenceMs is adaptive: 150ms (scroll), 200ms (type), 300ms (click), 1200ms (navigate).
-// IMPORTANT: Phase 2 is capped via Promise.race — YouTube/SPAs mutate DOM forever
-// (ads, autoplay, live counters) and would hang executeJavaScript indefinitely.
 
 export async function waitForPageReady(wv: any, label: string, silenceMs = 800): Promise<boolean> {
     if (!wv) return false;
     const tag = `⏳ [waitForPageReady:${label}]`;
-    const MAX_WAIT_MS = 8000; // Phase 1 hard cap (was 30000 — caused 30s+ hangs)
+    const MAX_WAIT_MS = 8000;
     const start = Date.now();
 
-    // Phase 1: wait for isLoading() = false (hard cap 8s)
+    // Phase 1: wait for isLoading() = false
     while (wv.isLoading?.() && Date.now() - start < MAX_WAIT_MS) {
         await new Promise(r => setTimeout(r, 200));
     }
 
-    // Phase 2: wait for DOM silence via executeJavaScript
-    // CRITICAL: always race against a hard timeout so busy SPAs (YouTube etc)
-    // don't block forever when their DOM never fully settles.
-    const phase2Cap = Math.min(silenceMs * 3, 3000); // adaptive: type=600ms click=900ms navigate=3000ms
+    // Phase 2: wait for DOM silence — always race against a hard timeout
+    const phase2Cap = Math.min(silenceMs * 3, 3000);
     try {
         await Promise.race([
             wv.executeJavaScript(`
@@ -605,18 +537,18 @@ export async function waitForPageReady(wv: any, label: string, silenceMs = 800):
                     }
                 })
             `, true),
-            new Promise<void>(r => setTimeout(r, phase2Cap)), // hard cap
+            new Promise<void>(r => setTimeout(r, phase2Cap)),
         ]);
     } catch {
-        // Page navigated mid-wait — that's fine
+        // Page navigated mid-wait — fine
     }
 
     debug.log(`${tag} ready in ${Date.now() - start}ms`);
     return true;
 }
 
-// ─── Utility: capture a plain screenshot (no SoM overlay) ────
-// Used for step history / ask_user thumbnails where SoM is irrelevant.
+// ─── captureScreenshot (plain, no SoM overlay) ───────────────
+// Used for step history / ask_user thumbnails.
 
 export async function captureScreenshot(wv: any): Promise<string> {
     if (!wv?.capturePage) return '';

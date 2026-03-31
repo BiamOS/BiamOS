@@ -82,7 +82,7 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
 
     const text: string = args.text ?? '';
     const submitAfter = args.submit_after === true;
-    const clearFirst = args.clear_first === true;
+    const clearFirst = args.clear_first !== false;
 
     // ── Strategy A: CDP Runtime.callFunctionOn ──────────────────
     if (entry.nodeId && ctx.wcId) {
@@ -173,31 +173,43 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     }
 
                     const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" — TEXT IS COMPLETE. Do NOT type again. Call done() if task is finished.` };
+                    const suffix = submitAfter 
+                        ? 'TEXT IS COMPLETE and was AUTOMATICALLY SUBMITTED via Enter key! Check the screen. If the task is finished, call done() now.'
+                        : 'TEXT IS COMPLETE. Do NOT type again. ⚠️ If this is a form, you MUST click the Submit/Search button next. Call done() ONLY AFTER submitting.';
+                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" — ${suffix}` };
                 }
 
                 // ── CONTENTEDITABLE path ── 3-tier universal approach ─
                 if (isContentEditable) {
                     if (clearFirst) {
+                        // DO NOT use innerHTML = '' for complex editors (Slate, Lexical, Draft.js)
+                        // It destroys their internal state model. Use standard browser execCommand which natively fires proper React events.
                         await ctx.cdpSend('Runtime.callFunctionOn', {
                             objectId,
                             functionDeclaration: `function() {
                                 try {
-                                    document.execCommand('selectAll', false, null);
+                                    this.focus();
+                                    const s = window.getSelection();
+                                    const r = document.createRange();
+                                    r.selectNodeContents(this);
+                                    s.removeAllRanges();
+                                    s.addRange(r);
+                                    
                                     document.execCommand('delete', false, null);
-                                    this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
                                 } catch(e) {}
                             }`,
                             silent: true,
                         });
-                        await delay(100);
+                        await delay(50);
                     }
 
-                    // Tier 1: Input.insertText — browser native pipeline
-                    debug.log(`[TYPE v5] Contenteditable → Tier 1: Input.insertText`);
-                    const t1ok = await typeViaInsertText(text, ctx);
-                    await delay(100);
-                    if (t1ok) await forceFrameworkSync(objectId, ctx);
+                    // Tier 1: Real Keystroke Simulation (typeViaKeyEvents)
+                    // We must fire keyDown, char, and keyUp for every character.
+                    // Complex editors like Slate.js (Todoist, Notion) require these events
+                    // to accurately track state. If we use Input.insertText, they miss the 
+                    // keyboard telemetry and revert the DOM back to empty on the next tick.
+                    debug.log(`[TYPE v5] Contenteditable → Tier 1: typeViaKeyEvents (Full keystroke simulation)`);
+                    await typeViaKeyEvents(text, ctx);
                     await delay(150);
 
                     // Verify insertion
@@ -211,29 +223,46 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     debug.log(`[TYPE v5] Tier 1 verify: confirmed=${confirmed} content="${content.substring(0, 60)}"`);
 
                     if (!confirmed) {
-                        // Tier 2: char-by-char keyEvents
-                        debug.log(`[TYPE v5] Tier 1 failed → Tier 2: dispatchKeyEvent char-by-char`);
+                        debug.log(`[TYPE v5] Tier 1 failed → Tier 2: generic dispatchEvent fallback`);
+                        // Final fallback if the framework aggressively suppressed standard keyEvents
                         await ctx.cdpSend('Runtime.callFunctionOn', {
                             objectId,
-                            functionDeclaration: `function() { try { document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); } catch(e) {} }`,
+                            functionDeclaration: `function(t) {
+                                try {
+                                    this.focus();
+                                    document.execCommand('insertText', false, t);
+                                    this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                } catch(e) {}
+                            }`,
+                            arguments: [{ value: text }],
                             silent: true,
                         });
-                        await delay(50);
-                        await typeViaKeyEvents(text, ctx);
-                        await delay(100);
-                        await forceFrameworkSync(objectId, ctx);
+                        await delay(150);
                     }
 
                     if (submitAfter) {
                         await delay(400);
+                        // 1. Standard Enter (works for basic inputs)
                         await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
                         await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'char', key: '\r', text: '\r' });
                         await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'keyUp',   key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
+
+                        // 2. Ctrl + Enter (Windows submit shortcut for SPA Comments/Tasks)
+                        await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: 2, key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
+                        await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'keyUp',   modifiers: 2, key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
+
+                        // 3. Meta/Cmd + Enter (macOS submit shortcut)
+                        await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: 4, key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
+                        await ctx.cdpSend('Input.dispatchKeyEvent', { type: 'keyUp',   modifiers: 4, key: 'Enter', code: 'Enter', keyCode: 13, windowsVirtualKeyCode: 13 });
+
                         await ctx.waitForPageReady('post-submit-ce');
                     }
 
                     const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (contenteditable) — ALL TEXT INSERTED. The FULL ${text.length} characters were typed. Do NOT type again. ⚠️ If this is a comment box or form, click the SEND/SUBMIT/Kommentieren button next. Only call done() AFTER the content has been submitted.` };
+                    const suffix = submitAfter
+                        ? `TEXT INSERTED AND AUTOMATICALLY SUBMITTED via Enter/Ctrl+Enter! Check the result. If the task is finished, call done() immediately.`
+                        : `✅ TEXT INSERTED. Do NOT type again. ⚠️ Since this is a comment/task box, you MUST click the SEND/SUBMIT/Kommentieren/Hinzufügen button next. Only call done() AFTER submitting.`;
+                    return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (contenteditable) — ${suffix}` };
                 }
 
                 // Tier 3: execCommand for unknown elements
@@ -246,7 +275,10 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                     returnByValue: false, silent: true,
                 });
                 const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-                return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (execCommand fallback) — TEXT IS COMPLETE. Do NOT type again. If this is a comment box or form, click the SEND/SUBMIT button next. Only call done() AFTER submitting.` };
+                const suffix = submitAfter
+                    ? `AUTOMATICALLY SUBMITTED. Check the screen. Call done() if task is finished.`
+                    : `TEXT IS COMPLETE. Do NOT type again. If this is a form, click the SEND/SUBMIT button next.`;
+                return { logMessage: `✅ COMPLETE (${text.length} chars) Typed "${preview}" into [${args.id}] "${entry.name}" (execCommand fallback) — ${suffix}` };
             }
         } catch (e) {
             debug.log(`⚠️ [TYPE] Strategy A failed: ${e} → Strategy B`);
@@ -300,7 +332,8 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
         if (!r.ok) return { logMessage: `❌ type_text: element not found (ID ${args.id}). Click the correct field first.` };
         if (submitAfter) await ctx.waitForPageReady('post-submit-b');
         const preview = text.length > 40 ? text.substring(0, 30) + '…' : text;
-        return { logMessage: `✅ Typed "${preview}" into [${args.id}] "${entry.name}" (fallback strategy)` };
+        const suffix = submitAfter ? 'AUTOMATICALLY SUBMITTED.' : 'Click Submit next if applicable.';
+        return { logMessage: `✅ Typed "${preview}" into [${args.id}] "${entry.name}" (fallback strategy) — ${suffix}` };
     } catch (e) {
         return { logMessage: `❌ type_text: all strategies failed — ${e}` };
     }

@@ -21,7 +21,7 @@ import { debug } from "../../../utils/debug";
 export type { AgentStep, AgentState, AgentStatus } from "./agent/types";
 import type { AgentStep, AgentState, EngineContext, SomMap, TrajectoryStep } from "./agent/types";
 import { MAX_STEPS } from "./agent/constants";
-import { runStep, runMemoryReplay } from "./agent/loop/engine";
+import { runStep } from "./agent/loop/engine";
 import { waitForPageReady } from "./agent/loop/webviewUtils";
 
 // ─── CRUD Plan ───────────────────────────────────────────────
@@ -92,6 +92,7 @@ export function useAgentActions(
             // Only cancel if this hook's cardId matches (or no cardId = always cancel)
             if (!detail?.cardId || detail.cardId === cardId) {
                 abortRef.current = true;
+                isRunningRef.current = false; // Release the lock on cancel
                 abortControllerRef.current?.abort();
                 setAgentState(prev => ({
                     ...prev,
@@ -106,6 +107,8 @@ export function useAgentActions(
         window.addEventListener('biamos:agent-cancel', handleCancel);
         return () => window.removeEventListener('biamos:agent-cancel', handleCancel);
     }, [cardId]);
+
+    const isRunningRef = useRef(false);
 
     // ── Build EngineContext — refs + functional setState only ──
     const buildEngineContext = useCallback((): EngineContext => ({
@@ -127,6 +130,12 @@ export function useAgentActions(
 
     // ─── Start the agent ─────────────────────────────────────
     const startAgent = useCallback(async (task: string, crudPlan?: CrudPlan) => {
+        if (isRunningRef.current) {
+            console.warn(`🛑 [Agent] Blocked concurrent startAgent call! Agent is already running.`);
+            return;
+        }
+        isRunningRef.current = true;
+
         // Fresh AbortController for this run (Zeitbombe 5)
         abortControllerRef.current = new AbortController();
         abortRef.current = false;
@@ -181,23 +190,7 @@ export function useAgentActions(
                 }
             }
 
-            // 🧠 FAST PATH: Muscle Memory Replay
-            if (crudPlanRef.current.muscle_memory && crudPlanRef.current.muscle_memory.length > 0) {
-                setAgentState(prev => ({ ...prev, status: "running", currentAction: "🧠 Muscle Memory Fast-Path", lastWorkflowId: crudPlanRef.current.memory_id || null }));
-                debug.log(`🧠 [Agent] Discovered muscle_memory for this task! Attempting replay before LLM fallback...`);
-                try {
-                    const ctx = buildEngineContext();
-                    const success = await runMemoryReplay(task, crudPlanRef.current.muscle_memory, ctx);
-                    if (success) return; // Completely handled by replay!
-                    
-                    // Replay failed: clear history and fall through to LLM loop
-                    debug.log(`🧠 [Agent] Replay failed mid-flight. Falling back to LLM reasoning from scratch.`);
-                    stepsRef.current = [];
-                    setAgentState(prev => ({ ...prev, steps: [], currentAction: "🧠 Replay failed. Recalibrating route..." }));
-                } catch (e) {
-                    debug.log(`🧠 [Agent] Replay crashed, falling back:`, e);
-                }
-            }
+            // Memory replay logic removed (handled server-side via RAG injection)
 
             // Normal LLM Loop
             while (shouldContinue && !abortRef.current && stepCount < MAX_STEPS) {
@@ -237,6 +230,7 @@ export function useAgentActions(
                 currentAction: `❌ Fatal Error: ${fatalError?.message || 'Unknown crash'}`,
             }));
         } finally {
+            isRunningRef.current = false; // Always release the lock when the loop ends naturally or crashes
             // Auto-dismiss errors after 8s
             setTimeout(() => {
                 setAgentState(prev => {
@@ -283,16 +277,21 @@ export function useAgentActions(
         let shouldContinue = true;
         let stepCount = stepsRef.current.length;
 
-        while (shouldContinue && !abortRef.current && stepCount < MAX_STEPS) {
-            stepCount++;
-            const ctx = buildEngineContext();
-            shouldContinue = await runStep(task, ctx);
+        try {
+            while (shouldContinue && !abortRef.current && stepCount < MAX_STEPS) {
+                stepCount++;
+                const ctx = buildEngineContext();
+                shouldContinue = await runStep(task, ctx);
+            }
+        } finally {
+            isRunningRef.current = false;
         }
     }, [buildEngineContext]);
 
     // ─── Stop the agent ──────────────────────────────────────
     const stopAgent = useCallback(() => {
         abortRef.current = true;
+        isRunningRef.current = false; // Release lock on UI stop
         abortControllerRef.current?.abort(); // Kills the in-flight fetch immediately (Zeitbombe 5)
         setAgentState(prev => ({
             ...prev,
