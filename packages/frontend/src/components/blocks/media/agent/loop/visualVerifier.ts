@@ -17,7 +17,7 @@
 // ─── Configuration ───────────────────────────────────────────
 
 /** Minimum pixel-change ratio to consider an action "effective" (0–100%) */
-const CHANGE_THRESHOLD_PCT = 2.5; // 2.5% of pixels must visibly change
+const CHANGE_THRESHOLD_PCT = 0.5; // Lowered to 0.5% to allow micro-interactions (checkboxes, hover states, loading bars)
 const THUMBNAIL_SIZE = 64;        // 64×64 = 4096 pixels, fast comparison
 const SAMPLE_RESOLUTION = 8;      // Sample every Nth pixel for speed
 
@@ -41,9 +41,9 @@ export async function verifyActionEffect(
     action: string,
 ): Promise<VerifyResult> {
     // These actions are expected to produce minimal pixel changes
-    // (e.g. scroll may only shift content 10px, type adds a few characters).
-    // We use a relaxed threshold for them.
-    const ALWAYS_EFFECTIVE = new Set(['navigate', 'go_back', 'wait', 'ask_user', 'done', 'search_web']);
+    // (e.g. scroll may only shift content 10px, type has internal verification).
+    // We explicitly exempt them from the diff threshold.
+    const ALWAYS_EFFECTIVE = new Set(['navigate', 'go_back', 'wait', 'ask_user', 'done', 'search_web', 'type_text']);
     if (ALWAYS_EFFECTIVE.has(action)) {
         return { changed: true, changePct: 100, message: `✅ [Sonar] ${action} is always effective` };
     }

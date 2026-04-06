@@ -88,18 +88,41 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
     if (entry.nodeId && ctx.wcId) {
         try {
             const resolveResp = await ctx.cdpSend('DOM.resolveNode', { backendNodeId: entry.nodeId });
-            const objectId = resolveResp?.result?.object?.objectId;
+            let objectId = resolveResp?.result?.object?.objectId;
 
             if (objectId) {
-                // Detect element type
+                // Detect element type and auto-dive into containers
                 const tagResp = await ctx.cdpSend('Runtime.callFunctionOn', {
                     objectId,
-                    functionDeclaration: 'function() { return JSON.stringify({ tag: this.tagName, ce: this.getAttribute("contenteditable") }); }',
+                    functionDeclaration: `function() { 
+                        var el = this;
+                        // If it's a wrapper, dive into the actual input
+                        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.getAttribute('contenteditable') !== 'true') {
+                            var childInput = el.querySelector('input:not([type="hidden"]), textarea, [contenteditable="true"]');
+                            if (childInput) el = childInput;
+                        }
+                        return JSON.stringify({ tag: el.tagName, ce: el.getAttribute("contenteditable") }); 
+                    }`,
                     returnByValue: true, silent: true,
                 });
                 const info = (() => { try { return JSON.parse(tagResp?.result?.result?.value ?? '{}'); } catch { return {}; } })();
                 const tag: string = (info.tag ?? '').toUpperCase();
                 const isContentEditable = info.ce !== null && info.ce !== 'false';
+
+                // Re-resolve objectId if we dived into a child
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || isContentEditable) {
+                    const diveResp = await ctx.cdpSend('Runtime.callFunctionOn', {
+                        objectId,
+                        functionDeclaration: `function() {
+                            if (this.tagName === 'INPUT' || this.tagName === 'TEXTAREA' || this.getAttribute('contenteditable') === 'true') return this;
+                            return this.querySelector('input:not([type="hidden"]), textarea, [contenteditable="true"]') || this;
+                        }`,
+                        silent: true,
+                    });
+                    if (diveResp?.result?.result?.objectId) {
+                        objectId = diveResp.result.result.objectId;
+                    }
+                }
 
                 // Focus + move caret to end
                 await ctx.cdpSend('Runtime.callFunctionOn', {
@@ -122,40 +145,41 @@ export async function type_text(args: Record<string, any>, ctx: ActionContext): 
                 // ── INPUT / TEXTAREA path ──────────────────────────
                 if (tag === 'INPUT' || tag === 'TEXTAREA') {
                     if (clearFirst) {
-                        await ctx.cdpSend('Runtime.callFunctionOn', {
-                            objectId,
-                            functionDeclaration: `function() {
-                                try {
-                                    var p = this.tagName === 'INPUT' ? HTMLInputElement : HTMLTextAreaElement;
-                                    var s = Object.getOwnPropertyDescriptor(p.prototype, 'value');
-                                    if (s && s.set) s.set.call(this, ''); else this.value = '';
-                                    this.dispatchEvent(new Event('input', { bubbles: true }));
-                                } catch(e) {}
-                            }`,
-                            silent: true,
-                        });
+                        try {
+                            // Native clear via CDP to trigger framework state syncs
+                            await ctx.cdpSend('Runtime.callFunctionOn', {
+                                objectId,
+                                functionDeclaration: `function() { this.focus(); this.select(); document.execCommand('delete', false, null); }`,
+                                silent: true,
+                            });
+                        } catch(e) {}
                         await delay(50);
                     }
 
-                    const setResp = await ctx.cdpSend('Runtime.callFunctionOn', {
-                        objectId,
-                        functionDeclaration: `function(t) {
-                            try {
-                                var p = this.tagName === 'INPUT' ? HTMLInputElement : HTMLTextAreaElement;
-                                var ns = Object.getOwnPropertyDescriptor(p.prototype, 'value');
-                                var cur = this.value || '';
-                                if (ns && ns.set) ns.set.call(this, cur + t); else this.value = cur + t;
-                                this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                                this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                                return { ok: true, val: this.value };
-                            } catch(e) { return { ok: false, reason: String(e) }; }
-                        }`,
-                        arguments: [{ value: text }],
-                        returnByValue: true, silent: false,
-                    });
+                    // Force target focus immediately prior to native injection
+                    await ctx.cdpSend('Runtime.callFunctionOn', { objectId, functionDeclaration: `function() { this.focus(); }` });
 
-                    const r = setResp?.result?.result?.value;
-                    if (!r?.ok) throw new Error(`INPUT set failed: ${r?.reason}`);
+                    debug.log(`[TYPE v5] INPUT/TEXTAREA → Trying native CDP typeViaInsertText`);
+                    await typeViaInsertText(text, ctx);
+                    await delay(100);
+
+                    // Verify insertion
+                    const verResp = await ctx.cdpSend('Runtime.callFunctionOn', {
+                        objectId,
+                        functionDeclaration: 'function() { return this.value || ""; }',
+                        returnByValue: true, silent: true,
+                    });
+                    const content: string = verResp?.result?.result?.value ?? '';
+                    const confirmed = content.includes(text.substring(0, Math.min(text.length, 10)));
+                    
+                    if (!confirmed) {
+                        debug.log(`[TYPE v5] INPUT typeViaInsertText failed (val="${content}") → Fallback: typeViaKeyEvents`);
+                        await typeViaKeyEvents(text, ctx);
+                        await delay(100);
+                        
+                        // Force a synthetic event sync as final bulletproof measure
+                        await forceFrameworkSync(objectId, ctx);
+                    }
 
                     if (submitAfter) {
                         await delay(300);

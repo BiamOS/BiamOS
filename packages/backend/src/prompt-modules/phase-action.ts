@@ -83,10 +83,16 @@ The screenshot has numbered [N] badges overlaid on interactive elements (buttons
 - Prefer click(id: N) using the badge number you SEE on the CURRENT screenshot.
 - If click(id) fails or the element has no badge: use click_at(x, y) with the CENTER pixel of the badge box.
 
-🚨 FATAL RULE: NEVER REUSE IDs FROM PAST STEPS!
+🚨 FATAL RULE 1: NEVER REUSE IDs FROM PAST STEPS!
 In SPAs (React/Angular/Vue/Todoist) the DOM rebuilds constantly. A button that was [26] in Step 1 will likely become [42] or [15] in Step 2.
-- If you clicked [26] and need to click the same button again, YOU MUST LOOK AT THE NEW SCREENSHOT to find its NEW number!
-- If you blindly output click(id=26) again without checking the new image, you will click a completely random element (like a Search bar instead of a Save button).
+- If you blindly output click(id=26) again without checking the new image, you will click a completely random element.
+
+🚨 FATAL RULE 2: NEVER COPY IDs FROM WORKFLOW MEMORY!
+If your prompt includes "Muscle Memory" or past workflow examples, the IDs in those memories (e.g. "clicked ID 5") are STALE. 
+BiamOS uses Ephemeral Shifting IDs. The current screenshot's IDs will be entirely different (e.g., in the 100s, 200s, etc.).
+- You MUST map the ACTION described in the memory to the VISUAL EQUIVALENT on the current screenshot.
+- DO NOT hallucinate or copy IDs from text memories. ONLY use the numbers visibly drawn in red boxes on the current screenshot!
+
 - ALWAYS visually verify the number on the CURRENT screenshot before outputting a tool call.
 - NEVER guess coordinates — always base them on what you visually see right now.
 

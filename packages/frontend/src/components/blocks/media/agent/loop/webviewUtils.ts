@@ -214,6 +214,12 @@ async function resolveAxTreeCoords(
 //
 // MAX_ELEMENTS: 80 (Kinetic Sonar — only what the eye sees matters)
 
+// Global offset generator to prevent LLM "ID Muscle Memory" (ReAct Amnesia)
+// Every new snapshot bumps IDs by 100 (e.g., 101-180 -> 201-280 -> 301-380).
+// If the LLM tries to reuse id=105 on step 2, it will hit an immediate "ID not found"
+// error instead of silently clicking an innocous background element.
+let globalSnapshotOffset = 0;
+
 export async function captureDomSnapshot(
     wv: any,
     wcId: number,
@@ -222,8 +228,11 @@ export async function captureDomSnapshot(
 ): Promise<string> {
     const electronAPI = (window as any).electronAPI;
 
-    // Reset the SoM for this step
+    // Reset the SoM for this step and bump the ephemeral ID namespace
     stepSomRef.current = new Map();
+    globalSnapshotOffset = (globalSnapshotOffset + 100) % 9000;
+    if (globalSnapshotOffset === 0) globalSnapshotOffset = 100;
+    let idCounter = globalSnapshotOffset;
 
     if (!electronAPI?.cdpSend || !wcId) {
         debug.log('⚠️ [CDP] cdpSend unavailable — no DOM snapshot');
@@ -265,7 +274,6 @@ export async function captureDomSnapshot(
     // ── Assign sequential IDs 1..N to Interactive elements ───
     const MAX_ELEMENTS = 80; // Kinetic Sonar: lean and precise
     const lines: string[] = [];
-    let idCounter = 1;
 
     // ── Fetch scroll offset AND device pixel ratio ─────────
     let pageScrollX = 0;

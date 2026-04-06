@@ -659,6 +659,21 @@ REQUIRED ACTION: Look at the screenshot. Find what is missing or empty ABOVE thi
                         debug.log(`🎯 ════════════ END STEP ${stepNum} ════════════\n`);
                         setAgentState(prev => ({ ...prev, steps: stepsRef.current }));
 
+                        // ── Explicit Tool Error Recovery ──────────────────────────────
+                        // If the tool returned a hard error (e.g. ID not found), physically
+                        // block the LLM from silently retrying it by injecting a recovery step.
+                        if (cleanResult.includes('❌')) {
+                            const errorRecoveryStep: AgentStep = {
+                                action: 'system_error',
+                                description: 'SYSTEM-INJECTED RECOVERY',
+                                result: `🚨 FATAL TOOL ERROR: The action failed completely. STOP retrying the same action. Look at the NEW screenshot. If the UI has changed unexpectedly, use go_back() or ask_user().`
+                            };
+                            stepsRef.current = [...stepsRef.current, errorRecoveryStep];
+                            setAgentState(prev => ({ ...prev, steps: stepsRef.current, currentAction: '🚨 Tool-Fehler erkannt' }));
+                            debug.log(`🚨 [Engine] Tool returned error, injected explicit recovery step.`);
+                            continue; // Skip Sonar, wrap loop immediately
+                        }
+
                         // ── Phase 2: Kinetic Sonar — Post-Action Visual Verification ──
                         // Only for DOM-mutating actions (click, type_text) — not for navigations.
                         const SONAR_ACTIONS = new Set(['click', 'click_at', 'type_text', 'scroll', 'vision_click']);
