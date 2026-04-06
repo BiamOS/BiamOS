@@ -2,49 +2,49 @@
   <img src="docs/assets/logo.png" alt="BiamOS Logo" width="180"/>
 </p>
 
-# 🧬 BiamOS (Konzept & Archiv)
+# 🧬 BiamOS (Concept & Archive)
 
-> **⚠️ WICHTIGER HINWEIS: Dieses Projekt wurde eingestellt.**
+> **⚠️ IMPORTANT NOTICE: This project has been discontinued.**
 >
-> BiamOS ist eine **reine Konzeptstudie** und Ideensammlung. Es handelt sich **nicht** um eine funktionierende Software oder ein einsatzbereites Produkt. Die aktive Entwicklung und der Aufbau wurden gestoppt. Dieses Repository dient nur noch als Archiv für die konzeptionellen Ansätze und Architektur-Ideen.
+> BiamOS is purely a **conceptual study** and idea collection. It is **not** a functioning software or a ready-to-use product. Active development has been stopped. This repository now serves solely as an archive for the conceptual approaches and architectural ideas.
 
 ---
 
-## 🎯 Was sollte gelöst werden?
+## 🎯 What problem was it trying to solve?
 
-Das Projekt entstand aus der Beobachtung, dass aktuelle KI-Agenten und Web-Automatisierungs-Tools (wie Playwright, Puppeteer oder Selenium) oft an modernen, dynamischen Webseiten (Single Page Applications - SPAs) scheitern. 
+The project originated from the observation that current AI agents and web automation tools (like Playwright, Puppeteer, or Selenium) often fail on modern, dynamic websites (Single Page Applications - SPAs).
 
-Die Kernprobleme herkömmlicher Ansätze, die wir lösen wollten:
-- **Fragile DOM-Selektoren:** KI-Agenten verlassen sich auf HTML-Code, der sich bei jedem Update ändern kann.
-- **Bot-Erkennung:** Automatisierte Zugriffe werden durch Captchas (wie Cloudflare Turnstile oder Recaptcha v3) zuverlässig blockiert.
-- **Mangelnder Kontext:** KI-Agenten haben "Amnesie". Sie lernen nicht aus vergangenen Fehlern auf spezifischen Webseiten.
+The core problems of traditional approaches that we wanted to solve:
+- **Fragile DOM Selectors:** AI agents rely on HTML code, which can change with every site update.
+- **Bot Detection:** Automated interactions are reliably blocked by captchas (like Cloudflare Turnstile or Recaptcha v3).
+- **Lack of Context:** AI agents suffer from "amnesia." They do not learn from past mistakes on specific websites.
 
-## 💡 Das BiamOS Konzept
+## 💡 The BiamOS Concept
 
-BiamOS wurde als **Autonomer KI-Webbrowser** konzipiert, der als natives Desktop-System agiert. Das Ziel war es, die Interaktion zwischen KI und Webbrowser auf eine Art menschliche Wahrnehmungs-Ebene ("Vision-First") zu heben.
+BiamOS was designed as an **Autonomous AI Web Browser** functioning as a native desktop system. The goal was to elevate the interaction between AI and web browsers to a human-like perception level ("Vision-First").
 
-Die zentralen architektonischen Ideen (Theoretische Ansätze):
+The central architectural ideas (Theoretical Approaches):
 
-### 1. 🕷️ Autonomer Web-Agent (The WORMHOLE Engine)
-Anstatt sich auf DOM-Selektoren zu verlassen, sollte die KI eine visuelle Wahrnehmung nutzen (Live 4D Raycasting / Kinetic Sonar). Der Agent sollte verstehen, wo Elemente auf dem Bildschirm sind (Vision-First) und echte, menschlich wirkende OS-Level-Mausklicks über berechnete Bézier-Kurven (GhostCursor) simulieren, um Bot-Detektionen zu umgehen.
+### 1. 🕷️ Autonomous Web Agent (The WORMHOLE Engine)
+Instead of relying on DOM selectors, the AI was designed to use visual perception (Live 4D Raycasting / Kinetic Sonar). The agent would understand where elements are on the screen (Vision-First) and simulate genuine, human-like OS-level mouse clicks via calculated Bézier curves (GhostCursor) to bypass bot detections.
 
 ### 2. 🧠 Domain Brain & The Librarian
-Eine lokale, lernende RAG-Wissensdatenbank. Der Agent sollte lernen, wie Webseiten funktionieren. Wenn ein Ansatz fehlschlägt oder der Agent in eine Endlosschleife gerät, sollte ein Hintergrundprozess ("The Librarian") eingreifen, den Prozess analysieren und eine Vermeidungsregel abspeichern.
+A local, learning RAG knowledge base. The agent was supposed to learn how websites work over time. If an approach failed or the agent got caught in an infinite loop, a background process ("The Librarian") would intervene, analyze the mistake, and permanently save an avoidance rule.
 
 ### 3. 👻 Ghost-Auth (Zero-OAuth)
-Eine radikal lokale und private Herangehensweise an Berechtigungen. Ohne API-Schlüssel oder unsichere OAuth-Tokens an Startups vergeben zu müssen, loggt sich der Nutzer im eingebetteten Chromium-Modul direkt ein (z. B. YouTube, Gmail). Die KI reitet dann sicher und völlig lokal auf dieser bestehenden Session.
+A radically local and private approach to permissions. Instead of issuing API keys or insecure OAuth tokens to startups, the user would log in directly via the embedded Chromium module (e.g., YouTube, Gmail). The AI would then safely and completely locally piggyback on this existing session.
 
 ### 4. 💪 Muscle Memory (Workflow-Replay)
-Eine Caching-Schicht für komplexe Workflows. Wenn eine Aufgabe einmal gelöst und als "Erfolg" verbucht wurde (z. B. Flugsuche mit bestimmten Filtern), wird der exakte Ausführungsablauf in einer lokalen SQLite-Datenbank ("Muscle Memory") gespeichert. Zukünftige identische Absichts-Aufrufe (Intents) benötigen keine teuren LLM-Rechenzeiten mehr, sondern spulen die erlernte Lösung sofort ab.
+A caching layer for complex workflows. Once a task was successfully solved and marked as a "success" (e.g., flight search with specific filters), the exact execution sequence would be stored in a local SQLite database ("Muscle Memory"). Future identical intent calls would no longer require expensive LLM compute time but instantly play back the learned solution.
 
-## 🏗️ Theoretischer Technologie-Stack
+## 🏗️ Theoretical Technology Stack
 
-- **Desktop Shell:** Electron (Chromium Webview, nativer OS-Zugriff)
-- **Frontend / UI:** React 19 (Spatial Canvas für die KI-Wahrnehmung)
+- **Desktop Shell:** Electron (Chromium Webview, native OS access)
+- **Frontend / UI:** React 19 (Spatial Canvas for AI perception)
 - **Backend:** Node.js / Hono
-- **Speicher:** Drizzle ORM + lokales SQLite
+- **Storage:** Drizzle ORM + local SQLite
 
 ---
 
-*Dieses Projekt bleibt als offenes Konzept und technologische Inspiration erhalten.*
-*Entwickelt in Wien, Österreich 🇦🇹.*
+*This project remains as an open concept and technological inspiration.*
+*Conceived in Vienna, Austria 🇦🇹.*
